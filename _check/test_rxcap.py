@@ -17,8 +17,8 @@ import subprocess
 import sys
 import tempfile
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SRC = os.path.join(ROOT, "drug-keeper", "index.html")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # = drug-keeper/
+SRC = os.path.join(ROOT, "index.html")
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
 PROBE = r"""
@@ -95,9 +95,9 @@ PROBE = r"""
   ck('卡片文案不含「单次限」', txtAll.indexOf('单次限') < 0, '');
   ck('卡片文案不含「得开」', txtAll.indexOf('得开') < 0, '');
   ck('卡片仍保留「余量约」', /余量约/.test(txtAll), '');
-  // 颜色信号还在：氨氯地平只剩 1 天 → 告急(urgent)，卡片 data-lv 应为 urgent
+  // 颜色信号还在：氨氯地平只剩 1 天 → 偏少(soon)，卡片 data-lv 应为 soon
   var c1 = card('苯磺酸氨氯地平片');
-  ck('氨氯地平卡片仍是告急色', c1 && c1.getAttribute('data-lv') === 'urgent',
+  ck('氨氯地平卡片是偏少色', c1 && c1.getAttribute('data-lv') === 'soon',
      c1 ? c1.getAttribute('data-lv') : '(无卡片)');
 
   // ---- 3c. 只留三档文案：已用完 / 偏少 / 充足 ----
@@ -122,6 +122,46 @@ PROBE = r"""
   var ALLOW = ['偏少', '已用完', '充足', '未设用法'];
   ck('卡片 tag 只用这三档（+未设用法）',
      uniq.length > 0 && uniq.every(function(v){ return ALLOW.indexOf(v) >= 0; }), uniq.join('/'));
+
+  // ---- 3d. ★ 用户报的 bug：设置里的「偏少线」必须就是统计栏那个 N ----
+  // 根因：三档化时把内层的「告急线(urgentDays=7)」误挂上了「偏少线」这个名字，
+  //   而统计栏/清单/卡片文字用的是 alertDays(14) —— 名字指向 7、事实边界是 14，自相矛盾。
+  // 用户定稿：**不要第二条线**，只留一条「偏少线」= alertDays；颜色也只剩一种（黄）。
+  var labName = function(nm){
+    var el = document.querySelector('#formSet input[name="' + nm + '"]');
+    var lab = el && el.closest ? el.closest('label') : null;
+    if(!lab) return '(没找到)';
+    for(var n = lab.firstChild; n; n = n.nextSibling){
+      if(n.nodeType === 3 && n.textContent.trim()) return n.textContent.trim();
+    }
+    return '(空标签)';
+  };
+  ck('设置里「偏少线」绑的输入是 alertDays', labName('alertDays').indexOf('偏少线') === 0,
+     labName('alertDays'));
+  ck('第二条线的输入框已删除（无 urgentDays）',
+     !document.querySelector('#formSet input[name="urgentDays"]'), '');
+  ck('可见文字无「更少线」', bodyTxt.indexOf('更少线') < 0, '');
+  ck('可见文字无「提醒线」', bodyTxt.indexOf('提醒线') < 0, '');
+  var mStat = bodyTxt.match(/偏少（≤(\d+)天）/);
+  ck('统计栏「偏少（≤N天）」的 N == 偏少线',
+     !!mStat && Number(mStat[1]) === settings.alertDays,
+     mStat ? mStat[1] + ' vs alertDays=' + settings.alertDays : '(没匹配到)');
+  // 只剩一档：任何药都不该再判出 urgent（橙）
+  var lvSet = {};
+  meds.forEach(function(m){ lvSet[level(m)] = 1; });
+  ck('等级里已无 urgent', !lvSet.urgent, Object.keys(lvSet).join('/'));
+
+  // 这条线是唯一的事实边界：改它，统计栏与清单必须同时跟着变
+  var fs = q('#formSet');
+  openSettings(); fs.alertDays.value = 30; fs.targetDays.value = 30;
+  submitSettings({ preventDefault: function(){} });
+  ck('偏少线改 30 → 统计栏随之显示 ≤30 天',
+     /偏少（≤30天）/.test(q('#stats').textContent), q('#stats').textContent.slice(0, 120));
+  openSettings(); fs.alertDays.value = 14; fs.targetDays.value = 30;
+  submitSettings({ preventDefault: function(){} });
+  ck('设置已恢复 14', settings.alertDays === 14, settings.alertDays);
+  ck('settings 里已无 urgentDays 字段', settings.urgentDays === undefined,
+     String(settings.urgentDays));
 
   // ---- 4. 弹窗入库量必须与内部口径同一个数（弹窗里保留说明）----
   var plan = dispPlan();

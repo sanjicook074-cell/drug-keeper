@@ -9,7 +9,7 @@
   --bg:#f4f5f7; --card:#fff; --line:#e6e8ec; --line-2:#eef0f4;
   --text:#1b1f27; --muted:#6b7280; --faint:#9ca3af;
   --brand:#2563eb; --brand-d:#1d4ed8;
-  --out:#dc2626; --urgent:#ea580c; --soon:#d97706; --ok:#16a34a; --na:#9ca3af;
+  --out:#dc2626; --soon:#d97706; --ok:#16a34a; --na:#9ca3af;
   --radius:12px;
   --shadow:0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.06);
 }
@@ -57,7 +57,6 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 .stat .n{font-size:24px;font-weight:650;line-height:1.15}
 .stat .l{font-size:12px;color:var(--muted);margin-top:3px}
 .stat.out .n{color:var(--out)}
-.stat.urgent .n{color:var(--urgent)}
 .stat.soon .n{color:var(--soon)}
 
 /* ---------- 人员标签栏 ---------- */
@@ -103,7 +102,6 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
   padding:13px 14px;background:#fff;transition:box-shadow .15s}
 .med:hover{box-shadow:0 2px 10px rgba(16,24,40,.08)}
 .med[data-lv=out]{border-left-color:var(--out);background:#fffafa}
-.med[data-lv=urgent]{border-left-color:var(--urgent);background:#fffaf5}
 .med[data-lv=soon]{border-left-color:var(--soon);background:#fffdf6}
 .med[data-lv=ok]{border-left-color:var(--ok)}
 .med[data-lv=na]{border-left-color:var(--na)}
@@ -115,7 +113,6 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 .days .v{font-size:19px;font-weight:680;line-height:1.1}
 .days .u{font-size:11.5px;color:var(--muted);display:block;margin-top:1px}
 .days[data-lv=out] .v{color:var(--out)}
-.days[data-lv=urgent] .v{color:var(--urgent)}
 .days[data-lv=soon] .v{color:var(--soon)}
 .days[data-lv=ok] .v{color:var(--ok)}
 .days[data-lv=na] .v{color:var(--faint);font-size:14px;font-weight:500}
@@ -123,7 +120,6 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 .bar{height:6px;border-radius:99px;background:#eef0f4;margin:11px 0 9px;overflow:hidden}
 .bar i{display:block;height:100%;border-radius:99px;transition:width .35s ease}
 .bar[data-lv=out] i{background:var(--out)}
-.bar[data-lv=urgent] i{background:var(--urgent)}
 .bar[data-lv=soon] i{background:var(--soon)}
 .bar[data-lv=ok] i{background:var(--ok)}
 .bar[data-lv=na] i{background:#d1d5db}
@@ -135,7 +131,6 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 
 .tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 7px;border-radius:5px;line-height:1.5}
 .tag.out{background:#fee2e2;color:#b91c1c}
-.tag.urgent{background:#ffedd5;color:#c2410c}
 .tag.soon{background:#fef3c7;color:#a16207}
 .tag.ok{background:#dcfce7;color:#15803d}
 .tag.na{background:#f1f3f6;color:#6b7280}
@@ -209,7 +204,6 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 .disp-row{display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--line);
   border-left-width:4px;border-radius:10px;background:#fff}
 .disp-row[data-lv=out]{border-left-color:var(--out);background:#fffafa}
-.disp-row[data-lv=urgent]{border-left-color:var(--urgent);background:#fffaf5}
 .disp-row[data-lv=soon]{border-left-color:var(--soon);background:#fffdf6}
 .disp-info{flex:1;min-width:0}
 .disp-name{font-weight:620;font-size:13.5px;word-break:break-word}
@@ -380,12 +374,8 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
     <div class="dlg-b">
       <div class="grid2">
         <label>偏少线（天）
-          <input name="urgentDays" type="number" step="1" min="0">
-          <span class="hintline">剩余 ≤ 这个天数，标「偏少」（卡片<b>橙色</b>，更少）</span>
-        </label>
-        <label>提醒线（天）
           <input name="alertDays" type="number" step="1" min="0">
-          <span class="hintline">剩余 ≤ 这个天数，也标「偏少」（卡片<b>黄色</b>），并进「要开的药」清单</span>
+          <span class="hintline">剩余天数 ≤ 这个值，就标<b>「偏少」</b>、卡片转黄，并进「要开的药」清单。上方统计里的「偏少（≤N天）」用的就是它——只有这一条线</span>
         </label>
         <label class="full">补货目标天数
           <input name="targetDays" type="number" step="1" min="1">
@@ -437,7 +427,8 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 const LS_DATA = 'medkeeper.data.v1';
 const LS_SET  = 'medkeeper.settings.v1';
 
-const DEFAULT_SETTINGS = { urgentDays: 7, alertDays: 14, targetDays: 30 };
+// 只有一条线：偏少线。默认「剩余 ≤ 14 天」算偏少，同时就是该续方的信号。
+const DEFAULT_SETTINGS = { alertDays: 14, targetDays: 30 };
 
 let settings = Object.assign({}, DEFAULT_SETTINGS);
 
@@ -553,7 +544,7 @@ function load(){
   if(raw2){
     try {
       const s = JSON.parse(raw2);
-      ['urgentDays','alertDays','targetDays'].forEach(function(k){
+      ['alertDays','targetDays'].forEach(function(k){
         if(isFinite(Number(s[k]))) settings[k] = Number(s[k]);
       });
     } catch(e){}
@@ -617,15 +608,13 @@ function level(m){
   const dl = daysLeft(m);
   if(!isFinite(dl)) return 'na';
   if(dl <= 0) return 'out';
-  if(dl <= settings.urgentDays) return 'urgent';
-  if(dl <= settings.alertDays) return 'soon';
+  if(dl <= settings.alertDays) return 'soon';   // 只有「偏少」一档，不再分红/黄两级
   return 'ok';
 }
-// 等级文案（2026-09-28 改）：只留三档 —— 已用完 / 偏少 / 充足。
-// 原来那套「告急 / 将尽」用户嫌有压力，先换成中性词，再直接砍成一档「偏少」。
-// urgent / soon 保留为内部 id（只是「偏少」里颜色深浅两级：橙=更少、黄=偏少），颜色映射不变。
-const LEVEL_LABEL = { out:'已用完', urgent:'偏少', soon:'偏少', ok:'充足', na:'未设用法' };
-const LEVEL_ORDER = { out:0, urgent:1, soon:2, ok:3, na:4 };
+// 档位定稿（2026-09-28）：只有 已用完 / 偏少 / 充足（+未设用法）。
+// 「告急 / 将尽」这类带压力的词被用户否掉；第二条线也砍了 —— 只剩一条偏少线，一种颜色。
+const LEVEL_LABEL = { out:'已用完', soon:'偏少', ok:'充足', na:'未设用法' };
+const LEVEL_ORDER = { out:0, soon:1, ok:2, na:3 };
 
 function inRefill(m){
   const dl = daysLeft(m);
@@ -706,13 +695,12 @@ function renderPeople(){
 }
 
 function renderStats(){
-  const c = { out:0, urgent:0, soon:0, ok:0, na:0 };
+  const c = { out:0, soon:0, ok:0, na:0 };
   meds.forEach(function(m){ c[level(m)]++; });
-  // 三档展示：「偏少」把 urgent + soon 合成一格（内部仍是两级颜色：橙=更少、黄=偏少）
   const box = [
     ['', meds.length, '药品总数', ''],
     ['out', c.out, '已用完', 'out'],
-    ['soon', c.urgent + c.soon, '偏少（≤' + settings.alertDays + '天）', 'soon'],
+    ['soon', c.soon, '偏少（≤' + settings.alertDays + '天）', 'soon'],
     ['ok', c.ok, '充足', 'ok']
   ];
   $('#stats').innerHTML = box.map(function(b){
@@ -1065,7 +1053,7 @@ function calibMed(id){
 }
 
 /* -------------------- 已经开药（一次把所有要补的药入库） -------------------- */
-// 只列「真的需要补」的药：提醒线内但需求量算出 0 的（阈值设置反常时会出现）不列
+// 只列「真的需要补」的药：偏少线内但需求量算出 0 的（阈值设置反常时会出现）不列
 function dispItems(){
   return meds.filter(function(m){ return inRefill(m) && needUnits(m) > 0; })
     .sort(function(a, b){ return daysLeft(a) - daysLeft(b); });
@@ -1144,7 +1132,7 @@ function submitDisp(e){
   alert('已把 ' + plan.length + ' 种药加进库存。'
     + (left.length
         ? '\n\n还有 ' + left.length + ' 种没到位（受单次上限限制），可以再点一次「已经开药」。'
-        : '\n\n现在都在提醒线以上了。'));
+        : '\n\n现在都在偏少线以上了。'));
 }
 
 /* ★ 这里原本有一段内置示例数据，外加一个「看示例」按钮和一个 URL 参数。
@@ -1264,7 +1252,6 @@ function importJSON(file){
 
 function openSettings(){
   const f = $('#formSet');
-  f.urgentDays.value = settings.urgentDays;
   f.alertDays.value = settings.alertDays;
   f.targetDays.value = settings.targetDays;
   renderPeopleMgr();
@@ -1273,11 +1260,9 @@ function openSettings(){
 function submitSettings(e){
   e.preventDefault();
   const f = $('#formSet');
-  const u = Math.max(0, num(f.urgentDays.value, 7));
   const a = Math.max(0, num(f.alertDays.value, 14));
   const t = Math.max(1, num(f.targetDays.value, 30));
-  settings.urgentDays = u;
-  settings.alertDays = Math.max(a, u);   // 提醒线不能小于偏少线
+  settings.alertDays = a;      // 唯一的一条线：统计栏、清单、卡片文字全看它
   settings.targetDays = t;
   saveSettings(); render();
   $('#dlgSet').close();
