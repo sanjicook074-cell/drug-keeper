@@ -1,0 +1,17 @@
+# WorkBuddy 项目内部数据（AI 工作日志等，不随项目分发）
+.workbuddy/
+
+# 自检脚本的临时产物
+_check/_tmp_*
+_check/shot_*
+
+# 系统 / 编辑器 / Python
+Thumbs.db
+Desktop.ini
+.DS_Store
+__pycache__/
+*.pyc
+.idea/
+.vscode/
+*.swp
+*~

@@ -1,0 +1,1357 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>药品管家</title>
+<style>
+:root{
+  --bg:#f4f5f7; --card:#fff; --line:#e6e8ec; --line-2:#eef0f4;
+  --text:#1b1f27; --muted:#6b7280; --faint:#9ca3af;
+  --brand:#2563eb; --brand-d:#1d4ed8;
+  --out:#dc2626; --urgent:#ea580c; --soon:#d97706; --ok:#16a34a; --na:#9ca3af;
+  --radius:12px;
+  --shadow:0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.06);
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  background:var(--bg); color:var(--text); font-size:14px; line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+button{font:inherit}
+.wrap{max-width:1120px;margin:0 auto;padding:24px 20px 64px}
+
+/* ---------- 顶栏 ---------- */
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,#3b82f6,#1e40af);
+  color:#fff;display:grid;place-items:center;font-size:20px;font-weight:600;box-shadow:0 2px 8px rgba(37,99,235,.28)}
+h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
+.sub{margin:2px 0 0;font-size:12.5px;color:var(--muted)}
+.top-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+.btn{border:1px solid transparent;border-radius:9px;padding:8px 14px;cursor:pointer;
+  background:#fff;color:var(--text);transition:background .15s,border-color .15s,box-shadow .15s;white-space:nowrap}
+.btn:active{transform:translateY(.5px)}
+.btn.primary{background:var(--brand);color:#fff;box-shadow:0 1px 2px rgba(37,99,235,.3)}
+.btn.primary:hover{background:var(--brand-d)}
+.btn.ghost{border-color:var(--line);background:#fff;color:#374151}
+.btn.ghost:hover{background:#f9fafb;border-color:#d1d5db}
+.btn.danger{color:var(--out);border-color:#fecaca;background:#fff}
+.btn.danger:hover{background:#fef2f2}
+.btn.success{background:#16a34a;color:#fff;box-shadow:0 1px 2px rgba(22,163,74,.3)}
+.btn.success:hover{background:#15803d}
+.btn.block{display:block;width:100%}
+.btn.sm{padding:5px 10px;font-size:12.5px;border-radius:7px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+/* ---------- 提示条 ---------- */
+#warn{display:none;margin-bottom:16px;padding:11px 14px;border-radius:10px;font-size:13px;
+  background:#fffbeb;border:1px solid #fde68a;color:#92400e}
+
+/* ---------- 统计 ---------- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:12px;margin-bottom:20px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow)}
+.stat .n{font-size:24px;font-weight:650;line-height:1.15}
+.stat .l{font-size:12px;color:var(--muted);margin-top:3px}
+.stat.out .n{color:var(--out)}
+.stat.urgent .n{color:var(--urgent)}
+.stat.soon .n{color:var(--soon)}
+
+/* ---------- 人员标签栏 ---------- */
+.people{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.ptab{display:inline-flex;align-items:center;gap:7px;padding:7px 15px;border-radius:999px;
+  border:1px solid var(--line);background:#fff;color:#4b5563;cursor:pointer;
+  transition:background .15s,border-color .15s,box-shadow .15s;max-width:200px}
+.ptab:hover{border-color:#cbd5e1;background:#f9fafb}
+.ptab.active{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600;
+  box-shadow:0 1px 3px rgba(37,99,235,.32)}
+.ptab .badge{font-size:11px;font-weight:700;min-width:18px;height:18px;padding:0 5px;
+  border-radius:99px;display:grid;place-items:center;background:#fee2e2;color:#b91c1c}
+.ptab.active .badge{background:rgba(255,255,255,.28);color:#fff}
+.padd{border:1px dashed #cbd5e1;background:transparent;color:var(--muted);
+  border-radius:999px;padding:7px 15px;cursor:pointer;transition:.15s}
+.padd:hover{border-color:var(--brand);color:var(--brand);background:#eff6ff}
+
+/* ---------- 设置里的成员管理 ---------- */
+.prow{display:flex;align-items:center;gap:9px;padding:7px 0}
+.prow + .prow{border-top:1px solid var(--line-2)}
+.pdot{width:8px;height:8px;border-radius:50%;background:var(--brand);flex:none}
+.pdot.off{background:#d1d5db}
+.pname{flex:1;font:inherit;padding:7px 11px;border:1px solid var(--line);border-radius:8px;
+  background:#fff;color:var(--text);min-width:0}
+.pname:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.pmeta{font-size:12px;color:var(--muted);white-space:nowrap;flex:none}
+
+/* ---------- 两栏 ---------- */
+.cols{display:grid;grid-template-columns:1.55fr 1fr;gap:20px;align-items:start}
+@media(max-width:900px){.cols{grid-template-columns:1fr}}
+
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  box-shadow:var(--shadow);overflow:hidden}
+.panel-h{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:13px 16px;border-bottom:1px solid var(--line-2)}
+.panel-h h2{font-size:14.5px;margin:0;font-weight:650}
+.hint{font-size:12px;color:var(--muted)}
+.panel-b{padding:14px 16px}
+
+/* ---------- 药品卡片 ---------- */
+.mlist{display:flex;flex-direction:column;gap:10px;padding:14px 16px}
+.med{border:1px solid var(--line);border-left-width:4px;border-radius:10px;
+  padding:13px 14px;background:#fff;transition:box-shadow .15s}
+.med:hover{box-shadow:0 2px 10px rgba(16,24,40,.08)}
+.med[data-lv=out]{border-left-color:var(--out);background:#fffafa}
+.med[data-lv=urgent]{border-left-color:var(--urgent);background:#fffaf5}
+.med[data-lv=soon]{border-left-color:var(--soon);background:#fffdf6}
+.med[data-lv=ok]{border-left-color:var(--ok)}
+.med[data-lv=na]{border-left-color:var(--na)}
+
+.med-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.med-name{font-weight:640;font-size:14.5px;word-break:break-word}
+.med-spec{font-size:12.5px;color:var(--muted);margin-top:2px;word-break:break-word}
+.days{text-align:right;white-space:nowrap;flex:none}
+.days .v{font-size:19px;font-weight:680;line-height:1.1}
+.days .u{font-size:11.5px;color:var(--muted);display:block;margin-top:1px}
+.days[data-lv=out] .v{color:var(--out)}
+.days[data-lv=urgent] .v{color:var(--urgent)}
+.days[data-lv=soon] .v{color:var(--soon)}
+.days[data-lv=ok] .v{color:var(--ok)}
+.days[data-lv=na] .v{color:var(--faint);font-size:14px;font-weight:500}
+
+.bar{height:6px;border-radius:99px;background:#eef0f4;margin:11px 0 9px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px;transition:width .35s ease}
+.bar[data-lv=out] i{background:var(--out)}
+.bar[data-lv=urgent] i{background:var(--urgent)}
+.bar[data-lv=soon] i{background:var(--soon)}
+.bar[data-lv=ok] i{background:var(--ok)}
+.bar[data-lv=na] i{background:#d1d5db}
+
+.med-meta{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--muted)}
+.med-meta b{color:#374151;font-weight:600}
+.med-note{margin-top:6px;font-size:12.5px;color:var(--faint)}
+.med-foot{display:flex;gap:8px;margin-top:11px;padding-top:11px;border-top:1px dashed var(--line-2)}
+
+.tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 7px;border-radius:5px;line-height:1.5}
+.tag.out{background:#fee2e2;color:#b91c1c}
+.tag.urgent{background:#ffedd5;color:#c2410c}
+.tag.soon{background:#fef3c7;color:#a16207}
+.tag.ok{background:#dcfce7;color:#15803d}
+.tag.na{background:#f1f3f6;color:#6b7280}
+
+/* ---------- 空状态 ---------- */
+.empty{text-align:center;padding:44px 20px;color:var(--muted)}
+.empty .big{font-size:34px;margin-bottom:10px;opacity:.5}
+.empty p{margin:0 0 16px;font-size:13.5px}
+.empty .row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+
+/* ---------- 侧栏清单 ---------- */
+.refill{white-space:pre-wrap;word-break:break-word;
+  font-family:ui-monospace,SFMono-Regular,Consolas,"Microsoft YaHei",monospace;
+  font-size:12.5px;line-height:1.9;background:#f8f9fb;border:1px solid var(--line-2);
+  border-radius:10px;padding:14px;margin:0;color:#242a35;max-height:54vh;overflow:auto}
+.refill.empty-txt{color:var(--faint);font-family:inherit;font-size:13px;line-height:1.7;
+  background:#fbfcfd;text-align:center;padding:32px 16px}
+.side-actions{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+
+/* ---------- 侧栏两块：上=可编辑的情况，下=只要药名的清单 ---------- */
+.blk{margin-bottom:18px}
+.blk:last-of-type{margin-bottom:0}
+.blk-h{display:flex;align-items:baseline;gap:8px;margin:0 0 7px}
+.blk-t{font-size:12.5px;font-weight:650;color:#374151}
+.blk-tip{font-size:11.5px;color:var(--faint);margin-left:auto}
+#noteBox{display:block;width:100%;min-height:112px;resize:vertical;font:inherit;
+  font-size:13px;line-height:1.75;padding:11px 12px;color:var(--text);
+  background:#fffdf4;border:1px solid #f0e4c4;border-radius:10px}
+#noteBox:focus{outline:none;border-color:#e2c37a;box-shadow:0 0 0 3px rgba(226,195,122,.18)}
+#noteBox::placeholder{color:#b3aa98}
+.note-print{display:none;white-space:pre-wrap;word-break:break-word;
+  font-size:12.5px;line-height:1.8;color:#242a35}
+
+/* ---------- 弹窗 ---------- */
+dialog{border:none;border-radius:14px;padding:0;width:min(560px,92vw);
+  box-shadow:0 20px 60px rgba(16,24,40,.22);color:var(--text)}
+dialog::backdrop{background:rgba(15,23,42,.36)}
+.dlg-h{padding:18px 22px 0}
+.dlg-h h3{margin:0;font-size:16px;font-weight:650}
+.dlg-h p{margin:5px 0 0;font-size:12.5px;color:var(--muted)}
+.dlg-b{padding:16px 22px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+.grid2 label{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:#4b5563}
+.grid2 label.full{grid-column:1/-1}
+.grid2 input{font:inherit;padding:8px 11px;border:1px solid var(--line);border-radius:8px;
+  background:#fff;color:var(--text);width:100%}
+.grid2 input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.grid2 .hintline{font-size:11.5px;color:var(--faint);margin-top:-2px}
+
+/* 「每次 [1] [片] ，每 [1] 天 [1] 次」——读起来就是一句白话。
+   每天吃的药「每」填 1；隔 N 天一次的（依洛尤每 14 天 1 支）填 N。 */
+.dose-row{grid-column:1/-1;display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  font-size:13px;color:#4b5563;padding:2px 0}
+.dose-row input{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:8px;
+  background:#fff;color:var(--text);text-align:center}
+.dose-row input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.dose-row input.mini{width:62px}
+.dose-row input.unit{width:58px}
+/* 用法下面那行：左边单位提示，右边实时白话预览 */
+.dose-note{grid-column:1/-1;display:flex;gap:12px;flex-wrap:wrap;align-items:baseline;
+  margin-top:-2px;padding:0 2px}
+.dose-tip{font-size:11.5px;color:var(--faint)}
+#dosePreview{font-size:11.5px;color:var(--brand)}
+.dlg-f{display:flex;justify-content:flex-end;gap:9px;padding:0 22px 20px}
+.sec-title{grid-column:1/-1;font-size:12px;font-weight:650;color:var(--muted);
+  margin:6px 0 -4px;padding-top:10px;border-top:1px solid var(--line-2)}
+.sec-title:first-child{padding-top:0;border-top:none;margin-top:0}
+
+/* ---------- 「已经开药」批量入库 ---------- */
+.disp-list{display:flex;flex-direction:column;gap:10px;max-height:50vh;overflow:auto}
+.disp-row{display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--line);
+  border-left-width:4px;border-radius:10px;background:#fff}
+.disp-row[data-lv=out]{border-left-color:var(--out);background:#fffafa}
+.disp-row[data-lv=urgent]{border-left-color:var(--urgent);background:#fffaf5}
+.disp-row[data-lv=soon]{border-left-color:var(--soon);background:#fffdf6}
+.disp-info{flex:1;min-width:0}
+.disp-name{font-weight:620;font-size:13.5px;word-break:break-word}
+.disp-meta{font-size:12px;color:var(--muted);margin-top:2px}
+.disp-meta b{color:#374151}
+.disp-src{color:var(--faint)}
+.disp-after{flex:none;text-align:right;font-size:11.5px;color:var(--muted);line-height:1.5}
+.disp-after b{font-size:15px;font-weight:680;color:#374151}
+.disp-after.ok b{color:var(--ok)}
+.disp-empty{text-align:center;padding:26px 10px;color:var(--faint);font-size:13px}
+.disp-sum{margin:14px 0 0;padding:10px 13px;border-radius:9px;background:#f8f9fb;
+  border:1px solid var(--line-2);font-size:12.5px;color:#4b5563}
+.disp-sum b{color:#374151}
+
+/* ---------- 打印 ---------- */
+@media print{
+  body{background:#fff}
+  .top-actions,.stats,.col-main,.side-actions,.panel-h .hint,.blk-tip{display:none !important}
+  .cols{grid-template-columns:1fr}
+  .panel{border:none;box-shadow:none}
+  .panel-h{border-bottom:1px solid #ddd}
+  /* 打印时输入框换成等价的静态文本，避免被滚动区裁掉 */
+  #noteBox{display:none}
+  .note-print{display:block;margin-bottom:12px}
+  .refill{max-height:none;border:none;background:#fff;font-size:12pt;padding:0}
+  .wrap{padding:0}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <div class="logo">药</div>
+      <div>
+        <h1>药品管家</h1>
+        <p class="sub">记录库存 · 自动推算剩余天数 · 生成要开的药清单</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button class="btn ghost" id="btnSettings">设置</button>
+      <button class="btn ghost" id="btnImport">导入</button>
+      <button class="btn ghost" id="btnExport">导出备份</button>
+      <button class="btn primary" id="btnAdd">＋ 添加药品</button>
+    </div>
+  </header>
+
+  <div id="warn"></div>
+  <div class="people" id="people"></div>
+  <section class="stats" id="stats"></section>
+
+  <div class="cols">
+    <section class="panel col-main">
+      <div class="panel-h">
+        <h2>我的药品</h2>
+        <span class="hint" id="listHint"></span>
+      </div>
+      <div id="list"></div>
+    </section>
+
+    <aside class="panel col-side">
+      <div class="panel-h">
+        <h2 id="refillTitle">就诊准备</h2>
+      </div>
+      <div class="panel-b">
+
+        <div class="blk">
+          <div class="blk-h">
+            <span class="blk-t">就诊人的情况</span>
+            <span class="blk-tip" id="noteTip">自动保存 · 按人分开</span>
+          </div>
+          <textarea id="noteBox" spellcheck="false" autocomplete="off"
+            placeholder="这次想跟医生说什么？&#10;如：把这段时间的变化、想问的问题写在这里。"></textarea>
+          <div class="note-print" id="notePrint"></div>
+        </div>
+
+        <div class="blk">
+          <div class="blk-h">
+            <span class="blk-t">要开的药</span>
+            <span class="blk-tip" id="drugTip"></span>
+          </div>
+          <pre class="refill" id="refillText"></pre>
+        </div>
+
+        <div class="side-actions">
+          <button class="btn success block" id="btnDispense">✓ 已经开药</button>
+          <button class="btn primary block" id="btnCopy">复制给医生</button>
+          <div style="display:flex;gap:8px">
+            <button class="btn ghost" style="flex:1" id="btnDownload">下载 .txt</button>
+            <button class="btn ghost" style="flex:1" id="btnPrint">打印</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- 药品编辑弹窗 -->
+<dialog id="dlgMed">
+  <form id="formMed">
+    <div class="dlg-h">
+      <h3 id="dlgTitle">添加药品</h3>
+      <p>填「余量」和「余量日期」后，余量会随时间自动往下推算——不用每天手动扣药。</p>
+    </div>
+    <div class="dlg-b">
+      <div class="grid2">
+        <div class="sec-title">这是什么药</div>
+        <label class="full">药品名称 *
+          <input name="name" required autocomplete="off" placeholder="如 阿托伐他汀钙片">
+        </label>
+        <label class="full">规格
+          <input name="spec" autocomplete="off" placeholder="如 20mg / 0.5g">
+        </label>
+
+        <div class="sec-title">怎么吃</div>
+        <div class="dose-row">
+          <span>每次</span>
+          <input name="perDose" type="number" step="0.25" min="0" value="1" class="mini" aria-label="每次用量">
+          <input name="unit" value="片" autocomplete="off" class="mini unit" aria-label="单位" placeholder="片">
+          <span>，每</span>
+          <input name="cycleDays" type="number" step="1" min="1" value="1" class="mini" aria-label="每几天用一次药">
+          <span>天</span>
+          <input name="timesPerCycle" type="number" step="1" min="0" value="1" class="mini" aria-label="每个周期用几次">
+          <span>次</span>
+        </div>
+        <div class="dose-note">
+          <span class="dose-tip">单位可填 片 / 粒 / ml / 支 / 袋</span>
+          <span id="dosePreview"></span>
+        </div>
+
+        <div class="sec-title">现在还剩多少</div>
+        <label>余量
+          <input name="stockBase" type="number" step="0.25" min="0" value="0">
+        </label>
+        <label>这个余量是哪天的
+          <input name="stockDate" type="date">
+          <span class="hintline">默认今天</span>
+        </label>
+
+        <div class="sec-title">开药限制</div>
+        <label class="full">一次最多能开多少
+          <input name="rxMax" type="number" step="1" min="0" autocomplete="off" placeholder="留空 = 不限">
+          <span class="hintline">医生单次处方的上限 —— 一次挂号只能开一次药，所以这一次能拿到多少
+            就看这里。单位是上面填的「<b id="rxUnitTip">片</b>」；填了才知道要分几次开，
+            卡片和「已经开药」都会按这个数来；不填就当不限量。</span>
+        </label>
+
+        <label class="full">备注
+          <input name="note" autocomplete="off" placeholder="如 晚饭后服 / 冰箱冷藏">
+        </label>
+      </div>
+    </div>
+    <div class="dlg-f">
+      <button type="button" class="btn ghost" id="btnCancel">取消</button>
+      <button type="submit" class="btn primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 设置弹窗 -->
+<dialog id="dlgSet">
+  <form id="formSet">
+    <div class="dlg-h">
+      <h3>设置</h3>
+      <p>决定「哪些药算要开了」，以及开药时按多少天的量来算。</p>
+    </div>
+    <div class="dlg-b">
+      <div class="grid2">
+        <label>偏少线（天）
+          <input name="urgentDays" type="number" step="1" min="0">
+          <span class="hintline">剩余 ≤ 这个天数，标「偏少」（卡片<b>橙色</b>，更少）</span>
+        </label>
+        <label>提醒线（天）
+          <input name="alertDays" type="number" step="1" min="0">
+          <span class="hintline">剩余 ≤ 这个天数，也标「偏少」（卡片<b>黄色</b>），并进「要开的药」清单</span>
+        </label>
+        <label class="full">补货目标天数
+          <input name="targetDays" type="number" step="1" min="1">
+          <span class="hintline">按「够吃这么多天」倒推该补多少（慢病长处方通常 30～90 天）</span>
+        </label>
+      </div>
+      <div class="grid2" style="margin-top:16px">
+        <div class="sec-title">家庭成员</div>
+        <div class="full" id="peopleMgr"></div>
+        <div class="full hintline" style="margin-top:2px">每个人的药箱彼此独立，清单也分开出。</div>
+      </div>
+    </div>
+    <div class="dlg-f">
+      <button type="button" class="btn ghost" id="btnSetCancel">取消</button>
+      <button type="submit" class="btn primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<input type="file" id="fileImport" accept=".json,application/json" hidden>
+
+<!-- 「已经开药」批量入库弹窗 -->
+<dialog id="dlgDisp">
+  <form id="formDisp">
+    <div class="dlg-h">
+      <h3>已经开药</h3>
+      <p id="dispSub">一次挂号只能开一次药：每个药按「一次最多能开多少」入库，没设上限的就补满到目标天数。确认即更新药库。</p>
+    </div>
+    <div class="dlg-b">
+      <div class="disp-list" id="dispList"></div>
+      <div class="disp-sum" id="dispSum"></div>
+    </div>
+    <div class="dlg-f">
+      <button type="button" class="btn ghost" id="btnDispCancel">取消</button>
+      <button type="submit" class="btn primary">确认入库</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(function(){
+'use strict';
+
+/* ============================================================
+   药品管家 —— 单文件本地应用
+   数据保存在浏览器 localStorage；用「导出备份」存成 json 文件。
+   ============================================================ */
+
+const LS_DATA = 'medkeeper.data.v1';
+const LS_SET  = 'medkeeper.settings.v1';
+
+const DEFAULT_SETTINGS = { urgentDays: 7, alertDays: 14, targetDays: 30 };
+
+let settings = Object.assign({}, DEFAULT_SETTINGS);
+
+/* 数据模型 v2：people = 每个人一个独立药箱
+   ★ 不变量：meds 永远指向「当前人」的数组。
+     原地改（push / meds[i]=…）安全；整体替换（meds = …）必须走 setMeds()，
+     否则会把改动写到一个已经脱钩的旧数组里。 */
+let people = [];
+let currentId = '';
+let meds = [];
+let editingId = null;
+
+function curPerson(){
+  for(let i = 0; i < people.length; i++){
+    if(people[i].id === currentId) return people[i];
+  }
+  return people[0] || null;
+}
+function syncMeds(){
+  const p = curPerson();
+  meds = p ? p.meds : [];
+}
+function setMeds(arr){
+  const p = curPerson();
+  if(p) p.meds = arr;
+  meds = arr;
+}
+
+/* -------------------- 小工具 -------------------- */
+const $  = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
+
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function num(v, dflt){
+  const n = Number(v);
+  return isFinite(n) ? n : (dflt || 0);
+}
+function round2(n){ return Math.round(n * 100) / 100; }
+function fmtNum(n){ return String(+(Number(n) || 0).toFixed(2)); }
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+function fmtDate(d){
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+    + '-' + String(d.getDate()).padStart(2, '0');
+}
+function todayStr(){ return fmtDate(new Date()); }
+function startOfToday(){
+  const n = new Date();
+  return new Date(n.getFullYear(), n.getMonth(), n.getDate());
+}
+function parseDate(s){
+  if(!s) return null;
+  const p = String(s).split('-').map(Number);
+  if(p.length < 3 || p.some(function(x){ return !isFinite(x); })) return null;
+  return new Date(p[0], p[1] - 1, p[2]);
+}
+function daysSince(s){
+  const d = parseDate(s);
+  if(!d) return 0;
+  return Math.max(0, Math.round((startOfToday() - d) / 86400000));
+}
+
+/* -------------------- 存储 -------------------- */
+const store = {
+  ok: true,
+  get(k){ try { return localStorage.getItem(k); } catch(e){ this.ok = false; return null; } },
+  set(k, v){ try { localStorage.setItem(k, v); return true; } catch(e){ this.ok = false; return false; } }
+};
+
+// 把任意版本的存档统一成 v2 结构；认不出来就返回 null
+function migrate(obj){
+  if(!obj || typeof obj !== 'object') return null;
+  if(Array.isArray(obj.people) && obj.people.length){
+    const list = obj.people.map(function(p){
+      return {
+        id: (p && p.id) ? String(p.id) : uid(),
+        name: (p && p.name) ? String(p.name) : '未命名',
+        note: (p && p.note) ? String(p.note) : '',   // 就诊人的情况（右侧上面那个框，按人分开存）
+        meds: (p && Array.isArray(p.meds)) ? p.meds : []
+      };
+    });
+    return { people: list, currentId: obj.currentId || list[0].id };
+  }
+  // v1（旧版只有一份 meds）→ 整体归到「我」名下，不丢数据
+  if(Array.isArray(obj.meds)){
+    const p = { id: uid(), name: '我', note: '', meds: obj.meds };
+    return { people: [p], currentId: p.id };
+  }
+  return null;
+}
+
+function load(){
+  const raw = store.get(LS_DATA);
+  if(raw){
+    try {
+      const m = migrate(JSON.parse(raw));
+      if(m){ people = m.people; currentId = m.currentId; }
+    } catch(e){ /* 数据坏了就当作空 */ }
+  }
+  if(!people.length){
+    const p = { id: uid(), name: '我', note: '', meds: [] };
+    people = [p];
+    currentId = p.id;
+  }
+  if(!curPerson()) currentId = people[0].id;
+  syncMeds();
+
+  const raw2 = store.get(LS_SET);
+  if(raw2){
+    try {
+      const s = JSON.parse(raw2);
+      ['urgentDays','alertDays','targetDays'].forEach(function(k){
+        if(isFinite(Number(s[k]))) settings[k] = Number(s[k]);
+      });
+    } catch(e){}
+  }
+  if(!store.ok){
+    $('#warn').style.display = 'block';
+    $('#warn').innerHTML = '⚠️ 这个浏览器不允许本地存储，数据关掉页面就没了。<b>请改用 Chrome / Edge 打开</b>，或每次用完点「导出备份」。';
+  }
+}
+function save(){
+  const ok = store.set(LS_DATA, JSON.stringify({
+    v: 2, savedAt: new Date().toISOString(), currentId: currentId, people: people
+  }));
+  if(!ok && !$('#warn').style.display){
+    $('#warn').style.display = 'block';
+    $('#warn').textContent = '⚠️ 保存失败：浏览器不允许本地存储。请用 Chrome / Edge 打开，并点「导出备份」留存数据。';
+  }
+}
+function saveSettings(){ store.set(LS_SET, JSON.stringify(settings)); }
+
+/* -------------------- 计算核心 -------------------- */
+// 用药周期：每 cycleDays 天用 timesPerCycle 次。
+// 每天吃的药 → cycleDays = 1，此时与「每日 N 次」完全等价（老数据零迁移）；
+// 隔 N 天一次的（依洛尤单抗每 14 天 1 支这类长效药）→ cycleDays = N、timesPerCycle = 1。
+function cycle(m){
+  const days = Math.max(1, Math.round(num(m.cycleDays, 1)) || 1);
+  const raw = (m.timesPerCycle != null) ? m.timesPerCycle : m.timesPerDay;  // timesPerDay 是改名前的老字段
+  return { days: days, times: Math.max(0, num(raw, 1)) };
+}
+// 每日消耗（单位数）—— 平均口径：一个周期用的量 ÷ 周期天数。
+// 它同时是「够吃几天」的分母，对间隔用药表示的是**药效覆盖速率**：
+// 1 支管 2 周 → 每天 1/14 支 → 3 支覆盖 42 天（第 42 天才是下次该打的日子）。
+function dailyUse(m){
+  const c = cycle(m);
+  if(c.days <= 0) return 0;
+  return num(m.perDose) * c.times / c.days;
+}
+// 已经用掉几次。
+// ★ 必须「按周期离散地扣」，不能按天线性扣 —— 否则「每 14 天 1 支」在第 7 天就会显示
+//   余 2.5 支，用户看到小数会以为程序坏了。离散扣减保证余量始终是整数支。
+//   对 cycleDays=1 的情况，它与原来的「每日消耗 × 天数」完全等价。
+function dosesUsed(m){
+  const c = cycle(m);
+  if(c.times <= 0) return 0;
+  return Math.floor(daysSince(m.stockDate) / c.days) * c.times;
+}
+// 当前推算余量 = 基准余量 - 已经用掉的次数 × 每次用量
+function stockNow(m){
+  const base = num(m.stockBase);
+  if(dailyUse(m) <= 0) return round2(base);           // 没设用法就不递减
+  return round2(Math.max(0, base - dosesUsed(m) * num(m.perDose)));
+}
+// 还能吃几天
+function daysLeft(m){
+  const d = dailyUse(m);
+  if(d <= 0) return Infinity;
+  return round2(stockNow(m) / d);
+}
+// 状态
+function level(m){
+  const dl = daysLeft(m);
+  if(!isFinite(dl)) return 'na';
+  if(dl <= 0) return 'out';
+  if(dl <= settings.urgentDays) return 'urgent';
+  if(dl <= settings.alertDays) return 'soon';
+  return 'ok';
+}
+// 等级文案（2026-09-28 改）：只留三档 —— 已用完 / 偏少 / 充足。
+// 原来那套「告急 / 将尽」用户嫌有压力，先换成中性词，再直接砍成一档「偏少」。
+// urgent / soon 保留为内部 id（只是「偏少」里颜色深浅两级：橙=更少、黄=偏少），颜色映射不变。
+const LEVEL_LABEL = { out:'已用完', urgent:'偏少', soon:'偏少', ok:'充足', na:'未设用法' };
+const LEVEL_ORDER = { out:0, urgent:1, soon:2, ok:3, na:4 };
+
+function inRefill(m){
+  const dl = daysLeft(m);
+  return isFinite(dl) && dl <= settings.alertDays;
+}
+// 要补多少（单位数）：把用量补到「够吃 targetDays 天」所需的量，向上取整
+// —— 不经过「盒」这一层：各厂家每盒片数不一样，知道总量就够了
+function needUnits(m){
+  const d = dailyUse(m);
+  const dl = daysLeft(m);
+  if(d <= 0 || !isFinite(dl)) return 0;
+  return Math.max(0, Math.ceil((settings.targetDays - dl) * d - 1e-9));
+}
+// 单次开药上限（单位数）。没填 = 不限
+function rxCap(m){
+  const v = num(m.rxMax);
+  return v > 0 ? v : Infinity;
+}
+// 要开够得跑几趟（受单次上限限制时 > 1）
+function rxTrips(m){
+  const cap = rxCap(m);
+  if(!isFinite(cap)) return 1;
+  const n = needUnits(m);
+  return n > cap ? Math.ceil(n / cap - 1e-9) : 1;
+}
+// 本次该补多少（单位数）—— 也就是「已经开药」会入库的量。
+// ★ 跟着「单次开药上限」走：一次挂号只能开一次药，所以一次最多只能补到上限，
+//   卡片上的「需补」和弹窗里的入库量必须用同一个数，否则用户会以为少了。
+//   没设上限时才退回「补满 targetDays 天」的口径（needUnits）。
+function dispQty(m){
+  const cap = rxCap(m);
+  return isFinite(cap) ? cap : needUnits(m);
+}
+// 天数显示（向下取整，吃不满一天不算一天）
+function fmtDays(dl){
+  if(!isFinite(dl)) return '—';
+  if(dl <= 0) return '0';
+  if(dl < 1) return '不足 1';
+  return String(Math.floor(dl));
+}
+// 进度条：剩余天数 / 目标天数
+function barPct(m){
+  const dl = daysLeft(m);
+  if(!isFinite(dl)) return 0;
+  return Math.max(0, Math.min(1, dl / Math.max(1, settings.targetDays))) * 100;
+}
+// 用药频率的白话：每日 2 片 / 每 14 天 1 支
+function freqText(m){
+  const c = cycle(m);
+  const u = esc(m.unit || '片');
+  const amt = fmtNum(num(m.perDose) * c.times);
+  if(c.days === 1) return '每日 <b>' + amt + '</b> ' + u;
+  return '每 <b>' + c.days + '</b> 天 <b>' + amt + '</b> ' + u;
+}
+
+/* -------------------- 渲染 -------------------- */
+function render(){ renderPeople(); renderStats(); renderList(); renderNote(); renderRefill(); }
+
+function renderPeople(){
+  const box = $('#people');
+  box.innerHTML = people.map(function(p){
+    const need = p.meds.filter(inRefill).length;      // 该人有几种药该开了
+    const active = (p.id === currentId);
+    return '<button class="ptab' + (active ? ' active' : '') + '" data-pid="' + p.id + '"'
+      + ' title="' + esc(p.name) + '（' + p.meds.length + ' 种药）">'
+      + '<span class="pnm">' + esc(p.name) + '</span>'
+      + (need ? '<span class="badge">' + need + '</span>' : '')
+      + '</button>';
+  }).join('') + '<button class="padd" id="btnAddPerson">＋ 添加人</button>';
+
+  box.onclick = function(e){
+    const btn = e.target.closest('button');
+    if(!btn) return;
+    if(btn.id === 'btnAddPerson'){ addPerson(); return; }
+    const pid = btn.getAttribute('data-pid');
+    if(pid && pid !== currentId) switchPerson(pid);
+  };
+}
+
+function renderStats(){
+  const c = { out:0, urgent:0, soon:0, ok:0, na:0 };
+  meds.forEach(function(m){ c[level(m)]++; });
+  // 三档展示：「偏少」把 urgent + soon 合成一格（内部仍是两级颜色：橙=更少、黄=偏少）
+  const box = [
+    ['', meds.length, '药品总数', ''],
+    ['out', c.out, '已用完', 'out'],
+    ['soon', c.urgent + c.soon, '偏少（≤' + settings.alertDays + '天）', 'soon'],
+    ['ok', c.ok, '充足', 'ok']
+  ];
+  $('#stats').innerHTML = box.map(function(b){
+    return '<div class="stat ' + b[3] + '"><div class="n">' + b[1] + '</div>'
+      + '<div class="l">' + esc(b[2]) + '</div></div>';
+  }).join('');
+}
+
+function renderList(){
+  const list = $('#list');
+  if(!meds.length){
+    list.innerHTML = '<div class="empty">'
+      + '<div class="big">💊</div>'
+      + '<p>还没有记录任何药品。<br>把家里在吃的药都记进来，之后就知道什么时候该开了。</p>'
+      + '<div class="row">'
+      + '<button class="btn primary" id="btnAdd2">添加第一种药</button>'
+      + '</div></div>';
+    const a = $('#btnAdd2'); if(a) a.addEventListener('click', function(){ openEditor(null); });
+    $('#listHint').textContent = '';
+    return;
+  }
+
+  const sorted = meds.slice().sort(function(a, b){
+    const la = LEVEL_ORDER[level(a)], lb = LEVEL_ORDER[level(b)];
+    if(la !== lb) return la - lb;
+    return daysLeft(a) - daysLeft(b);
+  });
+
+  list.innerHTML = '<div class="mlist">' + sorted.map(cardHTML).join('') + '</div>';
+  $('#listHint').textContent = '按剩余天数排序，' + meds.length + ' 种';
+
+  // 事件委托
+  list.onclick = function(e){
+    const btn = e.target.closest('button[data-act]');
+    if(!btn) return;
+    const id = btn.getAttribute('data-id');
+    const act = btn.getAttribute('data-act');
+    if(act === 'edit') openEditor(id);
+    else if(act === 'restock') restockMed(id);
+    else if(act === 'calib') calibMed(id);
+    else if(act === 'del') delMed(id);
+  };
+}
+
+function cardHTML(m){
+  const lv = level(m);
+  const dl = daysLeft(m);
+  const d = dailyUse(m);
+  const st = stockNow(m);
+  const unit = m.unit || '片';
+  const pct = barPct(m);
+
+  let dayVal, dayUnit;
+  if(lv === 'na'){ dayVal = '未设用法'; dayUnit = ''; }
+  else if(dl <= 0){ dayVal = '已用完'; dayUnit = '该开了'; }
+  else { dayVal = fmtDays(dl); dayUnit = '天'; }
+
+  // ★ 卡片上不再提示「需补 X / 单次限 X / 得开 N 次」（2026-09-28 用户点名删掉）：
+  //   卡片变黄本身就是「该补药了」的信号，补多少是点「已经开药」时才需要看的细节。
+  return ''
+  + '<div class="med" data-lv="' + lv + '">'
+  +   '<div class="med-top">'
+  +     '<div style="min-width:0">'
+  +       '<div class="med-name">' + esc(m.name)
+  +         ' <span class="tag ' + lv + '">' + LEVEL_LABEL[lv] + '</span></div>'
+  +       (m.spec ? '<div class="med-spec">' + esc(m.spec) + '</div>' : '')
+  +     '</div>'
+  +     '<div class="days" data-lv="' + lv + '">'
+  +       '<span class="v">' + dayVal + '</span>'
+  +       (dayUnit ? '<span class="u">' + dayUnit + '</span>' : '')
+  +     '</div>'
+  +   '</div>'
+  +   '<div class="bar" data-lv="' + lv + '"><i style="width:' + pct.toFixed(1) + '%"></i></div>'
+  +   '<div class="med-meta">'
+  +     (d > 0 ? '<span>' + freqText(m) + '</span>' : '')
+  +     '<span>余量约 <b>' + fmtNum(st) + '</b> ' + esc(unit) + '</span>'
+  +   '</div>'
+  +   (m.note ? '<div class="med-note">' + esc(m.note) + '</div>' : '')
+  +   '<div class="med-foot">'
+  +     '<button class="btn ghost sm" data-act="edit" data-id="' + m.id + '">编辑</button>'
+  +     '<button class="btn ghost sm" data-act="restock" data-id="' + m.id + '">又买了药</button>'
+  +     '<button class="btn ghost sm" data-act="calib" data-id="' + m.id + '">校准余量</button>'
+  +     '<button class="btn danger sm" data-act="del" data-id="' + m.id + '" style="margin-left:auto">删除</button>'
+  +   '</div>'
+  + '</div>';
+}
+
+// 要开的药清单：只有药名。
+// ★ 这段会被直接粘进小程序的问诊框当话发出去，所以不放「就诊人：」「生成日期」「用法用量以医师处方为准」
+//   这类格式化的标签行——医生读的是一句人话，不是一个报表头。
+// ★ 末尾的「谢谢~」是用户点名要的口语收尾（2026-09-28），属于这句话的一部分，不要当成格式行删掉。
+function buildRefillText(){
+  const items = refillItems();
+  if(!items.length) return '';
+  const L = ['要开的药清单：'];
+  items.forEach(function(m, i){ L.push((i + 1) + '. ' + m.name); });
+  L.push('谢谢~');
+  return L.join('\n');
+}
+// 需要补的药，按剩余天数排序（越少越靠前）
+function refillItems(){
+  return meds.filter(inRefill).sort(function(a, b){ return daysLeft(a) - daysLeft(b); });
+}
+
+// 复制 / 下载用：情况 + 要开的药，合成一段可以直接粘进问诊框的话
+function buildRequestText(){
+  const who = curPerson();
+  const note = (who && who.note) ? String(who.note).trim() : '';
+  const list = buildRefillText();
+  if(!list) return note;                       // 只写了情况、暂时没药要开
+  return note ? (note + '\n\n' + list) : list;
+}
+
+function renderRefill(){
+  const who = curPerson();
+  $('#refillTitle').textContent = '就诊准备' + (who ? ' · ' + who.name : '');
+
+  const cnt = refillItems().length;
+  const txt = buildRefillText();
+  // 有东西可输出就放开按钮：药名清单，或者只是写了「情况」
+  const hasOut = !!txt || !!(who && who.note);
+  const pre = $('#refillText');
+  if(!txt){
+    pre.className = 'refill empty-txt';
+    pre.textContent = meds.length
+      ? '目前没有需要开的药。\n（剩余天数都在 ' + settings.alertDays + ' 天以上的，不会列进来）'
+      : '这个人的药箱还是空的，\n添加药品后这里会自动列出该开的药。';
+  } else {
+    pre.className = 'refill';
+    pre.textContent = txt;
+  }
+  $('#btnCopy').disabled = !hasOut;
+  $('#btnDownload').disabled = !hasOut;
+  $('#drugTip').textContent = cnt ? cnt + ' 种' : '';
+
+  // 「已经开药」跟着清单走：没有需要补的药就禁用
+  const dn = dispItems().length;
+  const db = $('#btnDispense');
+  db.disabled = (dn === 0);
+  db.textContent = dn ? '✓ 已经开药（' + dn + ' 种）' : '✓ 已经开药';
+}
+
+/* 就诊人的情况：按人存，自动保存。
+   ★ 只在「换了人」或「输入框没被聚焦」时回填，否则打字打到一半会被存储值覆盖。 */
+let noteShownFor = '';
+const NOTE_TIP = '自动保存 · 按人分开';
+function renderNote(force){
+  const p = curPerson();
+  const box = $('#noteBox');
+  const val = (p && p.note) ? p.note : '';
+  const switched = !p || p.id !== noteShownFor;
+  if(force || switched || document.activeElement !== box) box.value = val;
+  noteShownFor = p ? p.id : '';
+  $('#notePrint').textContent = val;
+}
+
+/* -------------------- 操作 -------------------- */
+function openEditor(id){
+  editingId = id || null;
+  const f = $('#formMed');
+  f.reset();
+  if(id){
+    const m = meds.filter(function(x){ return x.id === id; })[0];
+    if(!m) return;
+    $('#dlgTitle').textContent = '编辑药品';
+    f.name.value = m.name || '';
+    f.spec.value = m.spec || '';
+    f.perDose.value = m.perDose != null ? m.perDose : 1;
+    f.unit.value = m.unit || '片';
+    f.cycleDays.value = Math.max(1, Math.round(num(m.cycleDays, 1)) || 1);
+    // timesPerDay 是改名前的老字段，老存档读进来照样对
+    f.timesPerCycle.value = (m.timesPerCycle != null) ? m.timesPerCycle
+      : (m.timesPerDay != null ? m.timesPerDay : 1);
+    f.stockBase.value = m.stockBase != null ? m.stockBase : 0;
+    f.stockDate.value = m.stockDate || todayStr();
+    f.rxMax.value = num(m.rxMax) > 0 ? m.rxMax : '';
+    f.note.value = m.note || '';
+  } else {
+    $('#dlgTitle').textContent = '添加药品';
+    f.perDose.value = 1;
+    f.unit.value = '片';
+    f.cycleDays.value = 1;
+    f.timesPerCycle.value = 1;
+    f.stockBase.value = 0;
+    f.stockDate.value = todayStr();
+    f.rxMax.value = '';
+  }
+  syncRxUnitTip();
+  syncDosePreview();
+  $('#dlgMed').showModal();
+  setTimeout(function(){ f.name.focus(); }, 30);
+}
+
+// 「单位」改了就同步「开药限制」里那个提示单位，读起来是一致的
+function syncRxUnitTip(){
+  const u = ($('#formMed').unit.value || '').trim() || '片';
+  $('#rxUnitTip').textContent = u;
+}
+
+// 用法那行的实时白话预览。为什么非要这个：把「每几天」填错的代价是整段余量推算都错，
+// 而这个字段又最容易看漏（默认 1）。给一句「＝ 每 14 天 1 支」当场对一遍，比事后发现余量不对便宜得多。
+function syncDosePreview(){
+  const f = $('#formMed');
+  const el = $('#dosePreview');
+  if(!el) return;
+  const pd = Math.max(0, num(f.perDose.value, 1));
+  const tc = Math.max(0, num(f.timesPerCycle.value, 1));
+  const cd = Math.max(1, Math.round(num(f.cycleDays.value, 1)) || 1);
+  const u = (f.unit.value || '').trim() || '片';
+  if(pd <= 0 || tc <= 0){ el.textContent = '＝ 还没填完整用法'; return; }
+  const total = round2(pd * tc);
+  if(cd === 1){
+    el.textContent = '＝ 每天 ' + fmtNum(total) + ' ' + u
+      + (tc > 1 ? '（每次 ' + fmtNum(pd) + ' ' + u + '）' : '');
+  } else {
+    el.textContent = '＝ 每 ' + cd + ' 天 ' + fmtNum(total) + ' ' + u
+      + '，平均每天 ' + fmtNum(dailyUse({ perDose: pd, timesPerCycle: tc, cycleDays: cd })) + ' ' + u;
+  }
+}
+
+function submitMed(e){
+  e.preventDefault();
+  const f = $('#formMed');
+  const name = (f.name.value || '').trim();
+  if(!name){ alert('请填药品名称'); return; }
+
+  const obj = {
+    name: name,
+    spec: (f.spec.value || '').trim(),
+    perDose: Math.max(0, num(f.perDose.value, 1)),
+    unit: (f.unit.value || '').trim() || '片',
+    cycleDays: Math.max(1, Math.round(num(f.cycleDays.value, 1)) || 1),
+    timesPerCycle: Math.max(0, num(f.timesPerCycle.value, 1)),
+    stockBase: Math.max(0, num(f.stockBase.value)),
+    stockDate: f.stockDate.value || todayStr(),
+    rxMax: Math.max(0, num(f.rxMax.value)),
+    note: (f.note.value || '').trim()
+  };
+
+  if(editingId){
+    const i = meds.findIndex(function(x){ return x.id === editingId; });
+    if(i >= 0) meds[i] = Object.assign({}, meds[i], obj);
+  } else {
+    obj.id = uid();
+    meds.push(obj);
+  }
+  save(); render();
+  $('#dlgMed').close();
+}
+
+function delMed(id){
+  const m = meds.filter(function(x){ return x.id === id; })[0];
+  if(!m) return;
+  if(!confirm('确定删除「' + m.name + '」？\n（这条记录会从清单里消失）')) return;
+  setMeds(meds.filter(function(x){ return x.id !== id; }));   // 整体替换必须走 setMeds
+  save(); render();
+}
+
+/* -------------------- 人员 -------------------- */
+function switchPerson(id){
+  currentId = id;
+  syncMeds();
+  save(); render();
+}
+
+function addPerson(){
+  const name = (prompt('新成员的名字（如 妈妈 / 爸爸 / 孩子）', '') || '').trim();
+  if(!name) return;
+  if(people.some(function(p){ return p.name === name; })){
+    if(!confirm('已经有一个叫「' + name + '」的人了，还要再建一个吗？')) return;
+  }
+  const p = { id: uid(), name: name, note: '', meds: [] };
+  people.push(p);
+  currentId = p.id;      // 新建后直接切过去，方便马上录药
+  syncMeds();
+  save(); render();
+  if($('#dlgSet').open) renderPeopleMgr();
+}
+
+function renamePerson(id, name){
+  const p = people.filter(function(x){ return x.id === id; })[0];
+  if(!p) return;
+  const n = String(name || '').trim();
+  if(!n || n === p.name) return;
+  p.name = n;
+  save();
+  renderPeople();     // 标签栏
+  renderRefill();     // 清单标题里带着名字
+  // 注意：这里不重渲设置里的成员列表，否则输入框会失焦
+}
+
+function delPerson(id){
+  if(people.length <= 1){ alert('至少要留一个人。'); return; }
+  const p = people.filter(function(x){ return x.id === id; })[0];
+  if(!p) return;
+  const n = p.meds.length;
+  const msg = n
+    ? '删除「' + p.name + '」？\n\nTA 名下的 ' + n + ' 种药会一起删掉，无法恢复。'
+    : '删除「' + p.name + '」？';
+  if(!confirm(msg)) return;
+  people = people.filter(function(x){ return x.id !== id; });
+  if(currentId === id) currentId = people[0].id;
+  syncMeds();
+  save(); render();
+  if($('#dlgSet').open) renderPeopleMgr();
+}
+
+function renderPeopleMgr(){
+  const box = $('#peopleMgr');
+  box.innerHTML = people.map(function(p){
+    const cur = (p.id === currentId);
+    return '<div class="prow">'
+      + '<span class="pdot' + (cur ? '' : ' off') + '" title="' + (cur ? '当前正在看' : '') + '"></span>'
+      + '<input class="pname" value="' + esc(p.name) + '" data-pid="' + p.id + '" maxlength="12">'
+      + '<span class="pmeta">' + p.meds.length + ' 种药</span>'
+      + '<button type="button" class="btn danger sm" data-delp="' + p.id + '">删除</button>'
+      + '</div>';
+  }).join('')
+  + '<button type="button" class="btn ghost" id="pAddBtn" style="width:100%;margin-top:10px">＋ 添加一个人</button>';
+}
+
+// 「又买了药」：在今天推算出的余量基础上，加上新买的数量
+function restockMed(id){
+  const m = meds.filter(function(x){ return x.id === id; })[0];
+  if(!m) return;
+  const unit = m.unit || '片';
+  const cur = stockNow(m);
+  const input = prompt('又买了多少 ' + unit + '？\n\n（现在推算还剩 ' + fmtNum(cur) + ' ' + unit + '，会加上你填的数量）', '');
+  if(input === null) return;
+  const v = Number(input);
+  if(!isFinite(v) || v <= 0){ alert('请输入一个大于 0 的数量'); return; }
+  m.stockBase = round2(cur + v);
+  m.stockDate = todayStr();
+  save(); render();
+}
+
+// 「校准余量」：直接填今天数出来的实际数量（漏服、多吃、数错了都用它对齐）
+function calibMed(id){
+  const m = meds.filter(function(x){ return x.id === id; })[0];
+  if(!m) return;
+  const unit = m.unit || '片';
+  const cur = stockNow(m);
+  const input = prompt('今天实际还剩多少 ' + unit + '？\n\n（系统推算 ' + fmtNum(cur) + ' ' + unit + '，改成你数出来的数）', String(cur));
+  if(input === null) return;
+  const v = Number(input);
+  if(!isFinite(v) || v < 0){ alert('请输入 0 或正数'); return; }
+  m.stockBase = round2(v);
+  m.stockDate = todayStr();
+  save(); render();
+}
+
+/* -------------------- 已经开药（一次把所有要补的药入库） -------------------- */
+// 只列「真的需要补」的药：提醒线内但需求量算出 0 的（阈值设置反常时会出现）不列
+function dispItems(){
+  return meds.filter(function(m){ return inRefill(m) && needUnits(m) > 0; })
+    .sort(function(a, b){ return daysLeft(a) - daysLeft(b); });
+}
+
+// 这次的入库计划：不必手填——一次挂号只能开一次药，有单次上限就按上限开满，
+// 没设上限就补满目标天数。qty 统一走 dispQty，和卡片上的「需补」是同一个数。
+function dispPlan(){
+  return dispItems().map(function(m){
+    const cap = rxCap(m);
+    const byCap = isFinite(cap);
+    return { m: m, qty: dispQty(m), byCap: byCap };
+  });
+}
+
+function openDisp(){
+  const plan = dispPlan();
+  if(!plan.length){ alert('现在没有需要补的药。'); return; }
+
+  $('#dispSub').textContent = '一次挂号只能开一次药：每个药按「一次最多能开多少」入库（开满），'
+    + '没设上限的就补满到够吃 ' + settings.targetDays + ' 天。确认即更新药库。';
+
+  let still = 0;
+  $('#dispList').innerHTML = plan.map(function(p){
+    const m = p.m;
+    const unit = m.unit || '片';
+    const lv = level(m);
+    const d = dailyUse(m);
+    const nu = needUnits(m);
+    const after = round2(stockNow(m) + p.qty);
+    const days = d > 0 ? after / d : Infinity;
+    const ok = !isFinite(days) || days > settings.alertDays;
+    if(!ok) still++;
+    return '<div class="disp-row" data-lv="' + lv + '">'
+      +   '<div class="disp-info">'
+      +     '<div class="disp-name">' + esc(m.name)
+      +       ' <span class="tag ' + lv + '">' + LEVEL_LABEL[lv] + '</span></div>'
+      +     '<div class="disp-meta">现有约 <b>' + fmtNum(stockNow(m)) + '</b> ' + esc(unit)
+      +       '　→　入库 <b>' + fmtNum(p.qty) + '</b> ' + esc(unit)
+      +       '<span class="disp-src">' + (p.byCap
+              ? '（单次限 ' + fmtNum(p.qty) + ' ' + esc(unit) + '，一次挂号按上限开满'
+                + (p.qty < nu
+                    ? '，共需 ' + fmtNum(nu) + '，要开 ' + rxTrips(m) + ' 次'
+                    : '')
+                + '）'
+              : '（没设上限，补满 ' + settings.targetDays
+                + ' 天需 ' + fmtNum(nu) + ' ' + esc(unit) + '）') + '</span>'
+      +     '</div>'
+      +   '</div>'
+      +   '<div class="disp-after' + (ok ? ' ok' : '') + '">开完约够<br><b>'
+      +     (isFinite(days) ? fmtDays(days) : '—') + '</b> 天' + (ok ? ' ✓' : '') + '</div>'
+      + '</div>';
+  }).join('');
+
+  $('#dispSum').innerHTML = '这次将更新 <b>' + plan.length + '</b> 种药'
+    + (still
+        ? '，其中 <b>' + still + '</b> 种受单次上限限制、开完仍在清单里（可以再点一次「已经开药」）'
+        : '，入库后就都够吃了');
+
+  $('#dlgDisp').showModal();
+}
+
+function submitDisp(e){
+  e.preventDefault();
+  const plan = dispPlan();          // 必须改数据之前先算好
+  if(!plan.length){ $('#dlgDisp').close(); return; }
+  plan.forEach(function(p){
+    // 在今天推算出的余量上加，基准日滚到今天——和「又买了药」同一套口径
+    p.m.stockBase = round2(stockNow(p.m) + p.qty);
+    p.m.stockDate = todayStr();
+  });
+  save(); render();
+  $('#dlgDisp').close();
+
+  const left = dispItems();
+  alert('已把 ' + plan.length + ' 种药加进库存。'
+    + (left.length
+        ? '\n\n还有 ' + left.length + ' 种没到位（受单次上限限制），可以再点一次「已经开药」。'
+        : '\n\n现在都在提醒线以上了。'));
+}
+
+/* ★ 这里原本有一段内置示例数据，外加一个「看示例」按钮和一个 URL 参数。
+   2026-09-28 开源前按用户要求**整段删除**：内置的假数据里带着病情描述，属于「已经输入过的信息」，
+   不该跟着代码发出去。现在打开就是空药箱，由用户自己填 —— 别再把它加回来。
+   测试改用脚本临时注入（见 _check/test_rxcap.py）。 */
+
+/* -------------------- 清单输出 -------------------- */
+function copyRefill(){
+  const txt = buildRequestText();
+  if(!txt) return;
+  const done = function(){
+    const btn = $('#btnCopy');
+    const old = btn.textContent;
+    btn.textContent = '已复制 ✓';
+    setTimeout(function(){ btn.textContent = old; }, 1400);
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done, function(){ fallbackCopy(txt, done); });
+  } else {
+    fallbackCopy(txt, done);
+  }
+}
+function fallbackCopy(txt, cb){
+  const ta = document.createElement('textarea');
+  ta.value = txt;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); cb(); } catch(e){ alert('复制失败，请手动选中文本复制'); }
+  document.body.removeChild(ta);
+}
+function downloadFile(filename, content, mime){
+  const blob = new Blob([content], { type: (mime || 'text/plain') + ';charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1500);
+}
+
+/* -------------------- 导入导出 -------------------- */
+function exportJSON(){
+  const payload = {
+    app: 'drug-keeper', version: 2,
+    exportedAt: new Date().toISOString(),
+    settings: settings,
+    currentId: currentId,
+    people: people            // 整包备份：所有人 + 各自药箱
+  };
+  downloadFile('药品库存备份_' + todayStr() + '.json', JSON.stringify(payload, null, 2), 'application/json');
+}
+function importJSON(file){
+  const reader = new FileReader();
+  reader.onload = function(){
+    try {
+      const obj = JSON.parse(String(reader.result));
+
+      // A. 整包备份（含 people）→ 整体恢复
+      if(obj && !Array.isArray(obj) && Array.isArray(obj.people) && obj.people.length){
+        const m = migrate(obj);
+        if(!m) throw new Error('备份内容无法解析');
+        const total = m.people.reduce(function(s, p){ return s + p.meds.length; }, 0);
+        if(!confirm('这是一份完整备份：' + m.people.length + ' 个人、共 ' + total + ' 种药。\n\n'
+          + '确定 = 全部替换（当前数据会被覆盖）\n取消 = 放弃导入')) return;
+        people = m.people;
+        currentId = m.currentId;
+        syncMeds();
+        if(obj.settings){ settings = Object.assign({}, DEFAULT_SETTINGS, settings, obj.settings); saveSettings(); }
+        save(); render();
+        alert('已恢复：' + m.people.length + ' 个人、共 ' + total + ' 种药');
+        return;
+      }
+
+      // B. 单纯一份药品列表（旧版备份或裸数组）→ 并入「当前人」
+      const incoming = Array.isArray(obj) ? obj : (obj && obj.meds);
+      if(!Array.isArray(incoming)) throw new Error('格式不对');
+      const clean = incoming.filter(function(m){ return m && m.name; }).map(function(m){
+        return {
+          id: m.id || uid(),
+          name: String(m.name),
+          spec: m.spec ? String(m.spec) : '',
+          perDose: num(m.perDose, 1),
+          unit: m.unit ? String(m.unit) : '片',
+          cycleDays: Math.max(1, Math.round(num(m.cycleDays, 1)) || 1),
+          timesPerCycle: num(m.timesPerCycle != null ? m.timesPerCycle : m.timesPerDay, 1),
+          stockBase: num(m.stockBase),
+          stockDate: m.stockDate || todayStr(),
+          rxMax: num(m.rxMax),
+          note: m.note ? String(m.note) : ''
+        };
+      });
+      if(!clean.length) throw new Error('没有可导入的药品');
+      const mode = meds.length
+        ? confirm('导入 ' + clean.length + ' 种药。\n\n确定 = 合并到现有数据（同名同规格的会更新）\n取消 = 覆盖现有数据')
+        : true;
+      if(mode && meds.length){
+        clean.forEach(function(nm){
+          const i = meds.findIndex(function(x){ return x.name === nm.name && (x.spec || '') === (nm.spec || ''); });
+          if(i >= 0) meds[i] = Object.assign({}, meds[i], nm, { id: meds[i].id });
+          else meds.push(nm);
+        });
+      } else {
+        setMeds(clean);
+      }
+      if(obj && obj.settings){ settings = Object.assign({}, DEFAULT_SETTINGS, settings, obj.settings); saveSettings(); }
+      save(); render();
+      alert('导入完成：' + clean.length + ' 种药 → 归入「' + (curPerson() ? curPerson().name : '当前人') + '」');
+    } catch(err){
+      alert('导入失败：' + (err && err.message ? err.message : '文件无法解析'));
+    }
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+function openSettings(){
+  const f = $('#formSet');
+  f.urgentDays.value = settings.urgentDays;
+  f.alertDays.value = settings.alertDays;
+  f.targetDays.value = settings.targetDays;
+  renderPeopleMgr();
+  $('#dlgSet').showModal();
+}
+function submitSettings(e){
+  e.preventDefault();
+  const f = $('#formSet');
+  const u = Math.max(0, num(f.urgentDays.value, 7));
+  const a = Math.max(0, num(f.alertDays.value, 14));
+  const t = Math.max(1, num(f.targetDays.value, 30));
+  settings.urgentDays = u;
+  settings.alertDays = Math.max(a, u);   // 提醒线不能小于偏少线
+  settings.targetDays = t;
+  saveSettings(); render();
+  $('#dlgSet').close();
+}
+
+/* -------------------- 绑定 -------------------- */
+$('#btnAdd').addEventListener('click', function(){ openEditor(null); });
+$('#btnSettings').addEventListener('click', openSettings);
+
+// 设置里的成员管理：删除 / 新增用点击，改名用实时 input
+$('#peopleMgr').addEventListener('click', function(e){
+  const del = e.target.closest('button[data-delp]');
+  if(del){ delPerson(del.getAttribute('data-delp')); return; }
+  if(e.target.closest('#pAddBtn')) addPerson();
+});
+$('#peopleMgr').addEventListener('input', function(e){
+  const inp = e.target.closest('input[data-pid]');
+  if(inp) renamePerson(inp.getAttribute('data-pid'), inp.value);
+});
+$('#btnCancel').addEventListener('click', function(){ $('#dlgMed').close(); });
+$('#formMed').addEventListener('submit', submitMed);
+// 单位一改，「开药限制」提示里的单位跟着变
+// 表单里任何一项改了都要同步两处提示：开药限制的单位、用法那行的白话预览
+$('#formMed').addEventListener('input', function(){
+  syncRxUnitTip();
+  syncDosePreview();
+});
+
+$('#btnDispense').addEventListener('click', openDisp);
+// 情况框：边打字边存（防抖 400ms）。
+// ★ 必须记下输入那一刻的人（pid）——否则打完字立刻切人，这段文字会写进下一个人名下。
+let noteTimer = null;
+$('#noteBox').addEventListener('input', function(){
+  const pid = currentId;
+  const val = $('#noteBox').value;
+  $('#notePrint').textContent = val;
+  const tip = $('#noteTip');
+  tip.textContent = '输入中…';
+  clearTimeout(noteTimer);
+  noteTimer = setTimeout(function(){
+    const p = people.filter(function(x){ return x.id === pid; })[0];
+    if(p){ p.note = val; save(); }
+    // 按钮的可用状态（有情况就能复制/下载）是在 render 里算的，
+    // 这里必须补一次 renderRefill，否则「没有药、只写了情况」的人复制按钮一直是灰的。
+    renderRefill();
+    tip.textContent = '已保存';
+    setTimeout(function(){ tip.textContent = NOTE_TIP; }, 1200);
+  }, 400);
+});
+$('#btnDispCancel').addEventListener('click', function(){ $('#dlgDisp').close(); });
+$('#formDisp').addEventListener('submit', submitDisp);
+$('#btnSetCancel').addEventListener('click', function(){ $('#dlgSet').close(); });
+$('#formSet').addEventListener('submit', submitSettings);
+$('#btnCopy').addEventListener('click', copyRefill);
+$('#btnDownload').addEventListener('click', function(){
+  const who = curPerson();
+  if(refillItems().length || (who && who.note)){
+    downloadFile('就诊内容' + (who ? '_' + who.name : '') + '_' + todayStr() + '.txt', buildRequestText());
+  }
+});
+$('#btnPrint').addEventListener('click', function(){ window.print(); });
+$('#btnExport').addEventListener('click', exportJSON);
+$('#btnImport').addEventListener('click', function(){ $('#fileImport').click(); });
+$('#fileImport').addEventListener('change', function(e){
+  const f = e.target.files && e.target.files[0];
+  if(f) importJSON(f);
+  e.target.value = '';
+});
+
+/* -------------------- 启动 -------------------- */
+load();
+render();          // 原本这里还有一条「URL 带参数就载入示例」的分支，已随内置示例一起删掉
+
+})();
+</script>
+</body>
+</html>
