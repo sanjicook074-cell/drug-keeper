@@ -201,6 +201,97 @@ PROBE = r"""
   ck('阿司匹林补满后 30 天、已不在清单',
      asp && daysLeft(asp) > settings.alertDays && !inRefill(asp), asp ? daysLeft(asp) : null);
 
+  // ---- 7. 批量调整存量（整个药箱统一 ±N 天）----
+  // 重置到已知状态（前面几段动过数据），并补一味「没设用法」的药来验跳过分支。
+  var demo2 = [
+    { name:'苯磺酸氨氯地平片', spec:'5mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+      stockBase:14, stockDate:agoD(13), rxMax:7 },                  // 现 1，每日 1
+    { name:'阿托伐他汀钙片', spec:'20mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+      stockBase:21, stockDate:agoD(18), rxMax:14 },                 // 现 3，每日 1
+    { name:'盐酸二甲双胍缓释片', spec:'0.5g', perDose:1, unit:'片', cycleDays:1, timesPerCycle:2,
+      stockBase:60, stockDate:agoD(20) },                           // 现 20，每日 2 → 7 天=14 片
+    { name:'阿司匹林肠溶片', spec:'100mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+      stockBase:90, stockDate:agoD(10) },                           // 现 80，每日 1
+    { name:'依洛尤单抗注射液', spec:'140mg/支', perDose:1, unit:'支', cycleDays:14, timesPerCycle:1,
+      stockBase:2, stockDate:agoD(20), rxMax:2 },                   // 现 1，每 14 天 1 支 → 7 天=0.5 支
+    { name:'维生素D滴剂', spec:'400IU', perDose:1, unit:'粒', cycleDays:1, timesPerCycle:0,
+      stockBase:30, stockDate:todayStr() }                          // 没设用法 → 应被跳过
+  ];
+  demo2.forEach(function(d){ d.id = uid(); });
+  setMeds(demo2); save(); render();
+  ck('批量前置：6 味药已就位', meds.length === 6, meds.length);
+
+  // --- 7a. 纯计算：天数 → 数量，各按自己的用法换算 ---
+  var upR = {}, dnR = {};
+  bulkRows(7, 1).forEach(function(r){ upR[r.m.name] = r; });
+  bulkRows(7, -1).forEach(function(r){ dnR[r.m.name] = r; });
+  ck('氨氯地平 现 1 片 → 加 7 天 = 8 片', upR['苯磺酸氨氯地平片'].next === 8, upR['苯磺酸氨氯地平片'].next);
+  ck('氨氯地平 减 7 天 → 0 且标记已截断',
+     dnR['苯磺酸氨氯地平片'].next === 0 && dnR['苯磺酸氨氯地平片'].floored === true,
+     JSON.stringify(dnR['苯磺酸氨氯地平片']));
+  ck('二甲双胍 每日 2 片 → 加 7 天 = 34（+14）', upR['盐酸二甲双胍缓释片'].next === 34,
+     upR['盐酸二甲双胍缓释片'].next);
+  ck('依洛尤 每 14 天 1 支 → 加 7 天 = 1.5（+0.5）', upR['依洛尤单抗注射液'].next === 1.5,
+     upR['依洛尤单抗注射液'].next);
+  ck('阿司匹林 现 80 → 加 7 天 = 87', upR['阿司匹林肠溶片'].next === 87, upR['阿司匹林肠溶片'].next);
+  ck('没设用法的那味被跳过', upR['维生素D滴剂'].skip === true && dnR['维生素D滴剂'].skip === true, '');
+  ck('跳过的药不会被改动（next 仍 30）', upR['维生素D滴剂'].next === 30, upR['维生素D滴剂'].next);
+
+  // --- 7b. 弹窗预览 ---
+  openBulk();
+  var brows = document.querySelectorAll('#bulkList .disp-row');
+  ck('弹窗列出全部 6 味（含跳过的那味）', brows.length === 6, brows.length);
+  ck('标题写清作用对象是当前人', /「我」药箱/.test(q('#bulkSub').textContent), q('#bulkSub').textContent);
+  var body = q('#bulkList').textContent.replace(/\s+/g, ' ');
+  ck('预览同时给出加/减两个方向的数', /＋7 天 → 8 片/.test(body) && /−7 天/.test(body), body.slice(0, 200));
+  ck('预览标出会被减到 0 的药', /已减到 0/.test(body), '');
+  ck('预览标出没设用法的药', /没法按天算/.test(body), '');
+  ck('按钮带上了天数', /全部增加 7 天/.test(q('#btnBulkPlus').textContent)
+     && /全部减少 7 天/.test(q('#btnBulkMinus').textContent),
+     q('#btnBulkPlus').textContent);
+  q('#bulkDays').value = 14; renderBulk();
+  ck('改天数 → 按钮与预览跟着变', /全部增加 14 天/.test(q('#btnBulkPlus').textContent),
+     q('#btnBulkPlus').textContent);
+  q('#bulkDays').value = 7; renderBulk();
+
+  // --- 7c. 真的执行：增加 ---
+  var alertsBefore = R.alerts.length;
+  applyBulk(1);
+  ck('加 7 天：氨氯地平 8', byName('苯磺酸氨氯地平片').stockBase === 8,
+     byName('苯磺酸氨氯地平片').stockBase);
+  ck('加 7 天：阿托伐他汀 10', byName('阿托伐他汀钙片').stockBase === 10,
+     byName('阿托伐他汀钙片').stockBase);
+  ck('加 7 天：二甲双胍 34', byName('盐酸二甲双胍缓释片').stockBase === 34,
+     byName('盐酸二甲双胍缓释片').stockBase);
+  ck('加 7 天：依洛尤 1.5', byName('依洛尤单抗注射液').stockBase === 1.5,
+     byName('依洛尤单抗注射液').stockBase);
+  ck('加 7 天：没设用法的那味没被动（仍 30）', byName('维生素D滴剂').stockBase === 30,
+     byName('维生素D滴剂').stockBase);
+  ck('基准日滚到今天', byName('苯磺酸氨氯地平片').stockDate === todayStr(),
+     byName('苯磺酸氨氯地平片').stockDate);
+  ck('加完弹窗已关闭', !q('#dlgBulk').open, '');
+  ck('提示说清了改了几味、改了多少天',
+     /已把 5 种药的存量增加 7 天的量/.test(R.alerts.slice(alertsBefore).join(' | ')),
+     R.alerts[R.alerts.length - 1]);
+
+  // --- 7d. 减少到负数 → 截到 0，不许出现负库存 ---
+  openBulk(); q('#bulkDays').value = 100; renderBulk();
+  applyBulk(-1);
+  var five = ['苯磺酸氨氯地平片','阿托伐他汀钙片','盐酸二甲双胍缓释片','阿司匹林肠溶片','依洛尤单抗注射液'];
+  ck('减 100 天：5 味全到 0，没有负数',
+     five.every(function(n){ return byName(n).stockBase === 0; }),
+     five.map(function(n){ return byName(n).stockBase; }).join('/'));
+  ck('减到 0 的药 level 是「已用完」', byName('阿司匹林肠溶片') && level(byName('阿司匹林肠溶片')) === 'out',
+     level(byName('阿司匹林肠溶片')));
+  ck('没设用法的那味仍是 30', byName('维生素D滴剂').stockBase === 30,
+     byName('维生素D滴剂').stockBase);
+  ck('提示里说明了被减到 0 的味数', /已减到 0/.test(R.alerts[R.alerts.length - 1]),
+     R.alerts[R.alerts.length - 1]);
+
+  // --- 7e. 「增加」必须和单药「又买了药」同一口径（stockNow 基础上加） ---
+  ck('批量加完后 stockNow == stockBase（基准日=今天，没被重复扣）',
+     byName('维生素D滴剂').stockBase === stockNow(byName('维生素D滴剂')), '');
+
   R.meds = meds.map(function(x){ return x.name + '|qty=' + dispQty(x) + '|cap=' + rxCap(x); });
 
   var pre = document.createElement('pre');

@@ -216,6 +216,17 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 .disp-empty{text-align:center;padding:26px 10px;color:var(--faint);font-size:13px}
 .disp-sum{margin:14px 0 0;padding:10px 13px;border-radius:9px;background:#f8f9fb;
   border:1px solid var(--line-2);font-size:12.5px;color:#4b5563}
+
+/* ---------- 批量调整存量 ---------- */
+.bulk-days{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:#4b5563;margin-bottom:14px}
+.bulk-days input{font:inherit;padding:8px 11px;border:1px solid var(--line);border-radius:8px;width:130px}
+.bulk-days input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.bulk-days .hintline{font-size:11.5px;color:var(--faint)}
+.bulk-list{display:flex;flex-direction:column;gap:8px;max-height:44vh;overflow:auto}
+.bulk-after{flex:none;text-align:right;font-size:11.5px;color:var(--muted);line-height:1.5}
+.bulk-after b{font-size:14px;font-weight:660;color:#374151}
+.bulk-after .down b{color:var(--out)}
+.bulk-after .noop{color:var(--faint)}
 .disp-sum b{color:#374151}
 
 /* ---------- 打印 ---------- */
@@ -248,6 +259,7 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
       <button class="btn ghost" id="btnSettings">设置</button>
       <button class="btn ghost" id="btnImport">导入</button>
       <button class="btn ghost" id="btnExport">导出备份</button>
+      <button class="btn ghost" id="btnBulk" title="按「够吃 N 天」统一加减这个药箱里所有药品的存量">批量调存量</button>
       <button class="btn primary" id="btnAdd">＋ 添加药品</button>
     </div>
   </header>
@@ -411,6 +423,30 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
     <div class="dlg-f">
       <button type="button" class="btn ghost" id="btnDispCancel">取消</button>
       <button type="submit" class="btn primary">确认入库</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 批量调整存量弹窗 -->
+<dialog id="dlgBulk">
+  <form id="formBulk">
+    <div class="dlg-h">
+      <h3>批量调整存量</h3>
+      <p id="bulkSub"></p>
+    </div>
+    <div class="dlg-b">
+      <label class="bulk-days">按「够吃多少天」换算
+        <input name="days" id="bulkDays" type="number" step="1" min="1" value="7">
+        <span class="hintline">用每味药自己的用法把「天」换成数量：每天 1 片的，7 天就是 7 片；
+          每 14 天 1 支的，7 天就是 0.5 支。</span>
+      </label>
+      <div class="bulk-list" id="bulkList"></div>
+      <div class="disp-sum" id="bulkSum"></div>
+    </div>
+    <div class="dlg-f">
+      <button type="button" class="btn ghost" id="btnBulkCancel">取消</button>
+      <button type="button" class="btn danger" id="btnBulkMinus">减少</button>
+      <button type="button" class="btn primary" id="btnBulkPlus">增加</button>
     </div>
   </form>
 </dialog>
@@ -1135,6 +1171,108 @@ function submitDisp(e){
         : '\n\n现在都在偏少线以上了。'));
 }
 
+/* -------------------- 批量调整存量（把整个药箱的药统一加/减 N 天） -------------------- */
+// 用户场景：一批药同时多买了、或者发现漏吃了几天 —— 不想一味一味点「又买了药」。
+// ⚠️ 口径必须和另外两个入口（「又买了药」/「已经开药」）完全一致：
+//   先按今天推算出现在剩多少（stockNow），再加/减 N 天的量，基准日滚到今天。
+//   **不要图省事去动 stockDate** —— 隔天/隔周吃的药是按周期整档扣的，
+//   把日期推来推去会让它跨过一个周期点、整档跳变。
+function bulkDays(){
+  return Math.max(1, Math.floor(num($('#bulkDays').value, 7)));
+}
+// sign: +1 增加 / -1 减少。返回每味药调整前后的量。
+function bulkRows(days, sign){
+  return meds.map(function(m){
+    const unit = m.unit || '片';
+    const d = dailyUse(m);
+    const cur = stockNow(m);
+    if(!(d > 0)){                       // 没设用法 → 天数换不成数量，跳过
+      return { m:m, unit:unit, cur:cur, delta:0, next:cur, skip:true, floored:false, noop:false };
+    }
+    let next = round2(cur + sign * days * d);
+    let floored = false;
+    if(next < 0){ next = 0; floored = true; }   // 存量不能为负
+    const delta = round2(next - cur);
+    return { m:m, unit:unit, cur:cur, delta:delta, next:next, skip:false,
+             floored:floored, noop:delta === 0 };
+  });
+}
+function openBulk(){
+  if(!meds.length){ alert('这个药箱还是空的，先添加药品。'); return; }
+  $('#bulkDays').value = 7;
+  $('#dlgBulk').showModal();
+  renderBulk();
+}
+function renderBulk(){
+  if(!$('#dlgBulk').open) return;
+  const days = bulkDays();
+  const who = curPerson();
+  $('#bulkSub').textContent = '把「' + (who ? who.name : '当前人') + '」药箱里的 '
+    + meds.length + ' 种药，统一加上或减去「够吃 ' + days + ' 天」的量。'
+    + '先说清两个方向各会变成多少，再按对应按钮。';
+
+  const up = bulkRows(days, 1);
+  const dn = {};
+  bulkRows(days, -1).forEach(function(r){ dn[r.m.id] = r; });
+
+  let skipN = 0, flooredN = 0, noopN = 0;
+  $('#bulkList').innerHTML = up.map(function(r){
+    const d = dn[r.m.id];
+    if(r.skip) skipN++;
+    if(d && d.floored) flooredN++;
+    if(!r.skip && r.noop && d.noop) noopN++;
+    const freq = r.skip ? '' : freqText(r.m);
+    const cell = function(x){
+      if(x.skip) return '<span class="noop">没法按天算</span>';
+      let h = '→ <b>' + fmtNum(x.next) + '</b> ' + esc(x.unit);
+      if(x.floored) h += '<br><span class="noop">已减到 0（原本不够 ' + days + ' 天）</span>';
+      else if(x.noop) h += '<br><span class="noop">和现在一样</span>';
+      return h;
+    };
+    return '<div class="disp-row">'
+      +   '<div class="disp-info">'
+      +     '<div class="disp-name">' + esc(r.m.name) + '</div>'
+      +     '<div class="disp-meta">现有 <b>' + fmtNum(r.cur) + '</b> ' + esc(r.unit)
+      +       (freq ? '<span class="disp-src">　' + freq + '</span>' : '')
+      +       (r.skip ? '<span class="disp-src">　没设用法</span>' : '') + '</div>'
+      +   '</div>'
+      +   '<div class="bulk-after">'
+      +     '<span>＋' + days + ' 天 ' + cell(r) + '</span><br>'
+      +     '<span class="down">−' + days + ' 天 ' + cell(d) + '</span>'
+      +   '</div>'
+      + '</div>';
+  }).join('');
+
+  $('#btnBulkPlus').textContent = '确认：全部增加 ' + days + ' 天';
+  $('#btnBulkMinus').textContent = '确认：全部减少 ' + days + ' 天';
+
+  const bits = [];
+  if(skipN) bits.push('<b>' + skipN + '</b> 种没设用法（换不成数量，不会被动到）');
+  if(flooredN) bits.push('选「减少」时，其中 <b>' + flooredN + '</b> 种会被减到 0（原本就不够 ' + days + ' 天）');
+  if(noopN) bits.push('<b>' + noopN + '</b> 种换算后不足 0.01，等于没变（吃药周期比 ' + days + ' 天长）');
+  $('#bulkSum').innerHTML = '共 <b>' + meds.length + '</b> 种药'
+    + (bits.length ? '；' + bits.join('；') : '')
+    + '。<br>确认后基准日一并滚到今天 —— 和「又买了药」「已经开药」同一套算法。';
+}
+function applyBulk(sign){
+  const days = bulkDays();
+  const rows = bulkRows(days, sign).filter(function(r){ return !r.skip; });
+  if(!rows.length){ alert('没有能按天换算的药 —— 这个药箱里的药都没设用法。'); return; }
+  rows.forEach(function(r){
+    r.m.stockBase = r.next;          // next 已含「不能为负」的截断
+    r.m.stockDate = todayStr();
+  });
+  save(); render();
+  $('#dlgBulk').close();
+
+  const word = sign > 0 ? '增加' : '减少';
+  const floored = rows.filter(function(r){ return r.floored; }).length;
+  const unchanged = rows.filter(function(r){ return r.noop; }).length;
+  alert('已把 ' + rows.length + ' 种药的存量' + word + ' ' + days + ' 天的量。'
+    + (floored ? '\n\n其中 ' + floored + ' 种原本就不够 ' + days + ' 天，已减到 0。' : '')
+    + (unchanged ? '\n\n有 ' + unchanged + ' 种换算后不足 0.01，实际没变。' : ''));
+}
+
 /* ★ 这里原本有一段内置示例数据，外加一个「看示例」按钮和一个 URL 参数。
    2026-09-28 开源前按用户要求**整段删除**：内置的假数据里带着病情描述，属于「已经输入过的信息」，
    不该跟着代码发出去。现在打开就是空药箱，由用户自己填 —— 别再把它加回来。
@@ -1325,6 +1463,12 @@ $('#btnDownload').addEventListener('click', function(){
 });
 $('#btnPrint').addEventListener('click', function(){ window.print(); });
 $('#btnExport').addEventListener('click', exportJSON);
+$('#btnBulk').addEventListener('click', openBulk);
+$('#bulkDays').addEventListener('input', renderBulk);
+$('#btnBulkPlus').addEventListener('click', function(){ applyBulk(1); });
+$('#btnBulkMinus').addEventListener('click', function(){ applyBulk(-1); });
+$('#btnBulkCancel').addEventListener('click', function(){ $('#dlgBulk').close(); });
+$('#formBulk').addEventListener('submit', function(e){ e.preventDefault(); });
 $('#btnImport').addEventListener('click', function(){ $('#fileImport').click(); });
 $('#fileImport').addEventListener('change', function(e){
   const f = e.target.files && e.target.files[0];
