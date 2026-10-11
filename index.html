@@ -357,7 +357,8 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
         </label>
         <label>这个余量是哪天的
           <input name="stockDate" type="date">
-          <span class="hintline">默认今天。填的是<b>你数出这个余量的那天</b>——程序按用法从那天的量往下扣</span>
+          <span class="hintline">默认今天。上面那格预填的是<b>按用法扣到今天</b>的推算值（和卡片一致）；
+            你数的数不一样就直接改上面那格，日期填<b>你数的那天</b>。这两个都不动就不会改掉原来的基准</span>
         </label>
 
         <div class="sec-title">开药限制</div>
@@ -631,7 +632,13 @@ function dosesUsed(m){
   if(c.times <= 0) return 0;
   return Math.floor(daysSince(m.stockDate) / c.days) * c.times;
 }
-// 当前推算余量 = 基准余量 - 已经用掉的次数 × 每次用量
+// 当前推算余量 = 基准余量 - 已经用掉的次数 × 每次用量。
+// ★ 这是**唯一的口径**：卡片上的「余量约 X」、开药弹窗的「现有约 X」、「又买了药 / 校准余量」
+//   的推算值、编辑弹窗里预填的「余量」，全都用这一个数（2026-10-11 用户要求：把卡片上的数和
+//   编辑里的数同步）。它的值就是**你今天实际还剩多少**，不去取整、不丢零头。
+//   「剩 N 天」是它除以每天用量后向下取整的结果，所以当天数写整数时两者不一定正好乘得回去
+//   （4 片 / 每天 2 片 → 正好 2 天；5 片 / 每天 2 片 → 写 2 天多）——
+//   编辑弹窗里会把算式或「多」字直接写出来，不让人猜。
 function stockNow(m){
   const base = num(m.stockBase);
   if(dailyUse(m) <= 0) return round2(base);           // 没设用法就不递减
@@ -898,8 +905,12 @@ function renderNote(force){
 }
 
 /* -------------------- 操作 -------------------- */
+// 打开编辑时记下「原来的基准」和「预填进去的值」，保存时用来判断你动没动这一节（见 submitMed）
+let editAnchor = null;
+
 function openEditor(id){
   editingId = id || null;
+  editAnchor = null;
   const f = $('#formMed');
   f.reset();
   if(id){
@@ -914,8 +925,18 @@ function openEditor(id){
     // timesPerDay 是改名前的老字段，老存档读进来照样对
     f.timesPerCycle.value = (m.timesPerCycle != null) ? m.timesPerCycle
       : (m.timesPerDay != null ? m.timesPerDay : 1);
-    f.stockBase.value = m.stockBase != null ? m.stockBase : 0;
-    f.stockDate.value = m.stockDate || todayStr();
+    // ★ 2026-10-11 用户要求：「现在还剩多少」这一节要显示**扣到今天**的数（和卡片同一个数），
+    //   而不是你当初数出来的基准数 —— 否则点开编辑看见 14、卡片上写 2 天，怎么算都对不上。
+    //   原来那个基准（量 + 那天）没有丢：存进 editAnchor，只要你不改这两格，保存时原样写回。
+    const preQty = stockNow(m);
+    editAnchor = {
+      base: m.stockBase != null ? m.stockBase : 0,
+      date: m.stockDate || todayStr(),
+      pre: String(preQty),
+      preDate: todayStr()
+    };
+    f.stockBase.value = preQty;
+    f.stockDate.value = todayStr();
     f.rxMax.value = num(m.rxMax) > 0 ? m.rxMax : '';
     f.note.value = m.note || '';
   } else {
@@ -963,11 +984,10 @@ function syncDosePreview(){
 }
 
 // 「现在还剩多少」下面那行实时结果。
-// ★ 为什么要这一行（2026-10-11 用户报的 bug）：
-//   这里填的「余量 + 日期」是**你当时数出来的基准数**，而卡片右上角的天数 / 卡片上的
-//   「余量约 X」是按用法**扣到今天**的结果 —— 两个数天然不等。用户点开编辑看见 14、
-//   卡片却写 1 天，就以为程序算错了。把这句「扣到今天还剩 X、够 Y 天（卡片上就是这个数）」
-//   当场算给用户看，两个口径当场对上，不用他自己换算。
+// ★ 为什么要有这一行（2026-10-11 用户两次报 bug 后定稿）：
+//   用户对账的方式是**乘回去** —— 「剩 2 天、每次 2 片、每天 3 次，那余量应该是 2×2×3=12」。
+//   所以这一行必须和卡片写同一个数（预填进上面那格的就是它），能整除时还把算式**摆出来**，
+//   不能整除时明写「N 天多一点」，绝不出现「卡片 5 片 / 这里说 2×2=4」这种自相矛盾的摆法。
 function syncStockPreview(){
   const f = $('#formMed');
   const el = $('#stockPreview');
@@ -982,7 +1002,8 @@ function syncStockPreview(){
     stockBase: base,
     stockDate: f.stockDate.value || todayStr()
   };
-  if(dailyUse(m) <= 0){
+  const d = dailyUse(m);
+  if(d <= 0){
     el.textContent = '没设用法 → 不会自动往下扣，卡片上直接显示这个数';
     return;
   }
@@ -991,9 +1012,26 @@ function syncStockPreview(){
     return;
   }
   const st = stockNow(m);
-  const dl = daysLeft(m);
-  el.innerHTML = '扣到今天：还剩 <b>' + fmtNum(st) + '</b> ' + esc(u)
-    + '，够 <b>' + fmtDays(dl) + '</b> 天　·　卡片上显示的就是这个数';
+  const days = st / d;
+  const whole = Math.max(0, Math.floor(days + 1e-9));
+  const c = cycle(m);
+  // 正好是整天份 → 把算式摆出来给你核：剩 2 天 × 每天 2 片 = 4 片
+  // 不是整天份 → 老实写「N 天多」，不让两个数看起来互相打架
+  const exactMult = Math.abs(st - whole * d) < 1e-6;
+  let line;
+  if(days < 1){
+    line = '扣到今天：还剩 <b>' + fmtNum(st) + '</b> ' + esc(u) + '（不够 1 整天）';
+  } else if(exactMult){
+    line = (c.days === 1)
+      ? '＝ 剩 <b>' + whole + '</b> 天 × 每天 <b>' + fmtNum(round2(d)) + '</b> ' + esc(u)
+        + ' = <b>' + fmtNum(st) + '</b> ' + esc(u)
+      : '＝ 剩 <b>' + whole + '</b> 天 ÷ <b>' + c.days + '</b> 天 × <b>'
+        + fmtNum(num(m.perDose) * c.times) + '</b> ' + esc(u) + ' = <b>' + fmtNum(st) + '</b> ' + esc(u);
+  } else {
+    line = '扣到今天：还剩 <b>' + fmtNum(st) + '</b> ' + esc(u)
+      + '，够 <b>' + whole + '</b> 天多一点（除下来不是整天）';
+  }
+  el.innerHTML = line + '　·　卡片上就显示这个数';
 }
 
 function submitMed(e){
@@ -1017,11 +1055,25 @@ function submitMed(e){
 
   if(editingId){
     const i = meds.findIndex(function(x){ return x.id === editingId; });
-    if(i >= 0) meds[i] = Object.assign({}, meds[i], obj);
+    if(i >= 0){
+      const next = Object.assign({}, meds[i], obj);
+      // ★ 「余量 / 日期」两格没被动过 → 把**原来的基准**原样写回。
+      //   为什么必须这样：那两格预填的是「扣到今天」的推算值，直接存下去会顺带把基准日滚到今天，
+      //   不满一天的零头会被抹掉，间隔用药的相位（每 14 天一次该从哪天算）也会整体平移。
+      //   只在「你确实改了余量或日期」时才按你填的存。
+      if(editAnchor
+         && Math.abs(num(f.stockBase.value) - num(editAnchor.pre)) < 1e-9
+         && (f.stockDate.value || todayStr()) === editAnchor.preDate){
+        next.stockBase = editAnchor.base;
+        next.stockDate = editAnchor.date;
+      }
+      meds[i] = next;
+    }
   } else {
     obj.id = uid();
     meds.push(obj);
   }
+  editAnchor = null;
   save(); render();
   $('#dlgMed').close();
 }
@@ -1118,7 +1170,8 @@ function calibMed(id){
   if(!m) return;
   const unit = m.unit || '片';
   const cur = stockNow(m);
-  const input = prompt('今天实际还剩多少 ' + unit + '？\n\n（系统推算 ' + fmtNum(cur) + ' ' + unit + '，改成你数出来的数）', String(cur));
+  const input = prompt('今天实际还剩多少 ' + unit + '？\n\n（系统推算 ' + fmtNum(cur) + ' ' + unit
+    + '，改成你数出来的数）', String(cur));
   if(input === null) return;
   const v = Number(input);
   if(!isFinite(v) || v < 0){ alert('请输入 0 或正数'); return; }

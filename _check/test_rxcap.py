@@ -292,59 +292,124 @@ PROBE = r"""
   ck('批量加完后 stockNow == stockBase（基准日=今天，没被重复扣）',
      byName('维生素D滴剂').stockBase === stockNow(byName('维生素D滴剂')), '');
 
-  // ---- 8. ★ 2026-10-11 用户报的 bug：卡片右上角的天数 / 余量，与点「编辑」后
-  //      「现在还剩多少」那节看到的数必须对得上 ----
-  // 根因：那里存的是**你当时数出来的基准数 + 那天**，卡片上是**按用法扣到今天**的结果，
-  //   两个数天生不等；而界面从来没把「扣到今天是多少」显示出来 → 用户以为程序算错了。
-  // 修法：加一行实时结果 #stockPreview，走的是和卡片完全同一个函数（stockNow/daysLeft）。
+  // ---- 8. ★ 2026-10-11 用户两次报 bug 后的定稿口径 ----
+  // 用户原话：「卡片上显示的 每日2片 余量约4片 这个4片就是正确的，你把卡片上的数和编辑里的数同步」。
+  // 也就是说：**卡片上的数（stockNow）是唯一口径**，编辑弹窗要预填它、显示同一个数；
+  // 弹窗里原来显示的是「你当初数出来的基准数」，那才是对不上的根源。
+  // 能整除时把算式摆出来（剩 2 天 × 每天 2 片 = 4 片），不整除时明写「N 天多一点」。
   var demo3 = [
     { name:'编弹窗对账片', spec:'5mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
       stockBase:14, stockDate:agoD(13) },                        // 扣到今天 = 1 片 / 剩 1 天
+    { name:'每日两片对账', spec:'5mg', perDose:2, unit:'片', cycleDays:1, timesPerCycle:1,
+      stockBase:4, stockDate:todayStr() },                       // 用户举的例子：每日 2 片、4 片 = 2 天
+    { name:'三次两片对账', spec:'5mg', perDose:2, unit:'片', cycleDays:1, timesPerCycle:3,
+      stockBase:12, stockDate:todayStr() },                      // 每次 2 片×每天 3 次 → 12 片 = 2 天
+    { name:'零头对账片', spec:'5mg', perDose:2, unit:'片', cycleDays:1, timesPerCycle:1,
+      stockBase:5, stockDate:todayStr() },                       // 5 片 ÷ 每天 2 片 → 2 天多一点
+    { name:'半天对账片', spec:'5mg', perDose:2, unit:'片', cycleDays:1, timesPerCycle:1,
+      stockBase:1, stockDate:todayStr() },                       // 1 片 < 每天 2 片 → 不够 1 整天
     { name:'没设用法片', spec:'—', perDose:1, unit:'片', cycleDays:1, timesPerCycle:0,
       stockBase:30, stockDate:todayStr() }                       // 没设用法 → 不递减
   ];
   demo3.forEach(function(d){ d.id = uid(); });
   setMeds(demo3); save(); render();
 
-  var c3 = card('编弹窗对账片');
-  var cardDay = c3 ? c3.querySelector('.days .v').textContent.trim() : '(无卡片)';
-  var mtxt = c3 ? c3.querySelector('.med-meta').textContent.replace(/\s+/g, ' ') : '';
-  var mq = mtxt.match(/余量约\s*([\d.]+)/);
-  var cardQty = mq ? mq[1] : '(没匹配到)';
-  ck('卡片右上角天数 = 1（14 片扣 13 天）', cardDay === '1', cardDay);
-  ck('卡片「余量约」= 1', cardQty === '1', cardQty);
+  function mday(name){
+    var c = card(name);
+    return c ? c.querySelector('.days .v').textContent.trim() : '(无卡片)';
+  }
+  function mqty(name){
+    var c = card(name);
+    if(!c) return '(无卡片)';
+    var mt = c.querySelector('.med-meta').textContent.replace(/\s+/g, ' ');
+    var mm = mt.match(/余量约\s*([\d.]+)/);
+    return mm ? mm[1] : '(没匹配到)';
+  }
+  function prevTxt(){
+    var el = q('#stockPreview');
+    return el ? el.textContent.replace(/\s+/g, ' ').trim() : '(无 #stockPreview)';
+  }
 
-  openEditor(byName('编弹窗对账片').id);
+  ck('卡片 对账片 = 1 片 / 1 天（14 片扣 13 天）',
+     mqty('编弹窗对账片') === '1' && mday('编弹窗对账片') === '1',
+     mqty('编弹窗对账片') + ' / ' + mday('编弹窗对账片'));
+  ck('卡片 每日 2 片 · 余量约 4 片 · 2 天（用户说的那个例子）',
+     mqty('每日两片对账') === '4' && mday('每日两片对账') === '2',
+     mqty('每日两片对账') + ' / ' + mday('每日两片对账'));
+  ck('卡片 每次 2 片 × 每天 3 次 · 12 片 · 2 天',
+     mqty('三次两片对账') === '12' && mday('三次两片对账') === '2',
+     mqty('三次两片对账') + ' / ' + mday('三次两片对账'));
+  ck('卡片 5 片 ÷ 每天 2 片 → 2 天（余量如实写 5，不取整）',
+     mqty('零头对账片') === '5' && mday('零头对账片') === '2',
+     mqty('零头对账片') + ' / ' + mday('零头对账片'));
+  ck('卡片 1 片 < 每天 2 片 → 天数写「不足 1」',
+     mday('半天对账片') === '不足 1' && mqty('半天对账片') === '1',
+     mday('半天对账片') + ' / ' + mqty('半天对账片'));
+
+  // --- 8a. 弹窗预填 = 卡片数，并把算式摆出来 ---
+  openEditor(byName('每日两片对账').id);
   var fmed = q('#formMed');
-  var prev = q('#stockPreview') ? q('#stockPreview').textContent.replace(/\s+/g, ' ').trim()
-                                : '(无 #stockPreview)';
-  ck('弹窗里有「现在还剩多少」的实时结果行', !!q('#stockPreview'), prev);
-  ck('弹窗里的「余量」仍是你当时数的基准数（没被偷偷改写）',
-     Math.abs(num(fmed.stockBase.value) - 14) < 1e-9, fmed.stockBase.value);
-  ck('实时结果里的余量 = 卡片的余量', prev.indexOf('还剩 1 片') >= 0, prev);
-  ck('实时结果里的天数 = 卡片的天数', /够\s*1\s*天/.test(prev), prev);
-  ck('实时结果点明「和卡片同一个数」', prev.indexOf('卡片上显示的就是这个数') >= 0, prev);
+  ck('弹窗里有「现在还剩多少」的实时结果行', !!q('#stockPreview'), prevTxt());
+  ck('弹窗「余量」预填 = 卡片上的 4',
+     Math.abs(num(fmed.stockBase.value) - 4) < 1e-9, fmed.stockBase.value);
+  ck('弹窗摆出算式：剩 2 天 × 每天 2 片 = 4 片',
+     /＝\s*剩\s*2\s*天\s*×\s*每天\s*2\s*片\s*=\s*4\s*片/.test(prevTxt()), prevTxt());
+  ck('弹窗点明「卡片上就显示这个数」', prevTxt().indexOf('卡片上就显示这个数') >= 0, prevTxt());
 
-  // 实时性：把「这个余量是哪天的」改成今天，结果必须跟着变成 14 片 / 14 天
-  fmed.stockDate.value = todayStr();
+  openEditor(byName('三次两片对账').id);
+  ck('每次 2 片×每天 3 次：弹窗预填 12 = 卡片 12',
+     Math.abs(num(fmed.stockBase.value) - 12) < 1e-9, fmed.stockBase.value);
+  ck('算式按每天总用量写：剩 2 天 × 每天 6 片 = 12 片',
+     /＝\s*剩\s*2\s*天\s*×\s*每天\s*6\s*片\s*=\s*12\s*片/.test(prevTxt()), prevTxt());
+  q('#dlgMed').close();
+
+  // --- 8b. 只改别的项 → 原来的基准（量 + 那天）原样保留，不许被预填值顶掉 ---
+  openEditor(byName('编弹窗对账片').id);
+  ck('弹窗预填的是扣到今天的 1 片（不是当初的基准 14）',
+     Math.abs(num(fmed.stockBase.value) - 1) < 1e-9, fmed.stockBase.value);
+  fmed.note.value = '只改备注';
+  submitMed({ preventDefault: function(){} });
+  var keep = byName('编弹窗对账片');
+  ck('只改备注 → 基准仍是 14 片 / 13 天前（没被预填值顶掉）',
+     keep.stockBase === 14 && keep.stockDate === agoD(13),
+     keep.stockBase + ' / ' + keep.stockDate);
+
+  // 实时性：把「余量」那格直接改成 14（基准日=今天）→ 算式当场变成 14 片 / 14 天
+  openEditor(byName('编弹窗对账片').id);
+  fmed.stockBase.value = 14;
   syncStockPreview();
-  var prev2 = q('#stockPreview').textContent.replace(/\s+/g, ' ').trim();
-  ck('改成今天 → 实时结果跟着变 14 片 / 14 天',
-     /还剩\s*14\s*片/.test(prev2) && /够\s*14\s*天/.test(prev2), prev2);
-  fmed.stockDate.value = agoD(13);
-  syncStockPreview();
-  ck('改回 13 天前 → 结果复原 1 片 / 1 天',
-     /还剩\s*1\s*片/.test(q('#stockPreview').textContent), q('#stockPreview').textContent);
+  ck('弹窗里改成 14 → 当场变 14 片 / 14 天',
+     /＝\s*剩\s*14\s*天\s*×\s*每天\s*1\s*片\s*=\s*14\s*片/.test(prevTxt()), prevTxt());
+  q('#dlgMed').close();
+
+  // --- 8c. 真改了余量 → 存你填的数，基准日滚到今天 ---
+  openEditor(byName('编弹窗对账片').id);
+  fmed.stockBase.value = 4;
+  submitMed({ preventDefault: function(){} });
+  keep = byName('编弹窗对账片');
+  ck('改了余量 → 存 4 片 / 基准今天',
+     keep.stockBase === 4 && keep.stockDate === todayStr(),
+     keep.stockBase + ' / ' + keep.stockDate);
+  ck('改完卡片同步成 4 片 / 4 天',
+     mqty('编弹窗对账片') === '4' && mday('编弹窗对账片') === '4',
+     mqty('编弹窗对账片') + ' / ' + mday('编弹窗对账片'));
+
+  // --- 8d. 除不尽 / 不足一天：不许摆出对不上的算式 ---
+  openEditor(byName('零头对账片').id);
+  ck('除不尽 → 写「够 2 天多一点」，不摆算式',
+     /够\s*2\s*天多一点/.test(prevTxt()) && prevTxt().indexOf('×') < 0, prevTxt());
+  openEditor(byName('半天对账片').id);
+  ck('不足一天 → 明说「不够 1 整天」',
+     /不够\s*1\s*整天/.test(prevTxt()), prevTxt());
+  q('#dlgMed').close();
 
   // 没设用法：明说「不会自动往下扣」，不能显示成「够 0 天」
   openEditor(byName('没设用法片').id);
-  var prev3 = q('#stockPreview').textContent.replace(/\s+/g, ' ').trim();
-  ck('没设用法 → 明说不自动扣，卡片就是原数', /不会自动往下扣/.test(prev3), prev3);
+  ck('没设用法 → 明说不自动扣，卡片就是原数', /不会自动往下扣/.test(prevTxt()), prevTxt());
   // 新增（还没保存过）的药：给填写提示，不许出现「够 0 天」这种吓人的字
   openEditor(null);
-  var prev4 = q('#stockPreview').textContent.replace(/\s+/g, ' ').trim();
   ck('新增药品时给的是填写提示，不是「够 0 天」',
-     prev4.length > 0 && prev4.indexOf('够') < 0, prev4);
+     prevTxt().length > 0 && prevTxt().indexOf('够') < 0, prevTxt());
   q('#dlgMed').close();
 
   R.meds = meds.map(function(x){ return x.name + '|qty=' + dispQty(x) + '|cap=' + rxCap(x); });
