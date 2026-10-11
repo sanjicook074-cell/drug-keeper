@@ -24,9 +24,12 @@ CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 PROBE = r"""
 /* ===== 注入的测试代码（必须插在主 IIFE 内部，否则 meds/各函数都看不见）===== */
 (function(){
-  var R = { alerts: [], cases: [] };
+  var R = { alerts: [], cases: [], prompts: [] };
   window.__T = R;
   window.alert = function(m){ R.alerts.push(String(m)); };
+  // ★ 记录原生 prompt 有没有被调用过：2026-10-11 用户要求「又买了药 / 校准余量」
+  //   不许再用浏览器自带的小框，必须走中间弹窗。这里把它换成只记账、不弹的桩。
+  window.prompt = function(m){ R.prompts.push(String(m)); return null; };
   function q(s){ return document.querySelector(s); }
   function ck(name, cond, got){ R.cases.push({ name: name, pass: !!cond, got: got }); }
   function card(name){
@@ -294,9 +297,9 @@ PROBE = r"""
 
   // ---- 8. ★ 2026-10-11 用户两次报 bug 后的定稿口径 ----
   // 用户原话：「卡片上显示的 每日2片 余量约4片 这个4片就是正确的，你把卡片上的数和编辑里的数同步」。
-  // 也就是说：**卡片上的数（stockNow）是唯一口径**，编辑弹窗要预填它、显示同一个数；
-  // 弹窗里原来显示的是「你当初数出来的基准数」，那才是对不上的根源。
-  // 能整除时把算式摆出来（剩 2 天 × 每天 2 片 = 4 片），不整除时明写「N 天多一点」。
+  // 也就是说：**卡片上的数（stockNow）是唯一口径**，编辑弹窗要预填它、存它也存它。
+  // 弹窗里那行蓝字「扣到今天：还剩 X 片 … 」**已按用户要求删掉**（2026-10-11 下半场）——
+  //   余量那格预填的本来就是卡片上的数，再摆一行算式是冗余。断言改成"这行必须不存在"。
   var demo3 = [
     { name:'编弹窗对账片', spec:'5mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
       stockBase:14, stockDate:agoD(13) },                        // 扣到今天 = 1 片 / 剩 1 天
@@ -325,10 +328,13 @@ PROBE = r"""
     var mm = mt.match(/余量约\s*([\d.]+)/);
     return mm ? mm[1] : '(没匹配到)';
   }
-  function prevTxt(){
-    var el = q('#stockPreview');
-    return el ? el.textContent.replace(/\s+/g, ' ').trim() : '(无 #stockPreview)';
+  function dlgNumTxt(sel){
+    var el = q(sel);
+    return el ? el.textContent.replace(/\s+/g, ' ').trim() : '(没找到 ' + sel + ')';
   }
+  ck('编辑弹窗里已无那行蓝字（#stockPreview 已删）', !q('#stockPreview'), '');
+  ck('产出那个蓝字的函数也已删掉', typeof syncStockPreview === 'undefined',
+     typeof syncStockPreview);
 
   ck('卡片 对账片 = 1 片 / 1 天（14 片扣 13 天）',
      mqty('编弹窗对账片') === '1' && mday('编弹窗对账片') === '1',
@@ -346,21 +352,16 @@ PROBE = r"""
      mday('半天对账片') === '不足 1' && mqty('半天对账片') === '1',
      mday('半天对账片') + ' / ' + mqty('半天对账片'));
 
-  // --- 8a. 弹窗预填 = 卡片数，并把算式摆出来 ---
+  // --- 8a. 弹窗「余量」预填 = 卡片上的数（同一个口径，不再有那行蓝字）---
   openEditor(byName('每日两片对账').id);
   var fmed = q('#formMed');
-  ck('弹窗里有「现在还剩多少」的实时结果行', !!q('#stockPreview'), prevTxt());
-  ck('弹窗「余量」预填 = 卡片上的 4',
+  ck('每日 2 片 · 弹窗「余量」预填 = 卡片上的 4',
      Math.abs(num(fmed.stockBase.value) - 4) < 1e-9, fmed.stockBase.value);
-  ck('弹窗摆出算式：剩 2 天 × 每天 2 片 = 4 片',
-     /＝\s*剩\s*2\s*天\s*×\s*每天\s*2\s*片\s*=\s*4\s*片/.test(prevTxt()), prevTxt());
-  ck('弹窗点明「卡片上就显示这个数」', prevTxt().indexOf('卡片上就显示这个数') >= 0, prevTxt());
+  ck('预填那个数下面不再有蓝字提示行', !q('#stockPreview'), '');
 
   openEditor(byName('三次两片对账').id);
   ck('每次 2 片×每天 3 次：弹窗预填 12 = 卡片 12',
      Math.abs(num(fmed.stockBase.value) - 12) < 1e-9, fmed.stockBase.value);
-  ck('算式按每天总用量写：剩 2 天 × 每天 6 片 = 12 片',
-     /＝\s*剩\s*2\s*天\s*×\s*每天\s*6\s*片\s*=\s*12\s*片/.test(prevTxt()), prevTxt());
   q('#dlgMed').close();
 
   // --- 8b. 只改别的项 → 原来的基准（量 + 那天）原样保留，不许被预填值顶掉 ---
@@ -374,14 +375,6 @@ PROBE = r"""
      keep.stockBase === 14 && keep.stockDate === agoD(13),
      keep.stockBase + ' / ' + keep.stockDate);
 
-  // 实时性：把「余量」那格直接改成 14（基准日=今天）→ 算式当场变成 14 片 / 14 天
-  openEditor(byName('编弹窗对账片').id);
-  fmed.stockBase.value = 14;
-  syncStockPreview();
-  ck('弹窗里改成 14 → 当场变 14 片 / 14 天',
-     /＝\s*剩\s*14\s*天\s*×\s*每天\s*1\s*片\s*=\s*14\s*片/.test(prevTxt()), prevTxt());
-  q('#dlgMed').close();
-
   // --- 8c. 真改了余量 → 存你填的数，基准日滚到今天 ---
   openEditor(byName('编弹窗对账片').id);
   fmed.stockBase.value = 4;
@@ -394,23 +387,88 @@ PROBE = r"""
      mqty('编弹窗对账片') === '4' && mday('编弹窗对账片') === '4',
      mqty('编弹窗对账片') + ' / ' + mday('编弹窗对账片'));
 
-  // --- 8d. 除不尽 / 不足一天：不许摆出对不上的算式 ---
+  // --- 8d. 除不尽 / 不足一天：预填的仍是卡片上那个精确数（不取整）---
   openEditor(byName('零头对账片').id);
-  ck('除不尽 → 写「够 2 天多一点」，不摆算式',
-     /够\s*2\s*天多一点/.test(prevTxt()) && prevTxt().indexOf('×') < 0, prevTxt());
+  ck('除不尽（5 片 ÷ 每天 2 片）：预填仍是卡片的 5',
+     Math.abs(num(fmed.stockBase.value) - 5) < 1e-9, fmed.stockBase.value);
   openEditor(byName('半天对账片').id);
-  ck('不足一天 → 明说「不够 1 整天」',
-     /不够\s*1\s*整天/.test(prevTxt()), prevTxt());
+  ck('不足一天（1 片 ÷ 每天 2 片）：预填仍是卡片的 1',
+     Math.abs(num(fmed.stockBase.value) - 1) < 1e-9, fmed.stockBase.value);
+  openEditor(byName('没设用法片').id);
+  ck('没设用法：预填原数 30（不会被扣）',
+     Math.abs(num(fmed.stockBase.value) - 30) < 1e-9, fmed.stockBase.value);
+  // 新增（还没保存过）的药：余量预填 0，不许出现负数
+  openEditor(null);
+  ck('新增药品时余量预填 0', num(fmed.stockBase.value) === 0, fmed.stockBase.value);
   q('#dlgMed').close();
 
-  // 没设用法：明说「不会自动往下扣」，不能显示成「够 0 天」
-  openEditor(byName('没设用法片').id);
-  ck('没设用法 → 明说不自动扣，卡片就是原数', /不会自动往下扣/.test(prevTxt()), prevTxt());
-  // 新增（还没保存过）的药：给填写提示，不许出现「够 0 天」这种吓人的字
-  openEditor(null);
-  ck('新增药品时给的是填写提示，不是「够 0 天」',
-     prevTxt().length > 0 && prevTxt().indexOf('够') < 0, prevTxt());
-  q('#dlgMed').close();
+  // ---- 9. ★ 2026-10-11 用户要求：「又买了药」「校准余量」也走中间弹窗 ----
+  //    原来是浏览器原生 prompt（顶部小框、手机上难用、看不见改完是多少）。
+  //    现在共用 #dlgNum，必须像「批量调存量」一样在页面中间，并把
+  //    「现在推算 X → 改完 Y」摆出来。同时**不许再调 window.prompt**。
+  var restName = '每日两片对账';                  // 现在 4 片，每日 2 片
+  setMeds([
+    { name: restName, spec:'5mg', perDose:2, unit:'片', cycleDays:1, timesPerCycle:1,
+      stockBase:4, stockDate:todayStr() },
+    { name:'校准用对照片', spec:'5mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+      stockBase:7, stockDate:todayStr() }
+  ]);
+  meds.forEach(function(d){ if(!d.id) d.id = uid(); });
+  save(); render();
+
+  // 9a. 又买了药
+  var promptsBefore = R.prompts.length;
+  restockMed(byName(restName).id);
+  ck('「又买了药」打开的是中间弹窗 #dlgNum', q('#dlgNum') && q('#dlgNum').open, '');
+  ck('没有调用浏览器原生 prompt', R.prompts.length === promptsBefore, R.prompts.join(' | '));
+  ck('弹窗标题是「又买了药」', dlgNumTxt('#numTitle') === '又买了药', dlgNumTxt('#numTitle'));
+  ck('输入行的标签写了单位', /又买了多少\s*片/.test(dlgNumTxt('#numLabel')), dlgNumTxt('#numLabel'));
+  ck('填之前先把现状摆出来（现在推算还剩 4 片）',
+     /现在推算还剩\s*4\s*片/.test(dlgNumTxt('#numCalc')), dlgNumTxt('#numCalc'));
+  // 输入 28 → 对照行必须给出「4 ＋ 28 → 32」
+  q('#numVal').value = '28';
+  renderNumCalc();
+  ck('对照行写成「现在还剩 4 片 ＋ 新买 28 片 → 入库后 32 片」',
+     /现在还剩\s*4\s*片/.test(dlgNumTxt('#numCalc'))
+     && /新买\s*28\s*片/.test(dlgNumTxt('#numCalc'))
+     && /入库后\s*32\s*片/.test(dlgNumTxt('#numCalc')), dlgNumTxt('#numCalc'));
+  ck('按钮文案是「加到库存」', dlgNumTxt('#btnNumOk') === '加到库存', dlgNumTxt('#btnNumOk'));
+  submitNum({ preventDefault: function(){} });
+  ck('确认后库存 = 4 + 28 = 32', byName(restName).stockBase === 32, byName(restName).stockBase);
+  ck('确认后弹窗已关闭', !q('#dlgNum').open, '');
+  ck('卡片跟着变成 32', mqty(restName) === '32', mqty(restName));
+
+  // 9b. 校准余量：预填系统推算值，填 0 也允许
+  restockMed(byName(restName).id);            // 先开一次再取消，确认不写数据
+  q('#numVal').value = '999';
+  renderNumCalc();
+  ck('取消不会改数据（仍是 32）', byName(restName).stockBase === 32, byName(restName).stockBase);
+  q('#dlgNum').close();
+
+  calibMed(byName('校准用对照片').id);
+  ck('「校准余量」用的也是 #dlgNum', q('#dlgNum').open, '');
+  ck('校准标题正确', dlgNumTxt('#numTitle') === '校准余量', dlgNumTxt('#numTitle'));
+  ck('校准预填系统推算的 7', q('#numVal').value === '7', q('#numVal').value);
+  ck('校准的对照行是「系统推算 7 片 → 校准为 …」',
+     /系统推算\s*7\s*片/.test(dlgNumTxt('#numCalc')), dlgNumTxt('#numCalc'));
+  q('#numVal').value = '3';
+  renderNumCalc();
+  ck('改成 3 → 对照行给出 7 → 3', /系统推算\s*7\s*片\s*→\s*校准为\s*3\s*片/.test(dlgNumTxt('#numCalc')),
+     dlgNumTxt('#numCalc'));
+  submitNum({ preventDefault: function(){} });
+  ck('校准后存 3 片 / 基准今天',
+     byName('校准用对照片').stockBase === 3 && byName('校准用对照片').stockDate === todayStr(),
+     byName('校准用对照片').stockBase + ' / ' + byName('校准用对照片').stockDate);
+  ck('全程一次原生 prompt 都没调过', R.prompts.length === promptsBefore, R.prompts.join(' | '));
+
+  // 9c. 边界：又买了药填 0 / 校准填负数 → 拦下且不改数据
+  restockMed(byName(restName).id);
+  q('#numVal').value = '0';
+  submitNum({ preventDefault: function(){} });
+  ck('又买了药填 0 被拦下（弹窗还开着）', q('#dlgNum').open, '');
+  ck('被拦下时数据没动（仍 32）', byName(restName).stockBase === 32, byName(restName).stockBase);
+  ck('给了提示', /大于 0/.test(R.alerts.join(' | ')), R.alerts[R.alerts.length - 1]);
+  q('#dlgNum').close();
 
   R.meds = meds.map(function(x){ return x.name + '|qty=' + dispQty(x) + '|cap=' + rxCap(x); });
 

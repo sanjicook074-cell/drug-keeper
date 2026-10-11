@@ -194,9 +194,6 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
   margin-top:-2px;padding:0 2px}
 .dose-tip{font-size:11.5px;color:var(--faint)}
 #dosePreview{font-size:11.5px;color:var(--brand)}
-/* 「现在还剩多少」下面那行实时结果：扣到今天实际剩多少 / 够几天 —— 和卡片同一个口径 */
-#stockPreview{font-size:11.5px;color:var(--brand)}
-#stockPreview b{font-size:13px;font-weight:660}
 .dlg-f{display:flex;justify-content:flex-end;gap:9px;padding:0 22px 20px}
 .sec-title{grid-column:1/-1;font-size:12px;font-weight:650;color:var(--muted);
   margin:6px 0 -4px;padding-top:10px;border-top:1px solid var(--line-2)}
@@ -353,7 +350,6 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
         <div class="sec-title">现在还剩多少</div>
         <label>余量
           <input name="stockBase" type="number" step="0.25" min="0" value="0">
-          <span class="hintline" id="stockPreview"></span>
         </label>
         <label>这个余量是哪天的
           <input name="stockDate" type="date">
@@ -452,6 +448,28 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
       <button type="button" class="btn ghost" id="btnBulkCancel">取消</button>
       <button type="button" class="btn danger" id="btnBulkMinus">减少</button>
       <button type="button" class="btn primary" id="btnBulkPlus">增加</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 单个数字弹窗：「又买了药」/「校准余量」共用（替代浏览器自带的 prompt 小框） -->
+<dialog id="dlgNum">
+  <form id="formNum">
+    <div class="dlg-h">
+      <h3 id="numTitle">数量</h3>
+      <p id="numSub"></p>
+    </div>
+    <div class="dlg-b">
+      <label class="bulk-days">
+        <span id="numLabel">数量</span>
+        <input name="val" id="numVal" type="number" step="0.25" min="0" autocomplete="off">
+        <span class="hintline" id="numHint"></span>
+      </label>
+      <div class="disp-sum" id="numCalc"></div>
+    </div>
+    <div class="dlg-f">
+      <button type="button" class="btn ghost" id="btnNumCancel">取消</button>
+      <button type="submit" class="btn primary" id="btnNumOk">确定</button>
     </div>
   </form>
 </dialog>
@@ -951,7 +969,6 @@ function openEditor(id){
   }
   syncRxUnitTip();
   syncDosePreview();
-  syncStockPreview();
   $('#dlgMed').showModal();
   setTimeout(function(){ f.name.focus(); }, 30);
 }
@@ -983,56 +1000,9 @@ function syncDosePreview(){
   }
 }
 
-// 「现在还剩多少」下面那行实时结果。
-// ★ 为什么要有这一行（2026-10-11 用户两次报 bug 后定稿）：
-//   用户对账的方式是**乘回去** —— 「剩 2 天、每次 2 片、每天 3 次，那余量应该是 2×2×3=12」。
-//   所以这一行必须和卡片写同一个数（预填进上面那格的就是它），能整除时还把算式**摆出来**，
-//   不能整除时明写「N 天多一点」，绝不出现「卡片 5 片 / 这里说 2×2=4」这种自相矛盾的摆法。
-function syncStockPreview(){
-  const f = $('#formMed');
-  const el = $('#stockPreview');
-  if(!el) return;
-  const u = (f.unit.value || '').trim() || '片';
-  const base = Math.max(0, num(f.stockBase.value));
-  // 和提交时同一套取值口径（同一个 med 形状），所以这里的数必然等于保存后的卡片数
-  const m = {
-    perDose: Math.max(0, num(f.perDose.value, 1)),
-    timesPerCycle: Math.max(0, num(f.timesPerCycle.value, 1)),
-    cycleDays: Math.max(1, Math.round(num(f.cycleDays.value, 1)) || 1),
-    stockBase: base,
-    stockDate: f.stockDate.value || todayStr()
-  };
-  const d = dailyUse(m);
-  if(d <= 0){
-    el.textContent = '没设用法 → 不会自动往下扣，卡片上直接显示这个数';
-    return;
-  }
-  if(editingId === null && base <= 0){
-    el.textContent = '填你今天数出来的数；之后卡片会按用法自动往下扣，不用天天手动改';
-    return;
-  }
-  const st = stockNow(m);
-  const days = st / d;
-  const whole = Math.max(0, Math.floor(days + 1e-9));
-  const c = cycle(m);
-  // 正好是整天份 → 把算式摆出来给你核：剩 2 天 × 每天 2 片 = 4 片
-  // 不是整天份 → 老实写「N 天多」，不让两个数看起来互相打架
-  const exactMult = Math.abs(st - whole * d) < 1e-6;
-  let line;
-  if(days < 1){
-    line = '扣到今天：还剩 <b>' + fmtNum(st) + '</b> ' + esc(u) + '（不够 1 整天）';
-  } else if(exactMult){
-    line = (c.days === 1)
-      ? '＝ 剩 <b>' + whole + '</b> 天 × 每天 <b>' + fmtNum(round2(d)) + '</b> ' + esc(u)
-        + ' = <b>' + fmtNum(st) + '</b> ' + esc(u)
-      : '＝ 剩 <b>' + whole + '</b> 天 ÷ <b>' + c.days + '</b> 天 × <b>'
-        + fmtNum(num(m.perDose) * c.times) + '</b> ' + esc(u) + ' = <b>' + fmtNum(st) + '</b> ' + esc(u);
-  } else {
-    line = '扣到今天：还剩 <b>' + fmtNum(st) + '</b> ' + esc(u)
-      + '，够 <b>' + whole + '</b> 天多一点（除下来不是整天）';
-  }
-  el.innerHTML = line + '　·　卡片上就显示这个数';
-}
+// ★ 这里原本有一行蓝字「扣到今天：还剩 X 片，够 Y 天 · 卡片上就显示这个数」。
+//   2026-10-11 用户点名删掉（余量那格已经预填成卡片的数了，再摆一行算式是冗余）。
+//   别再把它加回来 —— 编辑弹窗里的「余量」预填的就是卡片上的数，这一点别动。
 
 function submitMed(e){
   e.preventDefault();
@@ -1149,19 +1119,80 @@ function renderPeopleMgr(){
   + '<button type="button" class="btn ghost" id="pAddBtn" style="width:100%;margin-top:10px">＋ 添加一个人</button>';
 }
 
+/* -------------------- 单个数字弹窗（「又买了药」/「校准余量」共用） -------------------- */
+// ★ 2026-10-11 用户要求：这两个入口原来是浏览器原生 prompt —— 顶部一条小框、手机上尤其难用，
+//   而且看不见「改完会变成多少」。改成和「批量调存量」同一套**中间弹窗**：
+//   标题 + 说明 + 输入框 + 一行「现在 → 改完」的实时对照 + 取消/确定。
+//   两个入口共用同一个 dialog（#dlgNum），只是 mode 不同：
+//     · mode='add'：cur + 你填的量 → 入库（又买了药）
+//     · mode='set'：直接校准成你填的数（校准余量）
+let numCtx = null;
+
+function openNumDialog(o){
+  numCtx = o;                                   // { mode, cur, unit, onOk }
+  $('#numTitle').textContent = o.title;
+  $('#numSub').textContent   = o.sub;
+  $('#numLabel').textContent = o.label;
+  $('#numHint').textContent  = o.hint || '';
+  const inp = $('#numVal');
+  inp.value = (o.value == null) ? '' : String(o.value);
+  inp.min   = (o.min == null) ? 0 : o.min;
+  const ok = $('#btnNumOk');
+  ok.textContent = o.okText || '确定';
+  ok.className   = 'btn ' + (o.danger ? 'danger' : 'primary');
+  renderNumCalc();
+  $('#dlgNum').showModal();
+  inp.focus();
+  inp.select();
+}
+
+// 「现在推算 X → 改完 Y」。和批量弹窗一样先把结果摆出来，不让人靠猜（填之前显示现状）。
+function renderNumCalc(){
+  const el = $('#numCalc');
+  if(!el || !numCtx) return;
+  const u = esc(numCtx.unit);
+  const cur = fmtNum(numCtx.cur);
+  const v = Number($('#numVal').value);
+  if(numCtx.mode === 'add'){
+    if(!isFinite(v) || v <= 0){ el.innerHTML = '现在推算还剩 <b>' + cur + '</b> ' + u; return; }
+    el.innerHTML = '现在还剩 <b>' + cur + '</b> ' + u
+      + ' ＋ 新买 <b>' + fmtNum(round2(v)) + '</b> ' + u
+      + ' → 入库后 <b>' + fmtNum(round2(numCtx.cur + v)) + '</b> ' + u;
+    return;
+  }
+  if(!isFinite(v) || v < 0){ el.innerHTML = '系统推算还剩 <b>' + cur + '</b> ' + u; return; }
+  el.innerHTML = '系统推算 <b>' + cur + '</b> ' + u
+    + ' → 校准为 <b>' + fmtNum(round2(v)) + '</b> ' + u;
+}
+
+function submitNum(e){
+  e.preventDefault();
+  if(!numCtx) return;
+  const v = Number($('#numVal').value);
+  if(!isFinite(v) || String($('#numVal').value).trim() === ''){ alert('请输入一个数字'); return; }
+  if(numCtx.mode === 'add' ? v <= 0 : v < 0){
+    alert(numCtx.mode === 'add' ? '请输入一个大于 0 的数量' : '请输入 0 或正数');
+    return;
+  }
+  numCtx.onOk(round2(v));
+  $('#dlgNum').close();
+}
+
 // 「又买了药」：在今天推算出的余量基础上，加上新买的数量
 function restockMed(id){
   const m = meds.filter(function(x){ return x.id === id; })[0];
   if(!m) return;
   const unit = m.unit || '片';
   const cur = stockNow(m);
-  const input = prompt('又买了多少 ' + unit + '？\n\n（现在推算还剩 ' + fmtNum(cur) + ' ' + unit + '，会加上你填的数量）', '');
-  if(input === null) return;
-  const v = Number(input);
-  if(!isFinite(v) || v <= 0){ alert('请输入一个大于 0 的数量'); return; }
-  m.stockBase = round2(cur + v);
-  m.stockDate = todayStr();
-  save(); render();
+  openNumDialog({
+    mode: 'add', cur: cur, unit: unit, value: '',
+    title: '又买了药',
+    sub: '新买的数量会加到「今天推算出的余量」上，基准日一并滚到今天 —— 和「批量调存量」同一套算法。',
+    label: '又买了多少 ' + unit,
+    hint: '按包装上的数填（1 盒 28 ' + unit + ' 就填 28）',
+    okText: '加到库存',
+    onOk: function(v){ m.stockBase = round2(cur + v); m.stockDate = todayStr(); save(); render(); }
+  });
 }
 
 // 「校准余量」：直接填今天数出来的实际数量（漏服、多吃、数错了都用它对齐）
@@ -1170,14 +1201,15 @@ function calibMed(id){
   if(!m) return;
   const unit = m.unit || '片';
   const cur = stockNow(m);
-  const input = prompt('今天实际还剩多少 ' + unit + '？\n\n（系统推算 ' + fmtNum(cur) + ' ' + unit
-    + '，改成你数出来的数）', String(cur));
-  if(input === null) return;
-  const v = Number(input);
-  if(!isFinite(v) || v < 0){ alert('请输入 0 或正数'); return; }
-  m.stockBase = round2(v);
-  m.stockDate = todayStr();
-  save(); render();
+  openNumDialog({
+    mode: 'set', cur: cur, unit: unit, value: cur, min: 0,
+    title: '校准余量',
+    sub: '按你今天实际数出来的数量填，程序以它为准重新往下推算（漏服、多吃、数错了都用它对齐）。',
+    label: '今天实际还剩多少 ' + unit,
+    hint: '填 0 也可以（等于已用完）；基准日一并滚到今天',
+    okText: '校准',
+    onOk: function(v){ m.stockBase = round2(v); m.stockDate = todayStr(); save(); render(); }
+  });
 }
 
 /* -------------------- 已经开药（一次把所有要补的药入库） -------------------- */
@@ -1514,13 +1546,10 @@ $('#peopleMgr').addEventListener('input', function(e){
 });
 $('#btnCancel').addEventListener('click', function(){ $('#dlgMed').close(); });
 $('#formMed').addEventListener('submit', submitMed);
-// 单位一改，「开药限制」提示里的单位跟着变
-// 表单里任何一项改了都要同步三处提示：开药限制的单位、用法那行的白话预览、
-// 「现在还剩多少」的实时结果（改了用法或余量日期，卡片的数就变了，这里要跟着变）
+// 单位一改，「开药限制」提示里的单位跟着变；用法改了，下面那行白话预览跟着变
 $('#formMed').addEventListener('input', function(){
   syncRxUnitTip();
   syncDosePreview();
-  syncStockPreview();
 });
 
 $('#btnDispense').addEventListener('click', openDisp);
@@ -1563,6 +1592,11 @@ $('#btnBulkPlus').addEventListener('click', function(){ applyBulk(1); });
 $('#btnBulkMinus').addEventListener('click', function(){ applyBulk(-1); });
 $('#btnBulkCancel').addEventListener('click', function(){ $('#dlgBulk').close(); });
 $('#formBulk').addEventListener('submit', function(e){ e.preventDefault(); });
+
+// 单个数字弹窗（又买了药 / 校准余量）
+$('#numVal').addEventListener('input', renderNumCalc);
+$('#btnNumCancel').addEventListener('click', function(){ $('#dlgNum').close(); });
+$('#formNum').addEventListener('submit', submitNum);
 $('#btnImport').addEventListener('click', function(){ $('#fileImport').click(); });
 $('#fileImport').addEventListener('change', function(e){
   const f = e.target.files && e.target.files[0];
