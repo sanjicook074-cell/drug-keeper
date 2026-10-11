@@ -470,12 +470,21 @@ PROBE = r"""
   ck('给了提示', /大于 0/.test(R.alerts.join(' | ')), R.alerts[R.alerts.length - 1]);
   q('#dlgNum').close();
 
-  // ---- 9. 页脚署名：网页最下面要有「人间小土鸡」（2026-10-11 用户要求）----
+  // ---- 9. 页脚署名：网页最下面「一条横线 + by 人间小土鸡」（2026-10-12 用户要求）----
   var sig = document.querySelector('.foot-sig');
   ck('页面底部有署名容器 .foot-sig', !!sig, sig ? '有' : '(无)');
-  ck('署名文字是「人间小土鸡」',
-     sig ? sig.textContent.trim() === '人间小土鸡' : false,
+  ck('署名文案是「by 人间小土鸡」',
+     sig ? sig.textContent.trim() === 'by 人间小土鸡' : false,
      sig ? sig.textContent.trim() : '(无)');
+  ck('署名前面有一条可见的横线（border-top 且不是最淡的分隔色）',
+     (function(){
+       if(!sig) return false;
+       var s = getComputedStyle(sig);
+       var w = parseFloat(s.borderTopWidth);
+       // var(--line)=#e6e8ec 是常规分隔色；var(--line-2)=#eef0f4 淡到几乎看不见
+       var c = s.borderTopColor.replace(/\s/g, '');
+       return w >= 1 && c !== 'rgba(0,0,0,0)' && c !== 'rgb(238,240,244)';
+     })(), sig ? getComputedStyle(sig).borderTopWidth + ' / ' + getComputedStyle(sig).borderTopColor : '(无)');
   // 位置：必须在 .wrap 里、两栏之后（真的在「最下面」，不是塞在别处）
   ck('署名在 .wrap 内、两栏之后（位于页面内容末尾）',
      !!(sig && sig.closest('.wrap') && sig.previousElementSibling
