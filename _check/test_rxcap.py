@@ -292,6 +292,61 @@ PROBE = r"""
   ck('批量加完后 stockNow == stockBase（基准日=今天，没被重复扣）',
      byName('维生素D滴剂').stockBase === stockNow(byName('维生素D滴剂')), '');
 
+  // ---- 8. ★ 2026-10-11 用户报的 bug：卡片右上角的天数 / 余量，与点「编辑」后
+  //      「现在还剩多少」那节看到的数必须对得上 ----
+  // 根因：那里存的是**你当时数出来的基准数 + 那天**，卡片上是**按用法扣到今天**的结果，
+  //   两个数天生不等；而界面从来没把「扣到今天是多少」显示出来 → 用户以为程序算错了。
+  // 修法：加一行实时结果 #stockPreview，走的是和卡片完全同一个函数（stockNow/daysLeft）。
+  var demo3 = [
+    { name:'编弹窗对账片', spec:'5mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+      stockBase:14, stockDate:agoD(13) },                        // 扣到今天 = 1 片 / 剩 1 天
+    { name:'没设用法片', spec:'—', perDose:1, unit:'片', cycleDays:1, timesPerCycle:0,
+      stockBase:30, stockDate:todayStr() }                       // 没设用法 → 不递减
+  ];
+  demo3.forEach(function(d){ d.id = uid(); });
+  setMeds(demo3); save(); render();
+
+  var c3 = card('编弹窗对账片');
+  var cardDay = c3 ? c3.querySelector('.days .v').textContent.trim() : '(无卡片)';
+  var mtxt = c3 ? c3.querySelector('.med-meta').textContent.replace(/\s+/g, ' ') : '';
+  var mq = mtxt.match(/余量约\s*([\d.]+)/);
+  var cardQty = mq ? mq[1] : '(没匹配到)';
+  ck('卡片右上角天数 = 1（14 片扣 13 天）', cardDay === '1', cardDay);
+  ck('卡片「余量约」= 1', cardQty === '1', cardQty);
+
+  openEditor(byName('编弹窗对账片').id);
+  var fmed = q('#formMed');
+  var prev = q('#stockPreview') ? q('#stockPreview').textContent.replace(/\s+/g, ' ').trim()
+                                : '(无 #stockPreview)';
+  ck('弹窗里有「现在还剩多少」的实时结果行', !!q('#stockPreview'), prev);
+  ck('弹窗里的「余量」仍是你当时数的基准数（没被偷偷改写）',
+     Math.abs(num(fmed.stockBase.value) - 14) < 1e-9, fmed.stockBase.value);
+  ck('实时结果里的余量 = 卡片的余量', prev.indexOf('还剩 1 片') >= 0, prev);
+  ck('实时结果里的天数 = 卡片的天数', /够\s*1\s*天/.test(prev), prev);
+  ck('实时结果点明「和卡片同一个数」', prev.indexOf('卡片上显示的就是这个数') >= 0, prev);
+
+  // 实时性：把「这个余量是哪天的」改成今天，结果必须跟着变成 14 片 / 14 天
+  fmed.stockDate.value = todayStr();
+  syncStockPreview();
+  var prev2 = q('#stockPreview').textContent.replace(/\s+/g, ' ').trim();
+  ck('改成今天 → 实时结果跟着变 14 片 / 14 天',
+     /还剩\s*14\s*片/.test(prev2) && /够\s*14\s*天/.test(prev2), prev2);
+  fmed.stockDate.value = agoD(13);
+  syncStockPreview();
+  ck('改回 13 天前 → 结果复原 1 片 / 1 天',
+     /还剩\s*1\s*片/.test(q('#stockPreview').textContent), q('#stockPreview').textContent);
+
+  // 没设用法：明说「不会自动往下扣」，不能显示成「够 0 天」
+  openEditor(byName('没设用法片').id);
+  var prev3 = q('#stockPreview').textContent.replace(/\s+/g, ' ').trim();
+  ck('没设用法 → 明说不自动扣，卡片就是原数', /不会自动往下扣/.test(prev3), prev3);
+  // 新增（还没保存过）的药：给填写提示，不许出现「够 0 天」这种吓人的字
+  openEditor(null);
+  var prev4 = q('#stockPreview').textContent.replace(/\s+/g, ' ').trim();
+  ck('新增药品时给的是填写提示，不是「够 0 天」',
+     prev4.length > 0 && prev4.indexOf('够') < 0, prev4);
+  q('#dlgMed').close();
+
   R.meds = meds.map(function(x){ return x.name + '|qty=' + dispQty(x) + '|cap=' + rxCap(x); });
 
   var pre = document.createElement('pre');

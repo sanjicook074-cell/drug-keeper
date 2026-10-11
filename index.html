@@ -194,6 +194,9 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
   margin-top:-2px;padding:0 2px}
 .dose-tip{font-size:11.5px;color:var(--faint)}
 #dosePreview{font-size:11.5px;color:var(--brand)}
+/* 「现在还剩多少」下面那行实时结果：扣到今天实际剩多少 / 够几天 —— 和卡片同一个口径 */
+#stockPreview{font-size:11.5px;color:var(--brand)}
+#stockPreview b{font-size:13px;font-weight:660}
 .dlg-f{display:flex;justify-content:flex-end;gap:9px;padding:0 22px 20px}
 .sec-title{grid-column:1/-1;font-size:12px;font-weight:650;color:var(--muted);
   margin:6px 0 -4px;padding-top:10px;border-top:1px solid var(--line-2)}
@@ -350,10 +353,11 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
         <div class="sec-title">现在还剩多少</div>
         <label>余量
           <input name="stockBase" type="number" step="0.25" min="0" value="0">
+          <span class="hintline" id="stockPreview"></span>
         </label>
         <label>这个余量是哪天的
           <input name="stockDate" type="date">
-          <span class="hintline">默认今天</span>
+          <span class="hintline">默认今天。填的是<b>你数出这个余量的那天</b>——程序按用法从那天的量往下扣</span>
         </label>
 
         <div class="sec-title">开药限制</div>
@@ -926,6 +930,7 @@ function openEditor(id){
   }
   syncRxUnitTip();
   syncDosePreview();
+  syncStockPreview();
   $('#dlgMed').showModal();
   setTimeout(function(){ f.name.focus(); }, 30);
 }
@@ -955,6 +960,40 @@ function syncDosePreview(){
     el.textContent = '＝ 每 ' + cd + ' 天 ' + fmtNum(total) + ' ' + u
       + '，平均每天 ' + fmtNum(dailyUse({ perDose: pd, timesPerCycle: tc, cycleDays: cd })) + ' ' + u;
   }
+}
+
+// 「现在还剩多少」下面那行实时结果。
+// ★ 为什么要这一行（2026-10-11 用户报的 bug）：
+//   这里填的「余量 + 日期」是**你当时数出来的基准数**，而卡片右上角的天数 / 卡片上的
+//   「余量约 X」是按用法**扣到今天**的结果 —— 两个数天然不等。用户点开编辑看见 14、
+//   卡片却写 1 天，就以为程序算错了。把这句「扣到今天还剩 X、够 Y 天（卡片上就是这个数）」
+//   当场算给用户看，两个口径当场对上，不用他自己换算。
+function syncStockPreview(){
+  const f = $('#formMed');
+  const el = $('#stockPreview');
+  if(!el) return;
+  const u = (f.unit.value || '').trim() || '片';
+  const base = Math.max(0, num(f.stockBase.value));
+  // 和提交时同一套取值口径（同一个 med 形状），所以这里的数必然等于保存后的卡片数
+  const m = {
+    perDose: Math.max(0, num(f.perDose.value, 1)),
+    timesPerCycle: Math.max(0, num(f.timesPerCycle.value, 1)),
+    cycleDays: Math.max(1, Math.round(num(f.cycleDays.value, 1)) || 1),
+    stockBase: base,
+    stockDate: f.stockDate.value || todayStr()
+  };
+  if(dailyUse(m) <= 0){
+    el.textContent = '没设用法 → 不会自动往下扣，卡片上直接显示这个数';
+    return;
+  }
+  if(editingId === null && base <= 0){
+    el.textContent = '填你今天数出来的数；之后卡片会按用法自动往下扣，不用天天手动改';
+    return;
+  }
+  const st = stockNow(m);
+  const dl = daysLeft(m);
+  el.innerHTML = '扣到今天：还剩 <b>' + fmtNum(st) + '</b> ' + esc(u)
+    + '，够 <b>' + fmtDays(dl) + '</b> 天　·　卡片上显示的就是这个数';
 }
 
 function submitMed(e){
@@ -1423,10 +1462,12 @@ $('#peopleMgr').addEventListener('input', function(e){
 $('#btnCancel').addEventListener('click', function(){ $('#dlgMed').close(); });
 $('#formMed').addEventListener('submit', submitMed);
 // 单位一改，「开药限制」提示里的单位跟着变
-// 表单里任何一项改了都要同步两处提示：开药限制的单位、用法那行的白话预览
+// 表单里任何一项改了都要同步三处提示：开药限制的单位、用法那行的白话预览、
+// 「现在还剩多少」的实时结果（改了用法或余量日期，卡片的数就变了，这里要跟着变）
 $('#formMed').addEventListener('input', function(){
   syncRxUnitTip();
   syncDosePreview();
+  syncStockPreview();
 });
 
 $('#btnDispense').addEventListener('click', openDisp);
