@@ -88,6 +88,10 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 .cols{display:grid;grid-template-columns:1.55fr 1fr;gap:20px;align-items:start}
 @media(max-width:900px){.cols{grid-template-columns:1fr}}
 
+/* ---------- 页脚署名 ---------- */
+.foot-sig{margin-top:26px;padding-top:14px;border-top:1px solid var(--line-2);
+  text-align:center;font-size:12px;color:var(--faint);letter-spacing:.06em}
+
 .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
   box-shadow:var(--shadow);overflow:hidden}
 .panel-h{display:flex;align-items:center;justify-content:space-between;gap:10px;
@@ -232,7 +236,7 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 /* ---------- 打印 ---------- */
 @media print{
   body{background:#fff}
-  .top-actions,.stats,.col-main,.side-actions,.panel-h .hint,.blk-tip{display:none !important}
+  .top-actions,.stats,.col-main,.side-actions,.panel-h .hint,.blk-tip,.foot-sig{display:none !important}
   .cols{grid-template-columns:1fr}
   .panel{border:none;box-shadow:none}
   .panel-h{border-bottom:1px solid #ddd}
@@ -312,6 +316,10 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
       </div>
     </aside>
   </div>
+
+  <footer class="foot-sig">
+    <span>人间小土鸡</span>
+  </footer>
 </div>
 
 <!-- 药品编辑弹窗 -->

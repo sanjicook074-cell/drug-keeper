@@ -470,6 +470,21 @@ PROBE = r"""
   ck('给了提示', /大于 0/.test(R.alerts.join(' | ')), R.alerts[R.alerts.length - 1]);
   q('#dlgNum').close();
 
+  // ---- 9. 页脚署名：网页最下面要有「人间小土鸡」（2026-10-11 用户要求）----
+  var sig = document.querySelector('.foot-sig');
+  ck('页面底部有署名容器 .foot-sig', !!sig, sig ? '有' : '(无)');
+  ck('署名文字是「人间小土鸡」',
+     sig ? sig.textContent.trim() === '人间小土鸡' : false,
+     sig ? sig.textContent.trim() : '(无)');
+  // 位置：必须在 .wrap 里、两栏之后（真的在「最下面」，不是塞在别处）
+  ck('署名在 .wrap 内、两栏之后（位于页面内容末尾）',
+     !!(sig && sig.closest('.wrap') && sig.previousElementSibling
+        && sig.previousElementSibling.classList.contains('cols')),
+     sig && sig.previousElementSibling ? sig.previousElementSibling.className : '(无前一个兄弟)');
+  // 只有一处，别重复
+  ck('署名只出现一次', document.querySelectorAll('.foot-sig').length === 1,
+     document.querySelectorAll('.foot-sig').length);
+
   R.meds = meds.map(function(x){ return x.name + '|qty=' + dispQty(x) + '|cap=' + rxCap(x); });
 
   var pre = document.createElement('pre');
@@ -517,6 +532,21 @@ def main():
         print(dom_ns[:1500])
         return 3
     data = json.loads(html.unescape(mm.group(1)))
+
+    # ---- 源码级：署名不进打印（打印出去的是给医生的药清单，署名属噪音）----
+    mprint = re.search(r'@media\s+print\s*\{(.*?)\n\}', src, flags=re.S)
+    data["cases"].append({
+        "name": "署名已排除在打印之外（@media print 里隐藏 .foot-sig）",
+        "pass": bool(mprint) and ".foot-sig" in mprint.group(1),
+        "got": "已隐藏" if (mprint and ".foot-sig" in mprint.group(1)) else "(未隐藏)",
+    })
+    # ---- 源码级：署名唯一且文案正确 ----
+    n_sig = src.count('class="foot-sig"')
+    data["cases"].append({
+        "name": "源码里署名容器只有一处",
+        "pass": n_sig == 1,
+        "got": n_sig,
+    })
 
     fails = [c for c in data["cases"] if not c["pass"]]
     for c in data["cases"]:
