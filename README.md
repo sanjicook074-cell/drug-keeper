@@ -14,6 +14,13 @@
 
 这个程序把这件事翻过来：**先把家里有什么药、怎么吃记一遍，之后只顾着看颜色**。
 
+刚打开是空的，两个入口：**「添加第一种药」**一味一味地记，或者**「底方录入」**
+拿一张处方把整页药一次记进来。
+
+![刚打开的样子](docs/screenshot-empty.png)
+
+记完就是这样，之后只顾着看颜色：
+
 ![主界面](docs/screenshot-main.png)
 
 ---
@@ -256,21 +263,30 @@ python tools/rx_local/rx_local.py 处方照片.jpg --url https://<线上地址>/
 ```
 index.html                程序本体：单文件，拷走就能跑
 tools/rx_local/rx_local.py  可选的「本地解析」工具：Windows 自带 OCR 把处方照片读成药行（不联网、不上传照片）
-_check/test_rxcap.py      自检脚本 —— 无头 Chrome 跑 228 项断言（口径、入库、文案、批量调存量、中间弹窗、底方解析、#rx= 链接跨实现往返、助手说明与「不认照片」防回潮、真药名自查）
+_check/test_rxcap.py      自检脚本 —— 无头 Chrome 跑 231 项断言（口径、入库、文案、批量调存量、中间弹窗、底方解析、#rx= 链接跨实现往返、助手说明与「不认照片」防回潮、真药名自查，以及「README 说的和事实一致」）
 _check/test_rx_local.py   上面那个工具的纯函数自检 —— 59 项，不需要图片、不需要 OCR 语言包
 _check/shot.py            重新生成 docs/ 里的截图
-docs/                     README 用的截图
+docs/                     README 用的截图（每张都在上面被引用；没有没人看的图）
+LICENSE                   MIT，署名「人间小土鸡」
+.gitignore                挡住 `.workbuddy/`、`__pycache__`、以及下面那个本机专用的名单
 ```
+
+> `_check/_tmp_deny_names.txt`（真药名名单）**故意不在上面**：它被 `.gitignore` 挡住，
+> 是本机自检用来扫「要发布的文件里有没有真药名」的——**写进断言就等于把它们发出去了**。
+> 别人 clone 下来会自动跳过它，自检也照样跑。
 
 改完程序想自己验一遍：
 
 ```bash
-python _check/test_rxcap.py       # 网页本体：228 项
+python _check/test_rxcap.py       # 网页本体：231 项
 python _check/test_rx_local.py    # 本地解析工具：59 项（纯函数，跑得快）
 ```
 
 前者会用无头 Chrome 打开一份临时副本（数据由脚本临时注入，不会写回 `index.html`），
-把 228 条断言的通过情况打印出来，退出码非 0 就是有回归。
+把 231 条断言的通过情况打印出来，退出码非 0 就是有回归。
+最后三条是**校验这份 README 自己**的：引用到的截图都在、`docs/` 里没有没人引用的孤儿图、
+「项目结构」里列的每一项都存在、以及**上面写的断言条数和实际跑出来的一致**
+（这条是自指的，所以你要是加了断言却忘了改上面那行数字，它会当场红）。
 
 > 网页自检里有一类坑值得单独记住：`dialog.close()` 派发 `close` 事件是**排队**的，
 > 而且它走 "DOM manipulation" 任务源、`setTimeout` 走定时器任务源，**两者之间没有先后保证**——

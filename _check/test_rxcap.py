@@ -1054,6 +1054,64 @@ def main():
     # ---- 跨实现：本地工具生成的 #rx= 链接，真页面解得开吗 ----
     data["cases"].extend(cross_check_link())
 
+    # ---- README 的声明必须和事实对得上（2026-10-13 加）----
+    #   ★ 为什么值得几条断言：README 就是本项目**对外的那张报表**。它写着「跑 228 项断言」
+    #     「docs/ 里每张图都被引用」「项目结构里列的文件都在」—— 而**没人会自己去核第二遍**。
+    #     这正是本机那条反复出现的教训（见 git-sync §7.13/§7.16/§7.17）：
+    #     **报告和事实之间少一道校验，它就迟早会说反话，而且失效时不响。**
+    #     2026-10-13 人工排查时真对出两处：`docs/screenshot-empty.png` 提交了却没被引用，
+    #     项目结构里也没列 `LICENSE`（别人 clone 下来一眼确认授权的地方）。
+    proj = os.path.dirname(here)
+    rd = ""
+    rd_path = os.path.join(proj, "README.md")
+    if os.path.exists(rd_path):
+        with open(rd_path, encoding="utf-8") as fh:
+            rd = fh.read()
+
+    # (a) 截图：README 引用的必须存在；docs/ 里有的必须被引用（不许有没人看的孤儿图）
+    ref = set(re.findall(r"docs/(screenshot-[a-z-]+\.png)", rd))
+    docs_dir = os.path.join(proj, "docs")
+    have = set()
+    if os.path.isdir(docs_dir):
+        have = {f for f in os.listdir(docs_dir)
+                if f.startswith("screenshot-") and f.endswith(".png")}
+    _miss = sorted(ref - have)
+    _orph = sorted(have - ref)
+    data["cases"].append({
+        "name": "README 引用的截图都存在，且 docs/ 里没有孤儿图（引 %d / 有 %d）"
+                % (len(ref), len(have)),
+        "pass": not _miss and not _orph,
+        "got": ("；".join((["引用但不存在：" + "、".join(_miss)] if _miss else [])
+                          + (["没人引用：" + "、".join(_orph)] if _orph else []))) or "0",
+    })
+
+    # (b) 「项目结构」那块里列的每一项都真的存在
+    seg = re.search(r"##\s*项目结构\s*```(.*?)```", rd, flags=re.S)
+    toks = []
+    for ln in (seg.group(1) if seg else "").splitlines():
+        tok = ln.strip().split("  ")[0].strip()
+        if tok and not tok.startswith("#"):
+            toks.append(tok)
+    _bad = [t for t in toks if not os.path.exists(os.path.join(proj, t))]
+    data["cases"].append({
+        "name": "README「项目结构」里列的每一项都真的存在（%d 项）" % len(toks),
+        "pass": bool(toks) and not _bad,
+        "got": "、".join(_bad) if _bad else "0",
+    })
+
+    # (c) README 里写的断言条数 == 本脚本实际跑出来的条数
+    #     ⚠️ 这里有个自指：本命断言自己也算一条，所以预期值 = 已累积条数 + 1。
+    #     有人加了断言却忘了改 README，这条就会红 —— 那正是它存在的意义。
+    _n = len(data["cases"]) + 1
+    claims = set(re.findall(r"(\d+)\s*(?:项|条)\s*断言", rd)) | \
+        set(re.findall(r"网页本体：(\d+)\s*项", rd))
+    data["cases"].append({
+        "name": "README 写的断言条数 == 实际（说 %s，实际 %d）"
+                % ("/".join(sorted(claims)) or "?", _n),
+        "pass": bool(claims) and {str(_n)} == claims,
+        "got": "一致" if claims == {str(_n)} else "对不上——改 README 里的数字",
+    })
+
     fails = [c for c in data["cases"] if not c["pass"]]
     for c in data["cases"]:
         print(("  OK  " if c["pass"] else "  FAIL") + "  " + c["name"] + "   → " + str(c["got"]))
