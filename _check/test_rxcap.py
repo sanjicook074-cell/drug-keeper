@@ -403,9 +403,11 @@ PROBE = r"""
   q('#dlgMed').close();
 
   // ---- 9. ★ 2026-10-11 用户要求：「又买了药」「校准余量」也走中间弹窗 ----
-  //    原来是浏览器原生 prompt（顶部小框、手机上难用、看不见改完是多少）。
-  //    现在共用 #dlgNum，必须像「批量调存量」一样在页面中间，并把
-  //    「现在推算 X → 改完 Y」摆出来。同时**不许再调 window.prompt**。
+  //    原来是浏览器原生 prompt（顶部小框、手机上难用）。现在共用 #dlgNum，
+  //    必须像「批量调存量」一样在页面中间，并且**不许再调 window.prompt**。
+  //    ★ 2026-10-12 用户要求（两处）：①弹窗里那行实时对照整行删掉
+  //      ——「现在推算还剩 X」/「系统推算 X → 校准为 Y」，元素 #numCalc 与函数
+  //      renderNumCalc 都要消失；②输入单位不再用 0.25，改成 1 片一档。
   var restName = '每日两片对账';                  // 现在 4 片，每日 2 片
   setMeds([
     { name: restName, spec:'5mg', perDose:2, unit:'片', cycleDays:1, timesPerCycle:1,
@@ -423,15 +425,14 @@ PROBE = r"""
   ck('没有调用浏览器原生 prompt', R.prompts.length === promptsBefore, R.prompts.join(' | '));
   ck('弹窗标题是「又买了药」', dlgNumTxt('#numTitle') === '又买了药', dlgNumTxt('#numTitle'));
   ck('输入行的标签写了单位', /又买了多少\s*片/.test(dlgNumTxt('#numLabel')), dlgNumTxt('#numLabel'));
-  ck('填之前先把现状摆出来（现在推算还剩 4 片）',
-     /现在推算还剩\s*4\s*片/.test(dlgNumTxt('#numCalc')), dlgNumTxt('#numCalc'));
-  // 输入 28 → 对照行必须给出「4 ＋ 28 → 32」
+  // ★ 那行实时对照必须**彻底消失**：元素不在 DOM、函数也不存在
+  ck('#numCalc 那行实时对照已从 DOM 删掉', !q('#numCalc'), q('#numCalc') ? '还在' : '(无)');
+  ck('renderNumCalc 函数也已删掉', typeof renderNumCalc === 'undefined', typeof renderNumCalc);
+  // ★ 单位：1 片一档，不再是 0.25
+  ck('输入框 step = 1（不再 0.25 一档）', q('#numVal').step === '1', q('#numVal').step);
+  ck('表单带 novalidate（校验不弹浏览器原生气泡）',
+     q('#formNum').hasAttribute('novalidate'), q('#formNum').hasAttribute('novalidate'));
   q('#numVal').value = '28';
-  renderNumCalc();
-  ck('对照行写成「现在还剩 4 片 ＋ 新买 28 片 → 入库后 32 片」',
-     /现在还剩\s*4\s*片/.test(dlgNumTxt('#numCalc'))
-     && /新买\s*28\s*片/.test(dlgNumTxt('#numCalc'))
-     && /入库后\s*32\s*片/.test(dlgNumTxt('#numCalc')), dlgNumTxt('#numCalc'));
   ck('按钮文案是「加到库存」', dlgNumTxt('#btnNumOk') === '加到库存', dlgNumTxt('#btnNumOk'));
   submitNum({ preventDefault: function(){} });
   ck('确认后库存 = 4 + 28 = 32', byName(restName).stockBase === 32, byName(restName).stockBase);
@@ -441,7 +442,6 @@ PROBE = r"""
   // 9b. 校准余量：预填系统推算值，填 0 也允许
   restockMed(byName(restName).id);            // 先开一次再取消，确认不写数据
   q('#numVal').value = '999';
-  renderNumCalc();
   ck('取消不会改数据（仍是 32）', byName(restName).stockBase === 32, byName(restName).stockBase);
   q('#dlgNum').close();
 
@@ -449,12 +449,10 @@ PROBE = r"""
   ck('「校准余量」用的也是 #dlgNum', q('#dlgNum').open, '');
   ck('校准标题正确', dlgNumTxt('#numTitle') === '校准余量', dlgNumTxt('#numTitle'));
   ck('校准预填系统推算的 7', q('#numVal').value === '7', q('#numVal').value);
-  ck('校准的对照行是「系统推算 7 片 → 校准为 …」',
-     /系统推算\s*7\s*片/.test(dlgNumTxt('#numCalc')), dlgNumTxt('#numCalc'));
+  ck('校准弹窗里同样没有那行对照', !q('#numCalc'), q('#numCalc') ? '还在' : '(无)');
+  ck('校准的提示写明按整数片填', /按整数\s*片/.test(dlgNumTxt('#numHint')), dlgNumTxt('#numHint'));
+  ck('校准的输入框 step 也是 1', q('#numVal').step === '1', q('#numVal').step);
   q('#numVal').value = '3';
-  renderNumCalc();
-  ck('改成 3 → 对照行给出 7 → 3', /系统推算\s*7\s*片\s*→\s*校准为\s*3\s*片/.test(dlgNumTxt('#numCalc')),
-     dlgNumTxt('#numCalc'));
   submitNum({ preventDefault: function(){} });
   ck('校准后存 3 片 / 基准今天',
      byName('校准用对照片').stockBase === 3 && byName('校准用对照片').stockDate === todayStr(),
@@ -555,6 +553,22 @@ def main():
         "name": "源码里署名容器只有一处",
         "pass": n_sig == 1,
         "got": n_sig,
+    })
+    # ---- 源码级：单数字弹窗那行实时对照已彻底清除（2026-10-12 用户要求）----
+    #   只数「代码痕迹」，注释里提到这个名字不算（注释是留给维护者的说明）
+    n_calc = (src.count('id="numCalc"') + src.count('renderNumCalc(')
+              + src.count("#numCalc')"))
+    data["cases"].append({
+        "name": "源码里已无 numCalc 元素 / renderNumCalc 调用（注释除外）",
+        "pass": n_calc == 0,
+        "got": n_calc,
+    })
+    # ---- 源码级：单位不再是 0.25 一档（#numVal 的 step 已是 1）----
+    mstep = re.search(r'id="numVal"[^>]*step="([^"]+)"', src)
+    data["cases"].append({
+        "name": "源码里 #numVal 的 step = 1（不再 0.25）",
+        "pass": bool(mstep) and mstep.group(1) == "1",
+        "got": mstep.group(1) if mstep else "(没找到)",
     })
 
     fails = [c for c in data["cases"] if not c["pass"]]

@@ -461,8 +461,11 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 </dialog>
 
 <!-- 单个数字弹窗：「又买了药」/「校准余量」共用（替代浏览器自带的 prompt 小框） -->
+<!-- ★ 2026-10-12 用户要求：单位不用 0.25（半片那种粒度数药片时用不上）→ step="1"，按 1 片计。
+     form 上加 novalidate：否则浏览器会用自己的气泡拦下 step/min 不符的值（用户明确讨厌原生弹窗），
+     校验一律交给 submitNum() 里的 alert。仍想填 0.5 之类的可以直接打进去，不会被拦。 -->
 <dialog id="dlgNum">
-  <form id="formNum">
+  <form id="formNum" novalidate>
     <div class="dlg-h">
       <h3 id="numTitle">数量</h3>
       <p id="numSub"></p>
@@ -470,10 +473,9 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
     <div class="dlg-b">
       <label class="bulk-days">
         <span id="numLabel">数量</span>
-        <input name="val" id="numVal" type="number" step="0.25" min="0" autocomplete="off">
+        <input name="val" id="numVal" type="number" step="1" min="0" autocomplete="off">
         <span class="hintline" id="numHint"></span>
       </label>
-      <div class="disp-sum" id="numCalc"></div>
     </div>
     <div class="dlg-f">
       <button type="button" class="btn ghost" id="btnNumCancel">取消</button>
@@ -1128,16 +1130,18 @@ function renderPeopleMgr(){
 }
 
 /* -------------------- 单个数字弹窗（「又买了药」/「校准余量」共用） -------------------- */
-// ★ 2026-10-11 用户要求：这两个入口原来是浏览器原生 prompt —— 顶部一条小框、手机上尤其难用，
-//   而且看不见「改完会变成多少」。改成和「批量调存量」同一套**中间弹窗**：
-//   标题 + 说明 + 输入框 + 一行「现在 → 改完」的实时对照 + 取消/确定。
+// ★ 2026-10-11 用户要求：这两个入口原来是浏览器原生 prompt —— 顶部一条小框、手机上尤其难用。
+//   改成和「批量调存量」同一套**中间弹窗**：标题 + 说明 + 输入框 + 取消/确定。
 //   两个入口共用同一个 dialog（#dlgNum），只是 mode 不同：
 //     · mode='add'：cur + 你填的量 → 入库（又买了药）
 //     · mode='set'：直接校准成你填的数（校准余量）
+// ★ 2026-10-12 用户要求：把弹窗里那行实时对照（「现在推算还剩 X」「系统推算 X → 校准为 Y」）
+//   **整行删掉**，只留标题/说明/输入框/按钮。所以下面不再有 renderNumCalc / #numCalc。
+//   ⚠️ 以后别再把它加回来 —— 用户明确嫌它啰嗦（和编辑弹窗那行蓝字同一次评审里砍掉的）。
 let numCtx = null;
 
 function openNumDialog(o){
-  numCtx = o;                                   // { mode, cur, unit, onOk }
+  numCtx = o;                                   // { mode, onOk }（cur/unit 已不再参与显示）
   $('#numTitle').textContent = o.title;
   $('#numSub').textContent   = o.sub;
   $('#numLabel').textContent = o.label;
@@ -1148,30 +1152,14 @@ function openNumDialog(o){
   const ok = $('#btnNumOk');
   ok.textContent = o.okText || '确定';
   ok.className   = 'btn ' + (o.danger ? 'danger' : 'primary');
-  renderNumCalc();
   $('#dlgNum').showModal();
   inp.focus();
   inp.select();
 }
 
-// 「现在推算 X → 改完 Y」。和批量弹窗一样先把结果摆出来，不让人靠猜（填之前显示现状）。
-function renderNumCalc(){
-  const el = $('#numCalc');
-  if(!el || !numCtx) return;
-  const u = esc(numCtx.unit);
-  const cur = fmtNum(numCtx.cur);
-  const v = Number($('#numVal').value);
-  if(numCtx.mode === 'add'){
-    if(!isFinite(v) || v <= 0){ el.innerHTML = '现在推算还剩 <b>' + cur + '</b> ' + u; return; }
-    el.innerHTML = '现在还剩 <b>' + cur + '</b> ' + u
-      + ' ＋ 新买 <b>' + fmtNum(round2(v)) + '</b> ' + u
-      + ' → 入库后 <b>' + fmtNum(round2(numCtx.cur + v)) + '</b> ' + u;
-    return;
-  }
-  if(!isFinite(v) || v < 0){ el.innerHTML = '系统推算还剩 <b>' + cur + '</b> ' + u; return; }
-  el.innerHTML = '系统推算 <b>' + cur + '</b> ' + u
-    + ' → 校准为 <b>' + fmtNum(round2(v)) + '</b> ' + u;
-}
+
+// 「现在推算 X → 改完 Y」那行实时对照已于 2026-10-12 按用户要求整行删除（连函数一起），
+// 见上面 openNumDialog 处的注释。别再恢复。
 
 function submitNum(e){
   e.preventDefault();
@@ -1193,7 +1181,7 @@ function restockMed(id){
   const unit = m.unit || '片';
   const cur = stockNow(m);
   openNumDialog({
-    mode: 'add', cur: cur, unit: unit, value: '',
+    mode: 'add',
     title: '又买了药',
     sub: '新买的数量会加到「今天推算出的余量」上，基准日一并滚到今天 —— 和「批量调存量」同一套算法。',
     label: '又买了多少 ' + unit,
@@ -1210,11 +1198,11 @@ function calibMed(id){
   const unit = m.unit || '片';
   const cur = stockNow(m);
   openNumDialog({
-    mode: 'set', cur: cur, unit: unit, value: cur, min: 0,
+    mode: 'set', value: cur, min: 0,
     title: '校准余量',
     sub: '按你今天实际数出来的数量填，程序以它为准重新往下推算（漏服、多吃、数错了都用它对齐）。',
     label: '今天实际还剩多少 ' + unit,
-    hint: '填 0 也可以（等于已用完）；基准日一并滚到今天',
+    hint: '按整数 ' + unit + ' 填；填 0 也可以（等于已用完），基准日一并滚到今天',
     okText: '校准',
     onOk: function(v){ m.stockBase = round2(v); m.stockDate = todayStr(); save(); render(); }
   });
@@ -1601,8 +1589,7 @@ $('#btnBulkMinus').addEventListener('click', function(){ applyBulk(-1); });
 $('#btnBulkCancel').addEventListener('click', function(){ $('#dlgBulk').close(); });
 $('#formBulk').addEventListener('submit', function(e){ e.preventDefault(); });
 
-// 单个数字弹窗（又买了药 / 校准余量）
-$('#numVal').addEventListener('input', renderNumCalc);
+// 单个数字弹窗（又买了药 / 校准余量）—— 输入时不再有实时对照行要同步（2026-10-12 已删）
 $('#btnNumCancel').addEventListener('click', function(){ $('#dlgNum').close(); });
 $('#formNum').addEventListener('submit', submitNum);
 $('#btnImport').addEventListener('click', function(){ $('#fileImport').click(); });

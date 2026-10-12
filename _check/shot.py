@@ -50,9 +50,13 @@ HOOKS = {
     #   挑「每天 2 片」那味：卡片写「余量约 20 片」，弹窗里预填的也该是 20。
     "edit": "openEditor(meds[2].id);",
     # ★ 「又买了药」现在是中间弹窗（原来走浏览器原生 prompt，2026-10-11 用户要求改掉）。
-    #   这里顺手把数量填成 28，把「现在还剩 20 片 ＋ 新买 28 片 → 入库后 48 片」那行拍下来。
+    #   2026-10-12 用户要求把那行实时对照删掉，所以这里只填数、不再调 renderNumCalc。
+    #   顺手把输入框填成 28，拍的是「标题 + 说明 + 输入框 + 按钮」的干净形态。
     "restock": "restockMed(meds[2].id);"
-               " document.querySelector('#numVal').value = '28'; renderNumCalc();",
+               " document.querySelector('#numVal').value = '28';",
+    # ★ 校准余量：同一个弹窗的另一种模式，同样已无实时对照行（2026-10-12）。
+    #   拍它是因为用户就是在这个弹窗里提的「不用 0.25 这一档」——留一张可核 step=1。
+    "calib": "calibMed(meds[2].id);",
 }
 
 
