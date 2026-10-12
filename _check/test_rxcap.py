@@ -240,7 +240,15 @@ PROBE = r"""
   ck('没设用法的那味被跳过', upR['维生素D滴剂'].skip === true && dnR['维生素D滴剂'].skip === true, '');
   ck('跳过的药不会被改动（next 仍 30）', upR['维生素D滴剂'].next === 30, upR['维生素D滴剂'].next);
 
-  // --- 7b. 弹窗预览 ---
+  // --- 7b. 弹窗预览（2026-10-12：可勾选 + 顺序同主页 + 档位色）---
+  // 这一段的 demo2 正好能验顺序：录入顺序是 氨氯/阿托/二甲/阿司匹林/依洛尤/维D，
+  // 而按档位排完后 依洛尤（每 14 天 1 支，剩 14 天 = 偏少）要排到阿司匹林（剩 80 天 = 充足）前面。
+  function namesOf(sel){
+    return Array.prototype.map.call(document.querySelectorAll(sel), function(el){
+      var t = el.firstChild;
+      return t ? String(t.nodeValue).trim() : '';
+    });
+  }
   openBulk();
   var brows = document.querySelectorAll('#bulkList .disp-row');
   ck('弹窗列出全部 6 味（含跳过的那味）', brows.length === 6, brows.length);
@@ -249,13 +257,83 @@ PROBE = r"""
   ck('预览同时给出加/减两个方向的数', /＋7 天 → 8 片/.test(body) && /−7 天/.test(body), body.slice(0, 200));
   ck('预览标出会被减到 0 的药', /已减到 0/.test(body), '');
   ck('预览标出没设用法的药', /没法按天算/.test(body), '');
-  ck('按钮带上了天数', /全部增加 7 天/.test(q('#btnBulkPlus').textContent)
-     && /全部减少 7 天/.test(q('#btnBulkMinus').textContent),
+
+  // ★ 顺序必须和主页一模一样
+  var homeOrder = namesOf('#list .med .med-name');
+  var bulkOrder = namesOf('#bulkList .disp-row .disp-name');
+  ck('弹窗里的排列顺序和主页一致',
+     homeOrder.length === 6 && homeOrder.join('|') === bulkOrder.join('|'),
+     '主页 ' + homeOrder.join(' / ') + '　弹窗 ' + bulkOrder.join(' / '));
+  ck('排序确实按档位重排了（依洛尤排在阿司匹林前面，不是录入顺序）',
+     bulkOrder.indexOf('依洛尤单抗注射液') < bulkOrder.indexOf('阿司匹林肠溶片'),
+     bulkOrder.join(' / '));
+
+  // ★ 颜色：行上有档位标记，且档位和主页的 level() 一致
+  function lvCount(sel, v){
+    return document.querySelectorAll(sel + '[data-lv=' + v + ']').length;
+  }
+  ck('偏少（soon）的 4 味行上带 soon 标记', lvCount('#bulkList .disp-row', 'soon') === 4,
+     lvCount('#bulkList .disp-row', 'soon'));
+  ck('充足的 1 味带 ok 标记', lvCount('#bulkList .disp-row', 'ok') === 1,
+     lvCount('#bulkList .disp-row', 'ok'));
+  ck('没设用法的 1 味带 na 标记', lvCount('#bulkList .disp-row', 'na') === 1,
+     lvCount('#bulkList .disp-row', 'na'));
+  ck('每行还挂了「已用完 / 偏少 / 充足 / 未设用法」文字标',
+     document.querySelectorAll('#bulkList .disp-name .tag').length === 6,
+     document.querySelectorAll('#bulkList .disp-name .tag').length);
+
+  // ★ 勾选框：默认把「能按天换算」的都勾上，没设用法的勾不了
+  var cks = document.querySelectorAll('#bulkList input.bulk-ck');
+  var nCk = Array.prototype.filter.call(cks, function(c){ return c.checked; }).length;
+  var nDis = Array.prototype.filter.call(cks, function(c){ return c.disabled; }).length;
+  ck('每行都有勾选框', cks.length === 6, cks.length);
+  ck('默认勾上 5 味、禁用 1 味（没设用法那味）', nCk === 5 && nDis === 1, nCk + ' / ' + nDis);
+  ck('底部写清已勾选几种', /已勾选 5 \/ 5 种/.test(q('#bulkPickHint').textContent),
+     q('#bulkPickHint').textContent);
+  ck('按钮带上了天数', /勾选的 5 种各增加 7 天/.test(q('#btnBulkPlus').textContent)
+     && /勾选的 5 种各减少 7 天/.test(q('#btnBulkMinus').textContent),
      q('#btnBulkPlus').textContent);
   q('#bulkDays').value = 14; renderBulk();
-  ck('改天数 → 按钮与预览跟着变', /全部增加 14 天/.test(q('#btnBulkPlus').textContent),
+  ck('改天数 → 按钮与预览跟着变', /勾选的 5 种各增加 14 天/.test(q('#btnBulkPlus').textContent),
      q('#btnBulkPlus').textContent);
   q('#bulkDays').value = 7; renderBulk();
+
+  // ★ 取消勾选一味 → 那一行不再给数字，汇总与按钮当场跟着变
+  var aspId = byName('阿司匹林肠溶片').id;
+  var aspCk = document.querySelector('#bulkList input.bulk-ck[data-id="' + aspId + '"]');
+  aspCk.checked = false;
+  aspCk.dispatchEvent(new Event('change', {bubbles:true}));
+  var aspRow = q('#bulkAfter-' + aspId).textContent.trim();
+  ck('取消勾选后那行写「未勾选」，不再给数字', aspRow === '未勾选', aspRow);
+  ck('取消勾选 → 底部变成已勾选 4 / 5', /已勾选 4 \/ 5 种/.test(q('#bulkPickHint').textContent),
+     q('#bulkPickHint').textContent);
+  ck('取消勾选 → 按钮文案变成 4 种', /勾选的 4 种各增加 7 天/.test(q('#btnBulkPlus').textContent),
+     q('#btnBulkPlus').textContent);
+  ck('没被取消的行照旧给数字', /＋7 天/.test(q('#bulkAfter-' + byName('盐酸二甲双胍缓释片').id).textContent),
+     q('#bulkAfter-' + byName('盐酸二甲双胍缓释片').id).textContent);
+
+  // ★ 全不选 → 两个确认按钮禁用（避免"什么都没选就点确认"）
+  q('#btnBulkNone').click();
+  ck('全不选 → 已勾选 0 / 5', /已勾选 0 \/ 5 种/.test(q('#bulkPickHint').textContent),
+     q('#bulkPickHint').textContent);
+  ck('全不选 → 两个确认按钮都禁用',
+     q('#btnBulkPlus').disabled === true && q('#btnBulkMinus').disabled === true,
+     q('#btnBulkPlus').disabled + ' / ' + q('#btnBulkMinus').disabled);
+  ck('全不选 → 没设用法那行仍写「没法按天算」',
+     /没法按天算/.test(q('#bulkList').textContent), '');
+
+  // ★ 全选 → 再勾回来（补回取消的那味）
+  q('#btnBulkAll').click();
+  ck('全选 → 又回到已勾选 5 / 5', /已勾选 5 \/ 5 种/.test(q('#bulkPickHint').textContent),
+     q('#bulkPickHint').textContent);
+  ck('全选 → 按钮恢复',
+     q('#btnBulkPlus').disabled === false && /勾选的 5 种/.test(q('#btnBulkPlus').textContent), '');
+  ck('全选不会把「没设用法」那味的禁用框勾上',
+     (function(){
+       var c = document.querySelector('#bulkList input.bulk-ck[data-id="'
+         + byName('维生素D滴剂').id + '"]');
+       return c.disabled === true && c.checked === false;
+     })(), '');
 
   // --- 7c. 真的执行：增加 ---
   var alertsBefore = R.alerts.length;
@@ -294,6 +372,41 @@ PROBE = r"""
   // --- 7e. 「增加」必须和单药「又买了药」同一口径（stockNow 基础上加） ---
   ck('批量加完后 stockNow == stockBase（基准日=今天，没被重复扣）',
      byName('维生素D滴剂').stockBase === stockNow(byName('维生素D滴剂')), '');
+
+  // --- 7f. ★ 2026-10-12 新增：只勾一部分 → 没勾的必须一根手指都不碰 ---
+  // 此刻 5 味都已被减到 0，维生素D 仍是 30。
+  openBulk();                                   // 默认全勾，先把别的取消
+  ['苯磺酸氨氯地平片','阿托伐他汀钙片','盐酸二甲双胍缓释片','依洛尤单抗注射液']
+    .forEach(function(n){
+      var c = document.querySelector('#bulkList input.bulk-ck[data-id="' + byName(n).id + '"]');
+      c.checked = false;
+      c.dispatchEvent(new Event('change', {bubbles:true}));
+    });
+  ck('只留阿司匹林勾选（已勾选 1 / 5）', /已勾选 1 \/ 5 种/.test(q('#bulkPickHint').textContent),
+     q('#bulkPickHint').textContent);
+  var alerts2 = R.alerts.length;
+  applyBulk(1);
+  ck('只勾一种 → 它确实变了（0 → 7）', byName('阿司匹林肠溶片').stockBase === 7,
+     byName('阿司匹林肠溶片').stockBase);
+  ck('没勾的没被动（氨氯地平仍 0）', byName('苯磺酸氨氯地平片').stockBase === 0,
+     byName('苯磺酸氨氯地平片').stockBase);
+  ck('没勾的没被动（二甲双胍仍 0）', byName('盐酸二甲双胍缓释片').stockBase === 0,
+     byName('盐酸二甲双胍缓释片').stockBase);
+  ck('没设用法的没被动（维生素D 仍 30）', byName('维生素D滴剂').stockBase === 30,
+     byName('维生素D滴剂').stockBase);
+  ck('提示只说改了 1 种', /已把 1 种药的存量增加 7 天的量/.test(R.alerts.slice(alerts2).join(' | ')),
+     R.alerts[R.alerts.length - 1]);
+
+  // 一种都不勾就点确认 → 拦下，且不改任何数据（按钮虽已禁用，这里直接调函数兜底）
+  openBulk();
+  q('#btnBulkNone').click();
+  var alerts3 = R.alerts.length;
+  applyBulk(1);
+  ck('一种都没勾时点确认被拦下并提示', /还没勾选任何药/.test(R.alerts.slice(alerts3).join(' | ')),
+     R.alerts[R.alerts.length - 1]);
+  ck('被拦下时数据没动（阿司匹林仍 7）', byName('阿司匹林肠溶片').stockBase === 7,
+     byName('阿司匹林肠溶片').stockBase);
+  q('#dlgBulk').close();
 
   // ---- 8. ★ 2026-10-11 用户两次报 bug 后的定稿口径 ----
   // 用户原话：「卡片上显示的 每日2片 余量约4片 这个4片就是正确的，你把卡片上的数和编辑里的数同步」。

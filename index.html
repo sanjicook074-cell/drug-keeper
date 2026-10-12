@@ -209,6 +209,10 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
   border-left-width:4px;border-radius:10px;background:#fff}
 .disp-row[data-lv=out]{border-left-color:var(--out);background:#fffafa}
 .disp-row[data-lv=soon]{border-left-color:var(--soon);background:#fffdf6}
+/* 批量弹窗会列出**全部**药品（不只是要补的），所以「充足」「未设用法」也要有左色条，
+   和主页卡片一一对上；「已经开药」弹窗里只有 out/soon，不受影响 */
+.disp-row[data-lv=ok]{border-left-color:var(--ok)}
+.disp-row[data-lv=na]{border-left-color:var(--na)}
 .disp-info{flex:1;min-width:0}
 .disp-name{font-weight:620;font-size:13.5px;word-break:break-word}
 .disp-meta{font-size:12px;color:var(--muted);margin-top:2px}
@@ -231,6 +235,14 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 .bulk-after b{font-size:14px;font-weight:660;color:#374151}
 .bulk-after .down b{color:var(--out)}
 .bulk-after .noop{color:var(--faint)}
+/* ★ 2026-10-12 用户要求：批量调存量可以**挑着调**（勾选），列表顺序跟主页一致，
+   并且用颜色标出哪些药不够了 —— 行色沿用卡片那套档位色（.disp-row[data-lv]） */
+.bulk-pick{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:0 0 10px;
+  border-bottom:1px dashed var(--line);font-size:12.5px;color:var(--muted)}
+.bulk-pick .sp{flex:1}
+.bulk-ck{flex:none;width:16px;height:16px;margin:0;accent-color:var(--brand);cursor:pointer}
+.bulk-ck:disabled{cursor:not-allowed;opacity:.45}
+.disp-name .tag{margin-left:6px;vertical-align:1px}
 .disp-sum b{color:#374151}
 
 /* ---------- 打印 ---------- */
@@ -449,6 +461,12 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
         <span class="hintline">用每味药自己的用法把「天」换成数量：每天 1 片的，7 天就是 7 片；
           每 14 天 1 支的，7 天就是 0.5 支。</span>
       </label>
+      <div class="bulk-pick">
+        <button type="button" class="btn ghost sm" id="btnBulkAll">全选</button>
+        <button type="button" class="btn ghost sm" id="btnBulkNone">全不选</button>
+        <span class="sp"></span>
+        <span id="bulkPickHint"></span>
+      </div>
       <div class="bulk-list" id="bulkList"></div>
       <div class="disp-sum" id="bulkSum"></div>
     </div>
@@ -748,6 +766,19 @@ function freqText(m){
 /* -------------------- 渲染 -------------------- */
 function render(){ renderPeople(); renderStats(); renderList(); renderNote(); renderRefill(); }
 
+// 药品的统一排序口径：先按档位（已用完 → 偏少 → 充足 → 未设用法），同档位再按剩余天数少的靠前。
+// ★ 2026-10-12：从 renderList() 里抽出来，因为「批量调存量」弹窗要求**顺序和主页一样**
+//   —— 两边共用这一份，改排序只改这里，不会各排各的。
+function sortedMeds(){
+  return meds.slice().sort(function(a, b){
+    const la = LEVEL_ORDER[level(a)], lb = LEVEL_ORDER[level(b)];
+    if(la !== lb) return la - lb;
+    const da = daysLeft(a), db = daysLeft(b);
+    if(!isFinite(da) || !isFinite(db)) return 0;   // 「未设用法」的天数算不出来，保持原序（否则是 NaN 比较）
+    return da - db;
+  });
+}
+
 function renderPeople(){
   const box = $('#people');
   box.innerHTML = people.map(function(p){
@@ -798,11 +829,7 @@ function renderList(){
     return;
   }
 
-  const sorted = meds.slice().sort(function(a, b){
-    const la = LEVEL_ORDER[level(a)], lb = LEVEL_ORDER[level(b)];
-    if(la !== lb) return la - lb;
-    return daysLeft(a) - daysLeft(b);
-  });
+  const sorted = sortedMeds();
 
   list.innerHTML = '<div class="mlist">' + sorted.map(cardHTML).join('') + '</div>';
   $('#listHint').textContent = '按剩余天数排序，' + meds.length + ' 种';
@@ -1317,67 +1344,128 @@ function bulkRows(days, sign){
              floored:floored, noop:delta === 0 };
   });
 }
+// ★ 2026-10-12 用户要求：这个弹窗要能**挑着调**——列出全部药品（顺序和主页一样）、
+//   每行一个勾选框（默认全勾）、行色按档位标出「哪些药不够了」，没设用法的药勾不了。
+//   勾选状态放 bulkPicked（id → true），每次点开弹窗重置为「能调的都勾上」。
+let bulkPicked = {};
+function bulkPickable(m){ return dailyUse(m) > 0; }      // 没设用法 → 天数换不成数量，调不了
+function bulkPickedCount(){
+  return meds.filter(function(m){ return bulkPickable(m) && bulkPicked[m.id]; }).length;
+}
+function bulkResetPicks(){
+  bulkPicked = {};
+  meds.forEach(function(m){ if(bulkPickable(m)) bulkPicked[m.id] = true; });
+}
+
 function openBulk(){
   if(!meds.length){ alert('这个药箱还是空的，先添加药品。'); return; }
   $('#bulkDays').value = 7;
+  bulkResetPicks();
   $('#dlgBulk').showModal();
   renderBulk();
 }
+
+// 一行右侧的「＋N 天 / −N 天」结果。没勾选的写「未勾选」—— 不动它就不给数字。
+function bulkCellHTML(x, days){
+  if(x.skip) return '<span class="noop">没法按天算</span>';
+  let h = '→ <b>' + fmtNum(x.next) + '</b> ' + esc(x.unit);
+  if(x.floored) h += '<br><span class="noop">已减到 0（原本不够 ' + days + ' 天）</span>';
+  else if(x.noop) h += '<br><span class="noop">和现在一样</span>';
+  return h;
+}
+function bulkAfterHTML(r, d, days, picked){
+  if(r.skip) return '<span class="noop">没法按天算</span>';   // 没设用法：给它勾也换不成数量
+  if(!picked) return '<span class="noop">未勾选</span>';
+  return '<span>＋' + days + ' 天 ' + bulkCellHTML(r, days) + '</span><br>'
+       + '<span class="down">−' + days + ' 天 ' + bulkCellHTML(d, days) + '</span>';
+}
+
+function bulkRowHTML(m, r, d, days){
+  const lv = level(m);
+  const can = bulkPickable(m);
+  const picked = can && !!bulkPicked[m.id];
+  const freq = r.skip ? '' : freqText(m);
+  return '<div class="disp-row" data-lv="' + lv + '" data-id="' + m.id + '">'
+    +   '<input type="checkbox" class="bulk-ck" data-id="' + m.id + '"'
+    +     (can ? '' : ' disabled') + (picked ? ' checked' : '') + '>'
+    +   '<div class="disp-info">'
+    +     '<div class="disp-name">' + esc(m.name)
+    +       '<span class="tag ' + lv + '">' + LEVEL_LABEL[lv] + '</span></div>'
+    +     '<div class="disp-meta">现有 <b>' + fmtNum(r.cur) + '</b> ' + esc(r.unit)
+    +       (freq ? '<span class="disp-src">　' + freq + '</span>' : '')
+    +       (r.skip ? '<span class="disp-src">　没设用法</span>' : '') + '</div>'
+    +   '</div>'
+    +   '<div class="bulk-after" id="bulkAfter-' + m.id + '">'
+    +     bulkAfterHTML(r, d, days, picked)
+    +   '</div>'
+    + '</div>';
+}
+
 function renderBulk(){
   if(!$('#dlgBulk').open) return;
   const days = bulkDays();
   const who = curPerson();
-  $('#bulkSub').textContent = '把「' + (who ? who.name : '当前人') + '」药箱里的 '
-    + meds.length + ' 种药，统一加上或减去「够吃 ' + days + ' 天」的量。'
-    + '先说清两个方向各会变成多少，再按对应按钮。';
+  const order = sortedMeds();                       // ★ 和主页同一个排序（见 sortedMeds）
 
-  const up = bulkRows(days, 1);
+  const up = {}, dn = {};
+  bulkRows(days, 1).forEach(function(r){ up[r.m.id] = r; });
+  bulkRows(days, -1).forEach(function(r){ dn[r.m.id] = r; });
+
+  $('#bulkSub').textContent = '把「' + (who ? who.name : '当前人') + '」药箱里的 '
+    + meds.length + ' 种药列出来，勾选要调的那些，再按「够吃 ' + days + ' 天」统一加或减。';
+
+  $('#bulkList').innerHTML = order.map(function(m){
+    return bulkRowHTML(m, up[m.id], dn[m.id], days);
+  }).join('');
+
+  bulkRefreshFoot();
+}
+
+// 勾选一变只刷新「底部汇总 + 两个按钮文案 + 那一行的结果」，
+// 不整表重画 —— 否则列表里那个滚动条会弹回顶部，勾几种药就跳几次，很难用。
+function bulkRefreshFoot(){
+  const days = bulkDays();
+  const upRows = bulkRows(days, 1);
   const dn = {};
   bulkRows(days, -1).forEach(function(r){ dn[r.m.id] = r; });
 
-  let skipN = 0, flooredN = 0, noopN = 0;
-  $('#bulkList').innerHTML = up.map(function(r){
+  let pickable = 0, flooredN = 0, noopN = 0;
+  upRows.forEach(function(r){
+    if(r.skip) return;
+    pickable++;
+    if(!bulkPicked[r.m.id]) return;
     const d = dn[r.m.id];
-    if(r.skip) skipN++;
     if(d && d.floored) flooredN++;
-    if(!r.skip && r.noop && d.noop) noopN++;
-    const freq = r.skip ? '' : freqText(r.m);
-    const cell = function(x){
-      if(x.skip) return '<span class="noop">没法按天算</span>';
-      let h = '→ <b>' + fmtNum(x.next) + '</b> ' + esc(x.unit);
-      if(x.floored) h += '<br><span class="noop">已减到 0（原本不够 ' + days + ' 天）</span>';
-      else if(x.noop) h += '<br><span class="noop">和现在一样</span>';
-      return h;
-    };
-    return '<div class="disp-row">'
-      +   '<div class="disp-info">'
-      +     '<div class="disp-name">' + esc(r.m.name) + '</div>'
-      +     '<div class="disp-meta">现有 <b>' + fmtNum(r.cur) + '</b> ' + esc(r.unit)
-      +       (freq ? '<span class="disp-src">　' + freq + '</span>' : '')
-      +       (r.skip ? '<span class="disp-src">　没设用法</span>' : '') + '</div>'
-      +   '</div>'
-      +   '<div class="bulk-after">'
-      +     '<span>＋' + days + ' 天 ' + cell(r) + '</span><br>'
-      +     '<span class="down">−' + days + ' 天 ' + cell(d) + '</span>'
-      +   '</div>'
-      + '</div>';
-  }).join('');
+    if(r.noop && d && d.noop) noopN++;
+  });
+  const picked = bulkPickedCount();
+  const skipN = meds.length - pickable;
 
-  $('#btnBulkPlus').textContent = '确认：全部增加 ' + days + ' 天';
-  $('#btnBulkMinus').textContent = '确认：全部减少 ' + days + ' 天';
+  $('#bulkPickHint').textContent = '已勾选 ' + picked + ' / ' + pickable + ' 种';
+  $('#btnBulkPlus').textContent  = '确认：勾选的 ' + picked + ' 种各增加 ' + days + ' 天';
+  $('#btnBulkMinus').textContent = '确认：勾选的 ' + picked + ' 种各减少 ' + days + ' 天';
+  $('#btnBulkPlus').disabled  = picked === 0;
+  $('#btnBulkMinus').disabled = picked === 0;
 
   const bits = [];
-  if(skipN) bits.push('<b>' + skipN + '</b> 种没设用法（换不成数量，不会被动到）');
+  if(skipN) bits.push('<b>' + skipN + '</b> 种没设用法（换不成数量，勾不了、也不会被动到）');
   if(flooredN) bits.push('选「减少」时，其中 <b>' + flooredN + '</b> 种会被减到 0（原本就不够 ' + days + ' 天）');
   if(noopN) bits.push('<b>' + noopN + '</b> 种换算后不足 0.01，等于没变（吃药周期比 ' + days + ' 天长）');
-  $('#bulkSum').innerHTML = '共 <b>' + meds.length + '</b> 种药'
+  $('#bulkSum').innerHTML = '共 <b>' + meds.length + '</b> 种药，已勾选 <b>' + picked + '</b> 种'
     + (bits.length ? '；' + bits.join('；') : '')
     + '。<br>确认后基准日一并滚到今天 —— 和「又买了药」「已经开药」同一套算法。';
 }
+
 function applyBulk(sign){
   const days = bulkDays();
-  const rows = bulkRows(days, sign).filter(function(r){ return !r.skip; });
-  if(!rows.length){ alert('没有能按天换算的药 —— 这个药箱里的药都没设用法。'); return; }
+  // ★ 只动勾选的（2026-10-12）：没勾的一律不碰
+  const rows = bulkRows(days, sign).filter(function(r){
+    return !r.skip && bulkPicked[r.m.id];
+  });
+  if(!rows.length){
+    alert(meds.some(bulkPickable) ? '还没勾选任何药。' : '没有能按天换算的药 —— 这个药箱里的药都没设用法。');
+    return;
+  }
   rows.forEach(function(r){
     r.m.stockBase = r.next;          // next 已含「不能为负」的截断
     r.m.stockDate = todayStr();
@@ -1587,6 +1675,31 @@ $('#bulkDays').addEventListener('input', renderBulk);
 $('#btnBulkPlus').addEventListener('click', function(){ applyBulk(1); });
 $('#btnBulkMinus').addEventListener('click', function(){ applyBulk(-1); });
 $('#btnBulkCancel').addEventListener('click', function(){ $('#dlgBulk').close(); });
+// 全选 / 全不选（只作用于「能按天换算」的药；没设用法的勾不了）
+$('#btnBulkAll').addEventListener('click', function(){
+  meds.forEach(function(m){ if(bulkPickable(m)) bulkPicked[m.id] = true; });
+  renderBulk();
+});
+$('#btnBulkNone').addEventListener('click', function(){
+  bulkPicked = {};
+  renderBulk();
+});
+// 单行勾选：事件委托挂在列表容器上（列表 innerHTML 每次重画，子元素会被换掉）
+$('#bulkList').addEventListener('change', function(e){
+  const ck = e.target && e.target.closest ? e.target.closest('input.bulk-ck') : null;
+  if(!ck) return;
+  const id = ck.getAttribute('data-id');
+  if(ck.checked) bulkPicked[id] = true; else delete bulkPicked[id];
+  // 只刷这一行的结果 + 底部汇总，不整表重画（免得滚动条被弹回顶部）
+  const days = bulkDays();
+  const one = function(sign){
+    return bulkRows(days, sign).filter(function(r){ return r.m.id === id; })[0];
+  };
+  const cell = $('#bulkAfter-' + id);
+  const r = one(1), d = one(-1);
+  if(cell && r && d) cell.innerHTML = bulkAfterHTML(r, d, days, ck.checked);
+  bulkRefreshFoot();
+});
 $('#formBulk').addEventListener('submit', function(e){ e.preventDefault(); });
 
 // 单个数字弹窗（又买了药 / 校准余量）—— 输入时不再有实时对照行要同步（2026-10-12 已删）

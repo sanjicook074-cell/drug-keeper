@@ -44,7 +44,12 @@ DEMO_JS = r"""
 HOOKS = {
     "main": "",
     "disp": "openDisp();",
-    "bulk": "openBulk();",
+    # ★ 批量调存量（2026-10-12 改版）：列出**全部**药品、可勾选、顺序同主页、按档位着色。
+    #   这里临时多塞一味「没设用法」的药，为的是把「勾选框禁用 + 没法按天算 + 底部那行说明」拍进来
+    #   （只加在这一张里，别的截图和主页不受影响）。
+    "bulk": "var d = meds.concat([{ id:uid(), name:'维生素D滴剂', spec:'400IU', perDose:1, unit:'粒',"
+            " cycleDays:1, timesPerCycle:0, stockBase:30, stockDate:todayStr() }]);"
+            " setMeds(d); save(); render(); openBulk();",
     # ★ 编辑弹窗：拍的是「余量」那格 —— 预填的就是卡片上那个数（当天推算值），
     #   拍下来是为了核对弹窗与卡片同框一致（用户 2026-10-11 报过这两处对不上）。
     #   挑「每天 2 片」那味：卡片写「余量约 20 片」，弹窗里预填的也该是 20。
