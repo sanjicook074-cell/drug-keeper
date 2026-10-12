@@ -253,8 +253,10 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
   background:#f8f9fb;display:grid;place-items:center;overflow:hidden;cursor:pointer;
   color:var(--faint);font-size:11.5px;line-height:1.5;text-align:center;padding:6px}
 .rx-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.rx-thumb canvas{width:100%;height:100%;object-fit:cover;display:block}
 .rx-thumb.big{width:min(420px,72vw);height:auto}
 .rx-thumb.big img{object-fit:contain;height:auto;max-height:44vh;width:100%}
+.rx-thumb.big canvas{object-fit:contain;height:auto;max-height:44vh;width:100%}
 .rx-shot-info{flex:1;min-width:0;font-size:12px;color:var(--muted);line-height:1.7}
 .rx-shot-btns{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:7px}
 .rx-paste{display:flex;flex-direction:column;gap:7px;margin-bottom:14px}
@@ -289,6 +291,46 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 .rx-act{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:13px 0 0;
   padding-top:13px;border-top:1px solid var(--line-2);font-size:12.5px;color:var(--muted)}
 .rx-act .sp{flex:1}
+
+/* ---------- 拍底方：自动识别（浏览器端 OCR）与批量填用法 ----------
+   2026-10-12 用户要求「既有助手接口，也要有浏览器自动 OCR，冗余一下」，
+   并要「照片发进去能自动转正、能认出药名」。这里补的就是这两件：
+   `.rx-ocr-*` 是识别进度条，`#dlgUse` 是识别完之后跳出来批量填用法的窗口。 */
+.rx-ocr-msg{font-size:11.5px;color:var(--muted);line-height:1.7;margin-top:6px;min-height:17px}
+.rx-ocr-msg.busy{color:var(--brand)}
+.rx-ocr-msg.ok{color:var(--ok)}
+.rx-ocr-msg.warn{color:var(--soon)}
+.rx-ocr-bar{height:5px;border-radius:3px;background:var(--line-2);overflow:hidden;margin-top:5px;display:none}
+.rx-ocr-bar.on{display:block}
+.rx-ocr-bar i{display:block;height:100%;width:0;background:var(--brand);transition:width .25s}
+
+#dlgUse{width:min(760px,94vw)}
+.use-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:12.5px;color:#4b5563;
+  padding:11px 13px;border:1px dashed var(--line);border-radius:10px;background:#f8f9fb;margin-bottom:14px}
+.use-bar .lt{font-weight:600;color:var(--text)}
+.use-bar input[type=number]{font:inherit;font-size:12.5px;width:60px;text-align:center;padding:6px 8px;
+  border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text)}
+.use-bar select{font:inherit;font-size:12.5px;padding:6px 8px;border:1px solid var(--line);
+  border-radius:8px;background:#fff;color:var(--text)}
+.use-list{display:flex;flex-direction:column;gap:8px;max-height:46vh;overflow:auto}
+.use-row{display:flex;align-items:center;gap:7px;flex-wrap:wrap;border:1px solid var(--line);
+  border-left-width:4px;border-radius:10px;padding:8px 11px;background:#fff;font-size:12.5px}
+.use-row[data-lv=out]{border-left-color:var(--out);background:#fffafa}
+.use-row[data-lv=soon]{border-left-color:var(--soon);background:#fffdf6}
+.use-row[data-lv=ok]{border-left-color:var(--ok)}
+.use-row[data-lv=na]{border-left-color:var(--na)}
+.use-row input,.use-row select{font:inherit;font-size:12.5px;padding:5px 8px;
+  border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text)}
+.use-row input:focus,.use-row select:focus{outline:none;border-color:var(--brand);
+  box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.use-row input.mini{width:56px;text-align:center}
+.use-row .un{flex:1;min-width:104px;font-weight:620;color:var(--text);word-break:break-word}
+.use-row .lb{color:#4b5563}
+.use-row .tot{margin-left:auto;color:var(--muted);background:#f8f9fb;border:1px solid var(--line-2);
+  border-radius:9px;padding:5px 10px}
+.use-row .tot b{color:#374151;font-weight:650}
+.use-empty{text-align:center;padding:22px 10px;color:var(--faint);font-size:13px}
+.use-note{margin-top:9px;font-size:12px;color:var(--brand)}
 
 /* ---------- 打印 ---------- */
 @media print{
@@ -443,12 +485,14 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
   </form>
 </dialog>
 
-<!-- 拍底方批量录入（2026-10-12 用户要求）：
-     底方 = 医院打印的那种处方。**这里不做 OCR** —— 照片只是给你照着的对照物，
-     字怎么变成药，有两条路：① 你照着照片把一行行打/粘进来（本页解析）；② 直接把照片发给
-     助手，由它替你认字算好，再给你一条带 #rx= 的链接，点开就是这个弹窗、药已经填好。
-     之所以不在网页里做 OCR：中文药品名认错一两个字是要吃错药的，而这个页面是单文件、
-     零依赖、离线可用 —— 塞一个几十兆的识别模型进来不划算（见 README「为什么不做自动识别」）。 -->
+<!-- 拍底方批量录入（2026-10-12 首版；2026-10-13 按用户要求补「自动识别 + 批量填用法」）：
+     底方 = 医院打印的那种处方。**两条路，互为冗余**：
+       ① 网页自己认：拍照 → 程序按 EXIF 把照片转正（躺着的自动立起来）→ 浏览器端 OCR 认出药名
+          → 跳「批量填用法」窗口，一次把每味的吃法/天数填完；
+       ② 助手替你认：把照片发给助手，它认好字算好天数，给你一条带 #rx= 的链接，点开药已经填好。
+     两条路最后都汇到**同一个确认列表**，口径完全一样（余量 = 够吃天数 × 每天用量）。
+     OCR 引擎是**按需下载**的（点了「自动识别药名」才去取），所以打开页面本身仍然不联网、
+     离线可用；取不到就明说，并把人引回「粘贴框 / 助手」那条路，绝不静默失败。 -->
 <dialog id="dlgRx">
   <form id="formRx">
     <div class="dlg-h">
@@ -462,19 +506,25 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
         <div class="rx-shot-info">
           <div class="rx-shot-btns">
             <button type="button" class="btn ghost sm" id="btnRxShot">拍 / 选照片</button>
+            <button type="button" class="btn ghost sm" id="btnRxOcr" disabled>自动识别药名</button>
+            <button type="button" class="btn ghost sm" id="btnRxRotL" hidden title="向左转 90°">↺ 转一下</button>
+            <button type="button" class="btn ghost sm" id="btnRxRotR" hidden title="向右转 90°">↻ 转一下</button>
+            <button type="button" class="btn ghost sm" id="btnRxCopyText" hidden>复制识别文字</button>
             <button type="button" class="btn ghost sm" id="btnRxClear" hidden>移除照片</button>
           </div>
-          <div>照片<b>只在你自己这块屏幕上</b>显示给你对照（不上传、不保存、关掉就没了）。手机上点「拍 / 选照片」会直接开相机。</div>
+          <div class="rx-ocr-msg" id="rxOcrMsg">照片<b>只在你自己这块屏幕上</b>处理 —— 不上传、不保存，关掉就没了。手机上点「拍 / 选照片」直接开相机。</div>
+          <div class="rx-ocr-bar" id="rxOcrBar"><i></i></div>
         </div>
       </div>
       <input type="file" id="rxPhoto" accept="image/*" capture="environment" hidden>
 
       <div class="rx-paste">
-        <span class="lt">① 拍完之后，照着底方把药名一行行粘/打进来 —— <b>整行原样粘</b>就行，规格、数量、频次都不用你拆：</span>
+        <span class="lt" id="rxPasteLt">② 也可以直接把底方上的药名<b>一行行原样粘</b>进来 —— 规格、数量、频次都不用你拆：</span>
         <textarea id="rxPaste" autocomplete="off" placeholder="例（一行一味，直接粘底方上的那行字）：&#10;阿莫西林胶囊(康贝)[0.25g*8] 2盒 6.26 0.5g 每日2次 口服&#10;维生素B6片(Ⅰ)[华康][10mg*30] 1瓶 19.88 10mg 每日一次 口服"></textarea>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button type="button" class="btn ghost sm" id="btnRxParse">解析成药品</button>
           <button type="button" class="btn ghost sm" id="btnRxAddOne">＋ 手动加一味</button>
+          <button type="button" class="btn ghost sm" id="btnRxUse">批量填用法 / 天数</button>
         </div>
       </div>
 
@@ -485,6 +535,39 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
     <div class="dlg-f">
       <button type="button" class="btn ghost" id="btnRxCancel">取消</button>
       <button type="submit" class="btn primary" id="btnRxOk">全部加入药箱</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 批量填用法（2026-10-13 用户要求）：
+     照片认出来的只是**药名**；吃法和天数得人填。用户原话是「在浏览器里在拍底方之后
+     再跳一个窗口 批量的人手工来输入信息」，所以这里做成一个独立窗口：
+     上面一条「统一设置」把一样的用法一次套到全部，下面逐味微调。
+     它动的就是 dlgRx 里那个 rxRows 数组本身，两边永远一致。 -->
+<dialog id="dlgUse">
+  <form id="formUse">
+    <div class="dlg-h">
+      <h3>批量填用法</h3>
+      <p>药名已经认出来了。吃法和天数在这里一次填完 —— 几味吃法一样就点「应用到全部」，不一样的下面单独改。</p>
+    </div>
+    <div class="dlg-b">
+      <div class="use-bar">
+        <span class="lt">统一设置：</span>
+        <span>每次</span>
+        <input type="number" id="usePd" step="0.25" min="0" value="1">
+        <select id="useFreq"></select>
+        <span>开</span>
+        <input type="number" id="useDays" step="1" min="1" value="14">
+        <span>天</span>
+        <button type="button" class="btn ghost sm" id="btnUseApplyAll">应用到全部</button>
+      </div>
+      <div class="use-list" id="useList"></div>
+      <div class="disp-sum" id="useSum"></div>
+      <div class="use-note" id="useNote" hidden></div>
+    </div>
+    <div class="dlg-f">
+      <button type="button" class="btn ghost" id="btnUseCancel">返回药名列表</button>
+      <button type="submit" class="btn primary">填好了，回列表</button>
     </div>
   </form>
 </dialog>
@@ -1583,19 +1666,33 @@ function applyBulk(sign){
     + (unchanged ? '\n\n有 ' + unchanged + ' 种换算后不足 0.01，实际没变。' : ''));
 }
 
-/* -------------------- 拍底方批量录入（2026-10-12） --------------------
-   底方 = 医院打印的处方。这一块**不做 OCR**，照片只当对照物（见弹窗里那段注释）。
-   网页干的活是：
-     ① 你照着照片把底方上的药名那行**原样粘/打**进来（`rxParseText`）；
-     ② 程序把那行拆成 药名 / 规格 / 每盒几片 / 本次数量 / 每次几片 / 频次（`rxParseLine`）；
-     ③ 按「本次总量 ÷ 每天用量」算出**每味够吃多少天**，摆在你面前让你确认（可改）；
-     ④ 勾选要录的，一次写进药箱（`submitRx`）。
-   另一条路：把照片直接发给助手，它替你认字算好，给你一条带 `#rx=` 的链接（`rxDecodeHash`）——
-   点开就是同这个弹窗，药已经填好，你核对一下点「加入药箱」。 */
+/* -------------------- 拍底方批量录入（2026-10-12 首版，2026-10-13 补自动识别） --------------------
+   底方 = 医院打印的处方。这块现在有**两条互为冗余的路**，最后都汇到同一个确认列表：
+
+     ① 网页自己认（2026-10-13 新增，用户要求「既有助手接口，也要有浏览器自动 OCR，冗余一下」）：
+        拍照 → 程序按 EXIF 把照片转正（躺着的自动立起来）→ 浏览器端 OCR 认出药名 →
+        跳「批量填用法」窗口，把每味的吃法/天数一次填完。
+     ② 助手替你认：把照片发给我，我认好字算好天数，给你一条带 `#rx=` 的链接（`rxDecodeHash`），
+        点开就是同一个弹窗、药已填好。
+
+   两条路都复用同三个函数：`rxParseText`（文字 → 药行）、`rxParseLine`（一行 → 结构化字段）、
+   `submitRx`（入库）。口径也共用一个：**余量 = 够吃天数 × 每天用量**。
+
+   ★ 关于 OCR 的取舍：引擎是**按需下载**的（点了「自动识别药名」才去取），所以打开页面本身
+     仍然不联网、离线可用；离线时取不到就**明说**，并把人引回粘贴框 / 助手那条路，绝不静默失败。
+   ★ 中文药名认错一两个字是要吃错药的 —— 所以识别结果一律当**草稿**，逐味核对过才算数。 */
 
 let rxRows = [];        // 弹窗里正在确认的行
 let rxSeq = 0;          // 行序号（key 用，和数据库里的 id 无关）
-let rxPhotoURL = '';    // 只是 objectURL，给对照用；关掉弹窗就撤销，绝不进存储
+
+/* ---- 照片状态（全部只在内存里，不进 localStorage、不出本机）---- */
+let rxPhotoBase = null; // 已按 EXIF 转正的画布；显示和识别都从它出发
+let rxTurn = 0;         // 在当前基础上再转的角度（0/90/180/270），手动按钮和自动纠偏都改它
+let rxOcrText = '';     // 最近一次识别出来的原文（给「复制识别文字」用）
+let rxOcrBusy = false;  // 正在识别（防重复点）
+let rxOcrWorker = null; // OCR worker，建一次就一直用，别每次重下模型
+let rxOcrMirror = -1;   // 哪个镜像站下载成功（worker/core 的路径要跟着它）
+const RX_PHOTO_MAX = 2600;  // 照片进内存前先缩到这个宽度上限（再大对识别没帮助，只是拖慢）
 
 // 常用频次。底方的「频次」列就是这几个词，所以直接用下拉选项——比让人填两个数字靠谱。
 // 值编码成「每几天_几天几次」，跟 med 里的 cycleDays / timesPerCycle 一一对应。
@@ -1850,8 +1947,8 @@ function renderRx(){
   const list = $('#rxList');
   const keep = list.scrollTop;
   if(!rxRows.length){
-    list.innerHTML = '<div class="rx-empty">还没有药。上面拍一张底方，或把处方文字粘进来点「解析成药品」，'
-      + '也可以直接「＋ 手动加一味」。</div>';
+    list.innerHTML = '<div class="rx-empty">还没有药。上面拍一张底方，点「自动识别药名」让程序认；'
+      + '也可以把处方文字粘进来点「解析成药品」，或者直接「＋ 手动加一味」。</div>';
     list.scrollTop = 0;
     rxSyncFoot();
     return;
@@ -1880,35 +1977,531 @@ function rxSyncFoot(){
   ok.textContent = named.length ? '把勾选的 ' + named.length + ' 味加入药箱' : '全部加入药箱';
 }
 
+/* ================= 照片：读进来 → 自动转正 → 显示 / 送识别 =================
+
+   ★ 用户 2026-10-13 的原话：「照片发进去 解析不出来。我认为应该首先 程序能自动旋转图片
+     让文字方向能正确」。手机拍的照片大多在文件里是**躺着**的，方向记在 JPEG 的 EXIF 里，
+     所以这里先按 EXIF 把它画正；EXIF 丢了或不对时，再让 OCR 在 0/90/180/270 里
+     挑一个「认出的药名最多」的方向。两条都走不通时，还有手动 ↺ / ↻ 兜底。 */
+
+// EXIF Orientation(1~8) → {deg, mirror}。deg = 顺时针要转多少度；mirror = 先左右镜像。
+// 1~8 的含义见 EXIF 规范（2/4/5/7 是带镜像的那几种，手机一般只用到 3/6/8）。
+function rxOrientSpec(o){
+  const T = { 1:[0,false], 2:[0,true], 3:[180,false], 4:[180,true],
+              5:[270,true], 6:[90,false], 7:[90,true],  8:[270,false] };
+  const v = T[Math.round(num(o, 1))] || T[1];
+  return { deg: v[0], mirror: v[1] };
+}
+// 转过 deg 之后画布该多大（90/270 要宽高互换）
+function rxOrientSize(deg, w, h){
+  const d = (((Math.round(num(deg) / 90) * 90) % 360) + 360) % 360;
+  return (d === 90 || d === 270) ? { w: h, h: w } : { w: w, h: h };
+}
+// 图片源的实际像素尺寸：ImageBitmap 用 width/height，<img> 用 naturalWidth/Height，画布用 width/height
+function rxSrcSize(src){
+  if(!src) return { w: 0, h: 0 };
+  return { w: src.naturalWidth || src.width || 0, h: src.naturalHeight || src.height || 0 };
+}
+
+// 从 JPEG 字节里读 EXIF 的 Orientation。只认 APP1 里的 IFD0 那一条，
+// 读到返回 1~8，读不到（不是 JPEG / 没有 EXIF）返回 1（= 本来就正）。
+function rxExifOrient(buf){
+  try {
+    const dv = new DataView(buf);
+    if(dv.byteLength < 4 || dv.getUint16(0, false) !== 0xFFD8) return 1;   // 不是 JPEG
+    let off = 2;
+    const len = dv.byteLength;
+    while(off + 4 <= len){
+      if(dv.getUint8(off) !== 0xFF){ off++; continue; }
+      const marker = dv.getUint8(off + 1);
+      if(marker === 0xD8 || marker === 0x01 || (marker >= 0xD0 && marker <= 0xD7)){ off += 2; continue; }
+      if(marker === 0xDA) break;                       // 到图像数据了，后面没有 EXIF
+      const size = dv.getUint16(off + 2, false);
+      if(size < 2) break;
+      if(marker === 0xE1 && off + 10 <= len
+         && dv.getUint32(off + 4, false) === 0x45786966     // "Exif"
+         && dv.getUint16(off + 8, false) === 0){
+        const tiff = off + 10;
+        const little = dv.getUint16(tiff, false) === 0x4949;   // "II" = 小端
+        const ifd0 = tiff + dv.getUint32(tiff + 4, little);
+        if(ifd0 + 2 > len) return 1;
+        const n = dv.getUint16(ifd0, little);
+        for(let i = 0; i < n; i++){
+          const e = ifd0 + 2 + i * 12;
+          if(e + 12 > len) break;
+          if(dv.getUint16(e, little) === 0x0112){          // Orientation
+            const v = dv.getUint16(e + 8, little);
+            return (v >= 1 && v <= 8) ? v : 1;
+          }
+        }
+      }
+      off += 2 + size;
+    }
+  } catch(e){ return 1; }
+  return 1;
+}
+
+// 把任意图片源按 spec(EXIF) + extraDeg(额外旋转) 画成一块新画布，顺带缩到 cap 以内。
+// 先镜像再旋转（矩阵顺序 translate→scale→rotate→scale(-1,1)→drawImage，正好是这个语义）。
+function rxCanvasFrom(src, spec, extraDeg, cap){
+  const s = rxSrcSize(src);
+  if(!s.w || !s.h) return null;
+  const deg = ((spec.deg + Math.round(num(extraDeg) / 90) * 90) % 360 + 360) % 360;
+  const out = rxOrientSize(deg, s.w, s.h);
+  const lim = Math.max(320, Math.round(num(cap, RX_PHOTO_MAX)));
+  const sc = Math.min(1, lim / out.w, lim / out.h);
+  const c = document.createElement('canvas');
+  c.width  = Math.max(1, Math.round(out.w * sc));
+  c.height = Math.max(1, Math.round(out.h * sc));
+  const ctx = c.getContext('2d');
+  ctx.save();
+  ctx.translate(c.width / 2, c.height / 2);
+  ctx.scale(sc, sc);
+  ctx.rotate(deg * Math.PI / 180);
+  if(spec.mirror) ctx.scale(-1, 1);
+  ctx.drawImage(src, -s.w / 2, -s.h / 2, s.w, s.h);
+  ctx.restore();
+  return c;
+}
+
+// 把一块画布（或任意图片源）再转 deg 度。0 就原样返回，省一次拷贝。
+function rxRotateCanvas(src, deg){
+  const d = (((Math.round(num(deg) / 90) * 90) % 360) + 360) % 360;
+  if(!d || !src) return src;
+  const s = rxSrcSize(src);
+  const out = rxOrientSize(d, s.w, s.h);
+  const c = document.createElement('canvas');
+  c.width = out.w; c.height = out.h;
+  const ctx = c.getContext('2d');
+  ctx.translate(c.width / 2, c.height / 2);
+  ctx.rotate(d * Math.PI / 180);
+  ctx.drawImage(src, -s.w / 2, -s.h / 2, s.w, s.h);
+  return c;
+}
+
+// 送进 OCR 之前的轻处理：缩到 maxW 以内、转灰、按实际最暗/最亮拉伸对比度。
+// 底方是黑字白纸，这一步能把手机拍的阴影和偏色压掉一大半。
+function rxOcrPrep(src, maxW){
+  const s = rxSrcSize(src);
+  if(!s.w || !s.h) return src;
+  const cap = Math.max(320, Math.round(num(maxW, 2200)));
+  const sc = Math.min(1, cap / s.w, cap / s.h);
+  const w = Math.max(1, Math.round(s.w * sc)), h = Math.max(1, Math.round(s.h * sc));
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(src, 0, 0, w, h);
+  let im;
+  try { im = ctx.getImageData(0, 0, w, h); } catch(e){ return c; }   // 万一取不到像素，退回原图
+  const d = im.data, n = w * h;
+  const g = new Uint8ClampedArray(n);
+  let i, k = 0, lo = 255, hi = 0;
+  for(i = 0; i < n; i++, k += 4){
+    const y = (d[k] * 299 + d[k + 1] * 587 + d[k + 2] * 114) / 1000;
+    g[i] = y;
+    if(y < lo) lo = y;
+    if(y > hi) hi = y;
+  }
+  const span = Math.max(1, hi - lo);
+  k = 0;
+  for(i = 0; i < n; i++, k += 4){
+    const v = (g[i] - lo) * 255 / span;
+    d[k] = v; d[k + 1] = v; d[k + 2] = v; d[k + 3] = 255;
+  }
+  ctx.putImageData(im, 0, 0);
+  return c;
+}
+
 /* ---- 开 / 关 / 照片 ---- */
 function rxDropPhoto(){
-  if(rxPhotoURL){ try { URL.revokeObjectURL(rxPhotoURL); } catch(e){} rxPhotoURL = ''; }
-  const img = $('#rxThumb').querySelector('img');
-  if(img){ img.remove(); }
-  $('#rxThumb').className = 'rx-thumb';
-  $('#rxThumb').innerHTML = '点这里<br>拍 / 选照片';
-  const c = $('#btnRxClear'); if(c) c.hidden = true;
-  const f = $('#rxPhoto'); if(f) f.value = '';
-}
-function rxShowPhoto(file){
-  rxDropPhoto();
-  try {
-    rxPhotoURL = URL.createObjectURL(file);
-  } catch(e){ return; }
+  rxPhotoBase = null;
+  rxTurn = 0;
+  rxOcrText = '';
+  rxOcrBarOff();
   const th = $('#rxThumb');
-  th.innerHTML = '';
-  const img = document.createElement('img');
-  img.src = rxPhotoURL;
-  img.alt = '底方照片';
-  th.appendChild(img);
   th.className = 'rx-thumb';
-  const c = $('#btnRxClear'); if(c) c.hidden = false;
+  th.innerHTML = '点这里<br>拍 / 选照片';
+  const c = $('#btnRxClear');      if(c) c.hidden = true;
+  const l = $('#btnRxRotL');       if(l) l.hidden = true;
+  const r = $('#btnRxRotR');       if(r) r.hidden = true;
+  const o = $('#btnRxOcr');        if(o) o.disabled = true;
+  const t = $('#btnRxCopyText');   if(t) t.hidden = true;
+  const f = $('#rxPhoto');         if(f) f.value = '';
 }
+// 把当前画布贴到缩略图上（点一下能放大）。显示和识别用的是同一块画布，所见即所识。
+function rxShowPhotoView(){
+  const th = $('#rxThumb');
+  if(!rxPhotoBase){ return; }
+  const cv = rxRotateCanvas(rxPhotoBase, rxTurn);
+  th.className = 'rx-thumb';
+  th.innerHTML = '';
+  cv.setAttribute('data-role', 'rxview');
+  th.appendChild(cv);
+  const c = $('#btnRxClear');    if(c) c.hidden = false;
+  const l = $('#btnRxRotL');     if(l) l.hidden = false;
+  const r = $('#btnRxRotR');     if(r) r.hidden = false;
+  const o = $('#btnRxOcr');      if(o) o.disabled = false;
+}
+// 手动转 90°：EXIF 丢了、或者拍照时手机没记方向，就靠这个。
+function rxTurnBy(deg){
+  if(!rxPhotoBase) return;
+  rxTurn = (((rxTurn + Math.round(num(deg, 90)) % 360) + 360) % 360);
+  rxShowPhotoView();
+  rxOcrSay('照片已手动转 ' + rxTurn + '°。方向对了就点「自动识别药名」。', '');
+}
+
+// 读照片：先抠 EXIF，再解码成画布。
+// ★ 用 createImageBitmap(file, {imageOrientation:'none'}) —— 要的是**原始像素**，
+//   由我们自己按 EXIF 转。否则 Chrome 显示和 drawImage 都已经替我们转过一次，会转两遍。
+async function rxLoadPhoto(file){
+  if(!file) return;
+  rxDropPhoto();
+  rxOcrSay('正在读照片…', 'busy');
+  let exif = 1;
+  try { exif = rxExifOrient(await file.arrayBuffer()); } catch(e){ exif = 1; }
+  let src = null, alreadyOriented = false;
+  try {
+    src = await createImageBitmap(file, { imageOrientation: 'none' });
+  } catch(e){
+    // 老浏览器没有这个 API：退回 <img>。那条路浏览器已经替我们转过 EXIF 了，别再转一遍。
+    try {
+      src = await new Promise(function(res, rej){
+        const im = new Image();
+        im.onload = function(){ res(im); };
+        im.onerror = function(){ rej(new Error('读不出来')); };
+        im.src = URL.createObjectURL(file);
+      });
+      alreadyOriented = true;
+    } catch(e2){
+      rxOcrSay('这张照片读不出来，换一张试试，或者直接把处方文字粘到下面的框里。', 'warn');
+      return;
+    }
+  }
+  rxPhotoBase = rxCanvasFrom(src, rxOrientSpec(alreadyOriented ? 1 : exif), 0, RX_PHOTO_MAX);
+  rxTurn = 0;
+  if(!rxPhotoBase){
+    rxOcrSay('这张照片是空的，换一张试试。', 'warn');
+    return;
+  }
+  rxShowPhotoView();
+  rxOcrSay('照片读好了' + ((!alreadyOriented && exif !== 1) ? '（已按拍摄方向自动转正）' : '')
+    + '。点「自动识别药名」让程序认字，也可以直接在下面把药名粘进来。', '');
+}
+
+/* ================= 浏览器端 OCR（按需下载，认出来当草稿） ================= */
+
+// 三个镜像挨个试；全下不来就抛错 —— 上层会把话说清楚，并把人引回粘贴/助手那条路。
+const RX_OCR_CDN = [
+  'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
+  'https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js',
+  'https://fastly.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js'
+];
+const RX_OCR_BASE = [
+  'https://cdn.jsdelivr.net/npm/',
+  'https://unpkg.com/',
+  'https://fastly.jsdelivr.net/npm/'
+];
+function rxLoadScript(url){
+  return new Promise(function(res, rej){
+    const s = document.createElement('script');
+    s.src = url; s.async = true;
+    s.onload = function(){ res(); };
+    s.onerror = function(){ rej(new Error('脚本没下来')); };
+    document.head.appendChild(s);
+  });
+}
+async function rxOcrEngineReady(){
+  if(window.__rxOcrEngine) return true;                                  // 自检塞的假引擎
+  if(window.Tesseract && window.Tesseract.createWorker) return true;
+  let last = null;
+  for(let i = 0; i < RX_OCR_CDN.length; i++){
+    try { await rxLoadScript(RX_OCR_CDN[i]); } catch(e){ last = e; continue; }
+    if(window.Tesseract && window.Tesseract.createWorker){ rxOcrMirror = i; return true; }
+    last = new Error('脚本下来了但没有 Tesseract');
+  }
+  throw last || new Error('识别引擎下载失败');
+}
+async function rxOcrWorkerGet(){
+  if(rxOcrWorker) return rxOcrWorker;
+  const T = window.Tesseract;
+  const base = RX_OCR_BASE[rxOcrMirror < 0 ? 0 : rxOcrMirror];
+  rxOcrWorker = await T.createWorker('chi_sim+eng', 1, {
+    workerPath: base + 'tesseract.js@5.1.1/dist/worker.min.js',
+    corePath:   base + 'tesseract.js-core@5.1.1/',
+    langPath:   'https://tessdata.projectnaptha.com/4.0.0',
+    logger: function(m){
+      if(m && m.status && typeof m.progress === 'number') rxOcrBar(m.status, m.progress);
+    }
+  });
+  return rxOcrWorker;
+}
+// 跑一次识别。返回 {text, confidence} —— 自检里 window.__rxOcrEngine 可以换成假的。
+async function rxOcrOnce(canvas){
+  const stub = window.__rxOcrEngine;
+  if(typeof stub === 'function') return await stub(canvas);
+  const w = await rxOcrWorkerGet();
+  const r = await w.recognize(canvas);
+  const d = (r && r.data) || {};
+  return { text: d.text || '', confidence: num(d.confidence, 0) };
+}
+// 给一次识别结果打分 —— **只用来在 0/90/180/270 里挑方向**，不参与任何入库判断。
+// 认出来的中药名越多越好，其次是中文字数，再次是引擎自己报的置信度。
+function rxOcrScore(res){
+  const text = (res && res.text) || '';
+  const conf = Math.max(0, Math.min(100, num(res && res.confidence, 0)));
+  const cjk = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
+  let drugs = 0;
+  try { drugs = rxParseText(text).filter(function(r){ return (r.name || '').length >= 3; }).length; }
+  catch(e){ drugs = 0; }
+  return drugs * 60 + cjk * 0.4 + conf * 0.6;
+}
+// 分数最高的那个方向；一样高就取转得最少的（0 优先）
+function rxBestTurn(list){
+  let best = null;
+  (list || []).forEach(function(x){
+    if(!best || x.score > best.score + 1e-9 ||
+       (Math.abs(x.score - best.score) < 1e-9 && x.turn < best.turn)) best = x;
+  });
+  return best;
+}
+const RX_OCR_MIN = 40;      // 打分低于这个就怀疑方向不对，去试另外三个方向
+
+function rxOcrSay(msg, cls){
+  const el = $('#rxOcrMsg');
+  if(!el) return;
+  el.className = 'rx-ocr-msg' + (cls ? ' ' + cls : '');
+  el.innerHTML = msg;
+}
+function rxOcrBar(status, p){
+  const bar = $('#rxOcrBar');
+  if(!bar) return;
+  bar.classList.add('on');
+  const i = bar.querySelector('i');
+  const pct = Math.max(0, Math.min(100, Math.round((p || 0) * 100)));
+  if(i) i.style.width = pct + '%';
+  const s = String(status || '');
+  const dl = /load|download|initializ/i.test(s);      // 下载/初始化 vs 真正的识别
+  rxOcrSay((dl ? '正在下载识别模型：' : '正在识别文字：') + esc(s) + ' ' + pct + '%', 'busy');
+}
+function rxOcrBarOff(){
+  const bar = $('#rxOcrBar');
+  if(bar){ bar.classList.remove('on'); const i = bar.querySelector('i'); if(i) i.style.width = '0'; }
+}
+function rxOcrBtn(busy){
+  const b = $('#btnRxOcr');
+  if(!b) return;
+  b.disabled = busy || !rxPhotoBase;
+  b.textContent = busy ? '识别中…' : '自动识别药名';
+}
+
+// 识别主流程：基准方向跑一遍 → 不够好就试四个方向 → 取最好的那个重跑 → 解析成药品行
+async function rxRunOcr(){
+  if(rxOcrBusy) return 0;
+  if(!rxPhotoBase){ rxOcrSay('先拍 / 选一张底方照片，再点「自动识别药名」。', 'warn'); return 0; }
+  rxOcrBusy = true;
+  rxOcrBtn(true);
+  rxOcrText = '';
+  const cp = $('#btnRxCopyText'); if(cp) cp.hidden = true;
+  const lt = $('#rxPasteLt');
+  try {
+    if(!(window.__rxOcrEngine) && !(window.Tesseract && window.Tesseract.createWorker)){
+      rxOcrSay('第一次用要先下载识别模型（几十兆，存在本地，以后不再下）…', 'busy');
+      rxOcrBar('准备中', 0);
+      await rxOcrEngineReady();
+    }
+    const base = rxRotateCanvas(rxPhotoBase, rxTurn);
+    rxOcrBarOff();
+    rxOcrSay('正在识别文字…', 'busy');
+    let hit = await rxOcrOnce(rxOcrPrep(base, 2200));
+    let extra = 0;
+    if(rxOcrScore(hit) < RX_OCR_MIN){
+      // 认得太少 → 多半是方向不对。先用缩略图把四个方向各试一遍，挑认得最多的那个再重跑。
+      rxOcrSay('方向可能不正，正在试四个方向（0° / 90° / 180° / 270°）…', 'busy');
+      const small = rxOcrPrep(base, 900);
+      const cands = [];
+      const DIRS = [0, 90, 180, 270];
+      for(let i = 0; i < DIRS.length; i++){
+        const t = DIRS[i];
+        const r = await rxOcrOnce(t === 0 ? small : rxRotateCanvas(small, t));
+        cands.push({ turn: t, score: rxOcrScore(r) });
+      }
+      const best = rxBestTurn(cands);
+      if(best && best.turn !== 0 && best.score > rxOcrScore(hit) + 1e-9){
+        extra = best.turn;
+        rxTurn = (((rxTurn + extra) % 360) + 360) % 360;
+        rxShowPhotoView();
+        rxOcrSay('照片是躺着的，已自动转正 ' + extra + '°，重新识别一遍…', 'busy');
+        hit = await rxOcrOnce(rxOcrPrep(rxRotateCanvas(rxPhotoBase, rxTurn), 2200));
+      }
+    }
+    rxOcrBarOff();
+    rxOcrText = (hit && hit.text) || '';
+    const got = rxParseText(rxOcrText);
+    if(!got.length){
+      rxOcrSay('照片上**没认出像药品的行**（原文已经放进下面的框里，可以自己看一眼）。'
+        + '多半是拍歪了、糊了或反光 —— 点「↺ / ↻」转一下再试；'
+        + '也可以把药名直接粘进下面的框，或者把照片发给助手替你看。', 'warn');
+      if(rxOcrText.trim()) $('#rxPaste').value = rxOcrText;
+      if(cp) cp.hidden = !rxOcrText.trim();
+      if(lt) lt.innerHTML = '② 识别原文（没认成药，可以自己改完点「解析成药品」）：';
+      return 0;
+    }
+    const added = rxAddRows(got);
+    $('#rxPaste').value = rxOcrText;
+    if(lt) lt.innerHTML = '② 识别原文在这儿，**可以改** —— 改完点「解析成药品」重新拆一遍：';
+    if(cp) cp.hidden = false;
+    rxOcrSay('认出 <b>' + got.length + '</b> 味' + (added < got.length ? '（新加 ' + added + ' 味，其余已在列表里）' : '')
+      + '。药名务必核对 —— 中文药名认错一两个字是要吃错药的。', 'ok');
+    openUse();          // 认完就跳「批量填用法」，把吃法和天数一次填掉
+    return added;
+  } catch(err){
+    rxOcrBarOff();
+    rxOcrSay('浏览器识别没能用起来（' + esc((err && err.message) || String(err)) + '）。'
+      + '这条路走不通不影响别的：把药名粘进下面的框，或者把照片发给助手替你看。', 'warn');
+    return 0;
+  } finally {
+    rxOcrBusy = false;
+    rxOcrBtn(false);
+  }
+}
+
+/* ---- 把解析出来的行并进列表（同名同规格不重复加）----
+   「解析成药品」按钮和自动识别都走这里，免得两处规则走偏。 */
+function rxAddRows(got){
+  let added = 0;
+  (got || []).forEach(function(r){
+    const dup = rxRows.some(function(x){
+      return x.name === r.name && (x.spec || '') === (r.spec || '');
+    });
+    if(!dup){ rxRows.push(r); added++; }
+  });
+  if(added) renderRx();
+  return added;
+}
+
+/* ================= 批量填用法（识别完之后跳出来的那个窗口） =================
+   ★ 用户 2026-10-13 的要求：「至于每种药的具体吃法 能吃多久，既可以通过你作为接口通过对话的
+     方式来录入，也可以在浏览器里在拍底方之后 再跳一个窗口 批量的人手工来输入信息」。
+   ★ 照片只能认出**药名**；吃法和天数得人填。这个窗口就是干这个的：
+     上面一条「统一设置」把一样的用法一次套到全部，下面逐味微调。
+   ★ 它动的就是 dlgRx 里那个 rxRows 数组本身（不开第二份数据），所以两边永远一致。
+   ★ 这里的主输入是**天数**（人想的就是「这药能吃多久」），「本次开到」= 天数 × 每天用量 ——
+     和卡片同一套口径。★ 但只有你真的动了那一格才会重算：打开看一眼再关，不会悄悄改数。 */
+
+function rxUseFreqOptions(sel){
+  let o = '';
+  RX_FREQ.forEach(function(x){
+    o += '<option value="' + x[0] + '"' + (x[0] === sel ? ' selected' : '') + '>' + x[1] + '</option>';
+  });
+  return o;
+}
+function rxUseRowHTML(r){
+  const u = esc(r.unit || '片');
+  const dl = rxDaysOf(r);
+  const key = rxFreqKey(r);
+  const custom = key === 'custom';
+  return '<div class="use-row" data-lv="' + rxLevel(r) + '" data-key="' + r.key + '">'
+    +   '<span class="un">' + (r.name ? esc(r.name) : '（还没填药名）') + '</span>'
+    +   '<span class="lb">每次</span>'
+    +   '<input type="number" class="mini use-pd" step="0.25" min="0" value="' + fmtNum(r.perDose) + '">'
+    +   '<span class="lb">' + u + '</span>'
+    +   '<select class="use-freq">' + rxUseFreqOptions(key) + '</select>'
+    +   (custom
+          ? '<input type="number" class="mini use-cd" min="1" step="1" value="' + r.cycleDays + '"><span class="lb">天</span>'
+            + '<input type="number" class="mini use-tc" min="0" step="1" value="' + r.timesPerCycle + '"><span class="lb">次</span>'
+          : '')
+    +   '<span class="lb">开</span>'
+    +   '<input type="number" class="mini use-days" step="1" min="1" value="' + (dl == null ? 14 : dl) + '">'
+    +   '<span class="lb">天</span>'
+    +   '<span class="tot">本次 <b class="use-tot">' + fmtNum(r.total) + '</b> ' + u + '</span>'
+    + '</div>';
+}
+function renderUse(){
+  const list = $('#useList');
+  if(!list) return;
+  const keep = list.scrollTop;
+  if(!rxRows.length){
+    list.innerHTML = '<div class="use-empty">还没有药。回上一页拍一张底方、点「自动识别药名」，'
+      + '或者把处方文字粘进去解析一下。</div>';
+  } else {
+    list.innerHTML = rxRows.map(rxUseRowHTML).join('');
+  }
+  list.scrollTop = keep;
+  useSyncFoot();
+}
+function useSyncFoot(){
+  const named = rxRows.filter(function(r){ return (r.name || '').trim(); });
+  const noUse = named.filter(function(r){ return rxDailyUse(r) <= 0; }).length;
+  let sum = 0;
+  named.forEach(function(r){ sum += num(r.total); });
+  const el = $('#useSum');
+  if(el) el.innerHTML = '共 <b>' + named.length + '</b> 味，本次合计 <b>' + fmtNum(sum) + '</b> 份。'
+    + (noUse ? '有 <b>' + noUse + '</b> 味没填每次用量，算不出天数 —— 补上那一格。' : '')
+    + '<br>「本次开到」= 天数 × 每天用量。你不动那一格，它就保持你原来填的（或识别出来的）数。';
+}
+function rxUseSay(msg){
+  const el = $('#useNote');
+  if(!el) return;
+  el.hidden = !msg;
+  el.textContent = msg || '';
+}
+// 关掉「批量填用法」并把上一页重画一遍。
+// ★ `<dialog>` 的 close 事件是**异步派发**的（规范里要排一个 task），所以按钮那条路不能只靠
+//   监听 close —— 否则点完「返回」的一瞬间，上一页还挂着旧数字。这里直接同步重画一次；
+//   close 监听仍留着，管 ESC 关窗那条路（重画两次无害，renderRx 会保住滚动位置）。
+function rxCloseUse(){
+  const d = $('#dlgUse');
+  if(d && d.open) d.close();
+  const r = $('#dlgRx');
+  if(r && r.open) renderRx();
+}
+// 把「统一设置」套到**全部**药上：每次用量 + 频次 + 天数 → 反算本次开到。
+// 单位不套 —— 片和支、贴不一样，套错了更糟。
+function rxUseApplyAll(){
+  const pd = Math.max(0, num($('#usePd').value, 1));
+  const days = Math.max(1, Math.round(num($('#useDays').value, 14)) || 14);
+  const fv = $('#useFreq').value;
+  let cd = 1, tc = 1;
+  if(fv !== 'custom'){ const p = fv.split('_'); cd = Math.max(1, Number(p[0]) || 1); tc = Math.max(0, Number(p[1])); }
+  let n = 0;
+  rxRows.forEach(function(r){
+    r.perDose = pd;
+    r.cycleDays = cd;
+    r.timesPerCycle = tc;
+    r.total = round2(days * rxDailyUse(r));   // 先在上一行把用法落定，这里才算得对
+    r.warn = '';
+    n++;
+  });
+  renderUse();
+  return n;
+}
+function openUse(){
+  if(!rxRows.length){
+    rxOcrSay('还没有药名可填 —— 先拍一张底方点「自动识别药名」，或者在下面把药名粘进来。', 'warn');
+    return;
+  }
+  const f = $('#useFreq');
+  if(f && !f.options.length){
+    let o = '';
+    RX_FREQ.forEach(function(x){ o += '<option value="' + x[0] + '">' + x[1] + '</option>'; });
+    f.innerHTML = o;
+  }
+  renderUse();
+  rxUseSay('');
+  const d = $('#dlgUse');
+  if(d && !d.open) d.showModal();
+}
+
 function rxReset(){
   rxRows = [];
   rxDropPhoto();
+  rxOcrSay('照片<b>只在你自己这块屏幕上</b>处理 —— 不上传、不保存，关掉就没了。'
+    + '手机上点「拍 / 选照片」直接开相机。', '');
+  const lt = $('#rxPasteLt');
+  if(lt) lt.innerHTML = '② 也可以直接把底方上的药名<b>一行行原样粘</b>进来 —— 规格、数量、频次都不用你拆：';
   $('#rxPaste').value = '';
-  $('#rxSub').textContent = '照着底方把药填进来，程序按底方的「数量 × 规格」和「频次」算出每味够吃多少天，你确认一下就行。';
+  $('#rxSub').textContent = '拍一张底方让程序认药名，或把药名粘进来；'
+    + '吃法和天数在下一个窗口里一次填完，程序按「天数 × 每天用量」算出每味开多少。';
 }
 function openRx(rows, fromWho){
   rxReset();
@@ -2220,31 +2813,36 @@ $('#btnRx').addEventListener('click', function(){ openRx(); });
 $('#btnRxShot').addEventListener('click', function(){ $('#rxPhoto').click(); });
 $('#rxThumb').addEventListener('click', function(){
   const th = $('#rxThumb');
-  if(!th.querySelector('img')){ $('#rxPhoto').click(); return; }   // 还没照片 → 点它当「拍」
-  th.classList.toggle('big');                                     // 有照片 → 点一下放大 / 收起来
+  if(!th.querySelector('canvas')){ $('#rxPhoto').click(); return; }  // 还没照片 → 点它当「拍」
+  th.classList.toggle('big');                                        // 有照片 → 点一下放大 / 收起来
 });
 $('#rxPhoto').addEventListener('change', function(e){
   const f = e.target.files && e.target.files[0];
-  if(f) rxShowPhoto(f);
+  if(f) rxLoadPhoto(f);
   e.target.value = '';
 });
 $('#btnRxClear').addEventListener('click', rxDropPhoto);
+$('#btnRxRotL').addEventListener('click', function(){ rxTurnBy(-90); });
+$('#btnRxRotR').addEventListener('click', function(){ rxTurnBy(90); });
+$('#btnRxOcr').addEventListener('click', function(){ rxRunOcr(); });
+$('#btnRxCopyText').addEventListener('click', function(){
+  const done = function(){
+    const b = $('#btnRxCopyText'); const old = b.textContent;
+    b.textContent = '已复制 ✓'; setTimeout(function(){ b.textContent = old; }, 1400);
+  };
+  if(!rxOcrText){ return; }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(rxOcrText).then(done, function(){ fallbackCopy(rxOcrText, done); });
+  } else { fallbackCopy(rxOcrText, done); }
+});
 $('#btnRxParse').addEventListener('click', function(){
   const got = rxParseText($('#rxPaste').value);
   if(!got.length){
     alert('没认出药品行。一行一味，把底方上那行字原样粘进来就行（要含中文药名）。');
     return;
   }
-  // 已经在列表里的（同名同规格）不再加一遍 —— 免得粘两次变成两份
-  let added = 0;
-  got.forEach(function(r){
-    const dup = rxRows.some(function(x){
-      return x.name === r.name && (x.spec || '') === (r.spec || '');
-    });
-    if(!dup){ rxRows.push(r); added++; }
-  });
+  const added = rxAddRows(got);
   $('#rxPaste').value = '';
-  renderRx();
   if(!added) alert('这些药已经在下面的列表里了。');
 });
 $('#btnRxAddOne').addEventListener('click', function(){
@@ -2255,6 +2853,7 @@ $('#btnRxAddOne').addEventListener('click', function(){
   const last = list.querySelector('.rx-row:last-child input.rx-name');
   if(last) last.focus();
 });
+$('#btnRxUse').addEventListener('click', function(){ openUse(); });
 // 行内编辑：文字格只回写数据（不动 DOM，免得打字时失焦）；数字格顺手把「够吃几天 / 本次开到」双向对齐。
 // 用户之前定的口径就是这个：**余量 = 够吃天数 × 每天用量**，所以改天数就反算总量，改总量就把天数重算。
 $('#rxList').addEventListener('input', function(e){
@@ -2309,6 +2908,64 @@ $('#formRx').addEventListener('submit', submitRx);
 // 弹窗一关就把照片扔掉（objectURL 释放掉，照片本来也不进存储）；
 // 但**不**清空已经填好的行 —— 手滑关掉再打开还能接着改。
 $('#dlgRx').addEventListener('close', rxDropPhoto);
+
+/* ---- 批量填用法窗口 ---- */
+$('#btnUseApplyAll').addEventListener('click', function(){
+  const n = rxUseApplyAll();
+  const fu = $('#useFreq');
+  const txt = fu && fu.selectedOptions[0] ? fu.selectedOptions[0].textContent : '';
+  rxUseSay('已把「每次 ' + fmtNum($('#usePd').value) + ' · ' + txt
+    + ' · 开 ' + Math.max(1, Math.round(num($('#useDays').value, 14))) + ' 天」套到全部 ' + n + ' 味。');
+});
+// 统一设置改了值，提醒一下要点「应用到全部」
+['#usePd','#useFreq','#useDays'].forEach(function(sel){
+  const el = $(sel);
+  if(el) el.addEventListener('input', function(){ rxUseSay('改完记得点右边的「应用到全部」。'); });
+});
+// 逐味编辑：药名不动（那个在上一页改），改的是用法和天数。
+// ★ 只有真被改过的那一格才反算 —— 打开看一眼再关，不会把识别出来的「本次开到」改掉。
+// ★ 规则和上一页的行内编辑保持一致：改「开 N 天」→ 反算本次开到；改用（每次/频次）→ 天数重算。
+$('#useList').addEventListener('input', function(e){
+  const row = e.target.closest('.use-row'); if(!row) return;
+  const r = rxByKey(row.getAttribute('data-key')); if(!r) return;
+  const t = e.target, cl = t.classList;
+  if(cl.contains('use-pd'))       r.perDose = Math.max(0, num(t.value));
+  else if(cl.contains('use-cd'))  r.cycleDays = Math.max(1, Math.round(num(t.value, 1)) || 1);
+  else if(cl.contains('use-tc'))  r.timesPerCycle = Math.max(0, num(t.value));
+  else if(cl.contains('use-days')) r.total = round2(Math.max(0, num(t.value)) * rxDailyUse(r));
+  else return;
+  r.warn = '';
+  const tot = row.querySelector('.use-tot');
+  if(tot) tot.textContent = fmtNum(r.total);
+  const days = row.querySelector('.use-days');
+  if(days && !cl.contains('use-days') && document.activeElement !== days){
+    const dl = rxDaysOf(r);
+    days.value = (dl == null ? '' : dl);
+  }
+  row.setAttribute('data-lv', rxLevel(r));
+  useSyncFoot();
+});
+$('#useList').addEventListener('change', function(e){
+  const t = e.target;
+  const row = t.closest ? t.closest('.use-row') : null;
+  if(!row) return;
+  const r = rxByKey(row.getAttribute('data-key')); if(!r) return;
+  if(!t.classList.contains('use-freq')) return;
+  if(t.value === 'custom'){ renderUse(); return; }   // 换「自定义…」要多露出两个输入框，只能重画
+  const p = t.value.split('_');
+  r.cycleDays = Number(p[0]);
+  r.timesPerCycle = Number(p[1]);
+  r.warn = '';
+  const days = row.querySelector('.use-days');
+  const dl = rxDaysOf(r);
+  if(days) days.value = (dl == null ? '' : dl);
+  row.setAttribute('data-lv', rxLevel(r));
+  useSyncFoot();
+});
+$('#btnUseCancel').addEventListener('click', rxCloseUse);
+$('#formUse').addEventListener('submit', function(e){ e.preventDefault(); rxCloseUse(); });
+// 关掉这个窗口就把上一页重画一遍 —— 天数/用量/档位色都要跟着变（ESC 关窗走这条）
+$('#dlgUse').addEventListener('close', function(){ if($('#dlgRx').open) renderRx(); });
 
 // 单个数字弹窗（又买了药 / 校准余量）—— 输入时不再有实时对照行要同步（2026-10-12 已删）
 $('#btnNumCancel').addEventListener('click', function(){ $('#dlgNum').close(); });

@@ -799,12 +799,248 @@ PROBE = r"""
      R.alerts[R.alerts.length - 1]);
   q('#dlgRx').close();
 
-  R.meds = meds.map(function(x){ return x.name + '|qty=' + dispQty(x) + '|cap=' + rxCap(x); });
+  // ============ 11. ★ 2026-10-13 用户要求：照片自动转正 + 浏览器自动 OCR + 批量填用法 ============
+  //   用户原话：「拍底方录入这里 既有用你来做接口的 也包括浏览器自动ocr的吧 冗余一下。
+  //   现在的问题是 照片发进去 解析不出来。我认为应该首先 程序能自动旋转图片 让文字方向能正确；
+  //   第二 能识别出其中的药名。至于每种药的具体吃法 能吃多久，既可以通过你作为接口通过对话的
+  //   方式来录入，也可以在浏览器里在拍底方之后 再跳一个窗口 批量的人手工来输入信息。」
+  //   → 分四块验：① 方向换算（纯函数 + 真转一张图按像素验）；② EXIF 读取；
+  //     ③ 打分/选方向；④ 端到端：假引擎 → 认药 → 跳「批量填用法」→ 统一设置 → 入库 → 失败兜底。
+  //   ★ 真引擎（tesseract + chi_sim，几十兆）没法在无头里下，所以这里塞 window.__rxOcrEngine
+  //     当假引擎 —— **验的是流程和口径，不是识别率**。
 
-  var pre = document.createElement('pre');
-  pre.id = '__T';
-  pre.textContent = JSON.stringify(R);
-  document.body.appendChild(pre);
+  setMeds([]); save(); render();
+
+  // ---- 11a. 方向换算 ----
+  ck('EXIF 1 = 不用转', rxOrientSpec(1).deg === 0 && rxOrientSpec(1).mirror === false, '');
+  ck('EXIF 3 = 转 180°', rxOrientSpec(3).deg === 180, rxOrientSpec(3).deg);
+  ck('EXIF 6 = 顺时针 90°（手机竖着拍最常见的那种）',
+     rxOrientSpec(6).deg === 90 && rxOrientSpec(6).mirror === false, rxOrientSpec(6).deg);
+  ck('EXIF 8 = 顺时针 270°', rxOrientSpec(8).deg === 270, rxOrientSpec(8).deg);
+  ck('EXIF 5 = 先镜像再转 270°',
+     rxOrientSpec(5).deg === 270 && rxOrientSpec(5).mirror === true, '');
+  ck('EXIF 读到乱七八糟的值 → 退回「不用转」，不瞎转',
+     rxOrientSpec(99).deg === 0 && rxOrientSpec(0).deg === 0, '');
+  ck('转 90° 时宽高互换',
+     rxOrientSize(90, 4000, 3000).w === 3000 && rxOrientSize(90, 4000, 3000).h === 4000, '');
+  ck('转 180° 时宽高不变', rxOrientSize(180, 4000, 3000).w === 4000, '');
+
+  // 真转一张图，按像素验：4×2 八格八色，EXIF=6 应该转成 2×4、原左上角跑到右上角
+  var S = document.createElement('canvas'); S.width = 4; S.height = 2;
+  var sctx = S.getContext('2d');
+  var PX = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#101010', '#808080'];
+  for(var py = 0; py < 2; py++){
+    for(var px = 0; px < 4; px++){
+      sctx.fillStyle = PX[py * 4 + px]; sctx.fillRect(px, py, 1, 1);
+    }
+  }
+  var pixAt = function(cv, x, y){
+    var d = cv.getContext('2d').getImageData(x, y, 1, 1).data;
+    return '#' + [d[0], d[1], d[2]].map(function(v){ return ('0' + v.toString(16)).slice(-2); }).join('');
+  };
+  var R6 = rxCanvasFrom(S, rxOrientSpec(6), 0, 99999);
+  ck('EXIF 6 转出来宽高互换（4×2 → 2×4）', R6.width === 2 && R6.height === 4,
+     R6.width + '×' + R6.height);
+  ck('EXIF 6 转完，原左上角那格跑到右上角（顺时针 90°）',
+     pixAt(R6, 1, 0) === PX[0], pixAt(R6, 1, 0) + ' 应该是 ' + PX[0]);
+  ck('EXIF 6 转完，原左下角那格跑到左上角',
+     pixAt(R6, 0, 0) === PX[4], pixAt(R6, 0, 0) + ' 应该是 ' + PX[4]);
+  var R0 = rxCanvasFrom(S, rxOrientSpec(1), 0, 99999);
+  ck('EXIF 1 一格都不动：尺寸和左上角都原样',
+     R0.width === 4 && R0.height === 2 && pixAt(R0, 0, 0) === PX[0], R0.width + '×' + R0.height);
+  var R2 = rxCanvasFrom(S, rxOrientSpec(2), 0, 99999);
+  ck('EXIF 2 = 左右镜像：左上角那格跑到右上角，尺寸不变',
+     R2.width === 4 && R2.height === 2 && pixAt(R2, 3, 0) === PX[0], pixAt(R2, 3, 0));
+  ck('不用转时原样返回，不多拷一份（rxRotateCanvas(c,0) 就是它自己）', rxRotateCanvas(S, 0) === S, '');
+  var RT90 = rxRotateCanvas(S, 90);
+  ck('rxRotateCanvas 手动转 90° 也是宽高互换 + 左上角到右上角',
+     RT90.width === 2 && RT90.height === 4 && pixAt(RT90, 1, 0) === PX[0],
+     RT90.width + '×' + RT90.height);
+  ck('手动 ↺ 再 ↻ 能转回原样（角度是累加的、不是覆盖的）',
+     rxRotateCanvas(rxRotateCanvas(S, 90), 270).width === 4, '');
+  var PRE = rxOcrPrep(S, 99999);
+  ck('送识别前会灰化（三通道相等）',
+     (function(){ var d = PRE.getContext('2d').getImageData(0, 0, 1, 1).data;
+                  return d[0] === d[1] && d[1] === d[2]; })(), '');
+  // ★ 上限要拿一张「真的超大」的图去试：拿 4×2 的小图配 cap=2，撞上 rxOcrPrep 里
+  //   Math.max(320,…) 那条地板线，测的就不是「会不会缩」而是「地板线是多少」了。
+  var BIG = document.createElement('canvas'); BIG.width = 4000; BIG.height = 2000;
+  ck('送识别前会按上限把长边缩下来（缩了才不白等）',
+     rxOcrPrep(BIG, 1000).width === 1000 && rxOcrPrep(BIG, 1000).height === 500,
+     rxOcrPrep(BIG, 1000).width + '×' + rxOcrPrep(BIG, 1000).height);
+  ck('本来就没超上限就不放大（放大只会更慢）', rxOcrPrep(S, 99999).width === 4, rxOcrPrep(S, 99999).width);
+
+  // ---- 11b. EXIF 读取（造一段最小可用的 JPEG 字节：SOI + APP1(Exif) + IFD0 里一条 Orientation）----
+  var makeJpeg = function(orientation){
+    var b = [0xFF, 0xD8,                          // SOI
+             0xFF, 0xE1, 0x00, 0x22,              // APP1，长度 34
+             0x45, 0x78, 0x69, 0x66, 0x00, 0x00, // "Exif\0\0"
+             0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00,  // TIFF 头（小端，IFD0 在 +8）
+             0x01, 0x00,                          // IFD0 条目数 = 1
+             0x12, 0x01, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00,  // tag = 0x0112(Orientation) SHORT
+             orientation, 0x00, 0x00, 0x00,       // 值（小端）
+             0x00, 0x00, 0x00, 0x00,              // 没有下一个 IFD
+             0xFF, 0xD9];                         // EOI
+    return new Uint8Array(b).buffer;
+  };
+  ck('从 JPEG 字节里读出 Orientation = 6', rxExifOrient(makeJpeg(6)) === 6, rxExifOrient(makeJpeg(6)));
+  ck('Orientation = 8 也读得对', rxExifOrient(makeJpeg(8)) === 8, rxExifOrient(makeJpeg(8)));
+  ck('不是 JPEG（PNG 头）→ 当成「不用转」，不乱猜',
+     rxExifOrient(new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]).buffer) === 1, '');
+  ck('空 / 残缺的字节不炸（读不出来就当不用转）',
+     rxExifOrient(new ArrayBuffer(2)) === 1 && rxExifOrient(new ArrayBuffer(0)) === 1, '');
+
+  // ---- 11c. 打分 / 选方向（只用来挑方向，不参与任何入库判断）----
+  var scoreGood = rxOcrScore({ text: '阿莫西林胶囊 2盒 每日2次\n叶酸片 1盒 每日一次', confidence: 82 });
+  var scoreJunk = rxOcrScore({ text: '|||| ||| ‖', confidence: 12 });
+  ck('认出一堆药名的分数远高于一堆符号',
+     scoreGood > scoreJunk * 3, scoreGood.toFixed(0) + ' vs ' + scoreJunk.toFixed(0));
+  ck('空结果就是 0 分', rxOcrScore({ text: '', confidence: 0 }) === 0, rxOcrScore({ text: '', confidence: 0 }));
+  ck('选方向：认得最多的那个赢',
+     rxBestTurn([{ turn: 0, score: 12 }, { turn: 90, score: 210 },
+                 { turn: 180, score: 8 }, { turn: 270, score: 3 }]).turn === 90, '');
+  ck('方向打平 → 取转得少的那个（少动比多动稳）',
+     rxBestTurn([{ turn: 180, score: 50 }, { turn: 90, score: 50 }]).turn === 90, '');
+  ck('一个都没有 → null', rxBestTurn([]) === null, '');
+
+  // ---- 11d. 端到端：假引擎跑完整链路（程序不联网也能测）----
+  var rxSrc = document.createElement('canvas');   // 假装它是那张底方照片
+  rxSrc.width = 600; rxSrc.height = 800;
+  rxSrc.getContext('2d').fillRect(0, 0, 600, 800);
+
+  var OCR_LINES = '维生素B6片(Ⅰ)[华康][10mg*30]  1瓶  19.88  10mg  每日一次  口服\n'
+                + '阿莫西林胶囊(康贝)[0.25g*8]  2盒  6.26  0.5g  每日2次  口服\n'
+                + '麝香壮骨膏[40mg*6贴]  5盒  57.87  1贴  每日一次  外用\n'
+                + '金额：913.65元\n';
+  var engineCalls = [];
+  window.__rxOcrEngine = function(cv){
+    engineCalls.push(cv.width + 'x' + cv.height);
+    return Promise.resolve({ text: OCR_LINES, confidence: 88 });
+  };
+
+  openRx();
+  ck('还没照片时，「自动识别药名」是禁用的（点了也没用的事就别让点）',
+     q('#btnRxOcr').disabled === true, q('#btnRxOcr').disabled);
+  rxPhotoBase = rxSrc; rxTurn = 0; rxShowPhotoView();
+  ck('放了照片后按钮可用，缩略图里是画布（不是外链图片）',
+     q('#btnRxOcr').disabled === false && !!q('#rxThumb canvas'), '');
+  q('#btnRxRotR').click();
+  ck('手动 ↻ 转一下角度 +90°', rxTurn === 90, rxTurn);
+  q('#btnRxRotL').click();
+  ck('手动 ↺ 转回来角度归零', rxTurn === 0, rxTurn);
+
+  async function afterOcr(){
+    ck('端到端识别跑完了', true, '');
+    ck('方向本来就对 → 只跑一遍识别（没白试另外三个方向）', engineCalls.length === 1, engineCalls.length);
+    ck('从照片上一口认出 3 味药（「金额」那行被跳过）', rxRows.length === 3,
+       rxRows.map(function(x){ return x.name; }).join(' / '));
+    ck('认出来的正是那三味',
+       rxRows.map(function(x){ return x.name; }).join('/') === '维生素B6片/阿莫西林胶囊/麝香壮骨膏', '');
+    ck('阿莫西林：用量 0.5g ÷ 规格 0.25g → 每次 2 粒（识别链路和粘贴链路同一套解析）',
+       (function(){ var r = rxRows[1]; return r && r.perDose === 2 && r.unit === '粒'; })(),
+       (function(){ var r = rxRows[1]; return r ? r.perDose + '/' + r.unit : '(没认出来)'; })());
+    ck('自动跳出了「批量填用法」窗口', q('#dlgUse').open === true, q('#dlgUse').open);
+    ck('窗口里逐味列出 3 行',
+       document.querySelectorAll('#useList .use-row').length === 3,
+       document.querySelectorAll('#useList .use-row').length);
+    ck('识别原文留在粘贴框里，方便自己改',
+       /维生素B6片/.test(q('#rxPaste').value), q('#rxPaste').value.slice(0, 20));
+    ck('粘贴框的说明也改口成「识别原文，可以改」',
+       /识别原文/.test(q('#rxPasteLt').textContent), q('#rxPasteLt').textContent.slice(0, 22));
+    ck('「复制识别文字」出现了（可以甩给助手核对）', q('#btnRxCopyText').hidden === false, '');
+    ck('提示里写明「药名务必核对，认错要吃错药」',
+       /吃错药/.test(q('#rxOcrMsg').textContent), q('#rxOcrMsg').textContent.slice(0, 44));
+    ck('识别完进度条收起、按钮回到正常文案',
+       q('#rxOcrBar').classList.contains('on') === false && q('#btnRxOcr').textContent === '自动识别药名',
+       q('#btnRxOcr').textContent);
+
+    // 统一设置：每次 1 片 · 每日 2 次 · 开 10 天 → 一次套到全部
+    q('#usePd').value = '1';
+    q('#useFreq').value = '1_2';
+    q('#useDays').value = '10';
+    q('#btnUseApplyAll').click();
+    ck('「应用到全部」把 3 味的用法都改成了 每日 2 次',
+       rxRows.every(function(r){ return r.perDose === 1 && r.timesPerCycle === 2 && r.cycleDays === 1; }),
+       rxRows.map(function(r){ return r.perDose + '×' + r.timesPerCycle; }).join(' / '));
+    ck('「本次开到」跟着反算：每天 2 份 × 10 天 = 20 份',
+       rxRows.every(function(r){ return r.total === 20; }),
+       rxRows.map(function(r){ return r.total; }).join(' / '));
+    ck('套完给了回执（不是默默改完让人不知情）',
+       /套到全部 3 味/.test(q('#useNote').textContent), q('#useNote').textContent);
+    ck('「本次开到」那格当场跟着变',
+       q('#useList .use-row:nth-child(1) .use-tot').textContent === '20',
+       q('#useList .use-row:nth-child(1) .use-tot').textContent);
+
+    // 逐味微调：第 2 味改成每次 2 粒 → 总量不动、天数重算（和上一页行内编辑同一套规则）
+    var p2 = q('#useList .use-row:nth-child(2) .use-pd');
+    p2.value = '2';
+    p2.dispatchEvent(new Event('input', { bubbles: true }));
+    ck('改「每次 2 粒」→ 天数重算成 5 天（20 份 ÷ 每天 4 粒）',
+       q('#useList .use-row:nth-child(2) .use-days').value === '5',
+       q('#useList .use-row:nth-child(2) .use-days').value);
+    var d2 = q('#useList .use-row:nth-child(2) .use-days');
+    d2.value = '3';
+    d2.dispatchEvent(new Event('input', { bubbles: true }));
+    ck('再改「开 3 天」→ 本次开到反算成 12 粒',
+       q('#useList .use-row:nth-child(2) .use-tot').textContent === '12',
+       q('#useList .use-row:nth-child(2) .use-tot').textContent);
+    ck('底部汇总跟着变（合计 20+12+20 = 52）',
+       /52/.test(q('#useSum').textContent), q('#useSum').textContent.slice(0, 30));
+
+    q('#dlgUse').close();
+    // ★ dialog.close() 派发 close 事件是「排队」的（规范里 queue an element task），
+    //   这一步同步返回时事件还没到 —— 不等一拍就断言，读到的是没重画的旧 DOM。
+    await new Promise(function(res){ setTimeout(res, 0); });
+    ck('关掉批量填用法窗口 → 上一页重画，天数跟着变',
+       q('#rxList .rx-row:nth-child(2) .rx-days-in').value === '3',
+       q('#rxList .rx-row:nth-child(2) .rx-days-in').value);
+
+    var nb = meds.length;
+    submitRx({ preventDefault: function(){} });
+    ck('一次入库 3 味', meds.length === nb + 3, meds.length - nb);
+    ck('维生素B6片入库：余量 20（每天 2 片 × 10 天）',
+       (function(){ var m = byName('维生素B6片'); return !!m && m.stockBase === 20; })(),
+       (function(){ var m = byName('维生素B6片'); return m ? m.stockBase : '(没进来)'; })());
+    ck('卡片上的「剩 N 天」= 批量填用法里确认的天数（10 天）',
+       mday('维生素B6片') === '10', mday('维生素B6片'));
+    q('#dlgRx').close();
+
+    // 失败兜底：引擎挂了不许静默，也不许把按钮卡在「识别中…」
+    openRx();
+    rxPhotoBase = rxSrc; rxTurn = 0; rxShowPhotoView();
+    window.__rxOcrEngine = function(){ return Promise.reject(new Error('模拟断网')); };
+    return rxRunOcr().then(function(){
+      ck('识别失败时明说「这条路走不通」，并把人引回粘贴/助手那条路',
+         /这条路走不通/.test(q('#rxOcrMsg').textContent) && /粘进下面的框/.test(q('#rxOcrMsg').textContent),
+         q('#rxOcrMsg').textContent.slice(0, 48));
+      ck('失败后按钮恢复可用（不会卡在「识别中…」）',
+         q('#btnRxOcr').disabled === false && q('#btnRxOcr').textContent === '自动识别药名',
+         q('#btnRxOcr').textContent);
+      ck('失败后进度条收起', q('#rxOcrBar').classList.contains('on') === false, '');
+      ck('失败不影响手动那条路：粘贴框照常解析',
+         (function(){ q('#rxPaste').value = '叶酸片[4mg*30] 1盒 8.21 4mg 每日一次 口服';
+                      q('#btnRxParse').click();
+                      return rxRows.some(function(r){ return r.name === '叶酸片'; }); })(),
+         rxRows.length);
+      q('#dlgRx').close();
+      delete window.__rxOcrEngine;
+    });
+  }
+
+  function rxFinish(){
+    R.meds = meds.map(function(x){ return x.name + '|qty=' + dispQty(x) + '|cap=' + rxCap(x); });
+    var pre = document.createElement('pre');
+    pre.id = '__T';
+    pre.textContent = JSON.stringify(R);
+    document.body.appendChild(pre);
+  }
+
+  // ★ 端到端那段要等 Promise（假引擎是异步的）。无头 Chrome 用 --virtual-time-budget，
+  //   本地 Promise 在预算内就跑完了；万一哪天这里拿不到输出，就把这段改回同步。
+  rxRunOcr().then(afterOcr).then(rxFinish, function(e){
+    ck('端到端识别过程没抛错', false, String((e && e.message) || e));
+    rxFinish();
+  });
 })();
 """
 
@@ -878,22 +1114,45 @@ def main():
         "got": mstep.group(1) if mstep else "(没找到)",
     })
 
-    # ---- 源码级：拍底方这块**不做 OCR、不引外部依赖**（识别由助手代劳，2026-10-12 定）----
+    # ---- 源码级：拍底方这两条路（2026-10-13 用户要求「助手接口 + 浏览器自动 OCR，冗余一下」）----
+    #   ★ 打开页面本身仍然不联网：静态标签里没有任何 src/href 指向外网。
+    #   ★ OCR 引擎改成**点了才下载**（运行时 createElement('script') 塞进去，三个镜像兜底），
+    #     所以「离线可用」这条没丢；取不到就明说并把人引回粘贴/助手那条路。
     n_net = len(re.findall(r'''(?:src|href)\s*=\s*["\']https?://''', src))
     data["cases"].append({
-        "name": "页面里没有任何外部脚本/样式依赖（src/href 都不到外网）",
+        "name": "静态标签里没有任何外网 src/href（打开页面本身不联网）",
         "pass": n_net == 0,
         "got": n_net,
     })
     data["cases"].append({
-        "name": "没有把 OCR 引擎塞进网页（tesseract 一次都没出现）",
-        "pass": src.lower().count("tesseract") == 0,
-        "got": src.lower().count("tesseract"),
+        "name": "OCR 引擎是运行时按需下载的（<script src=...> 这种常驻外链一个都没有）",
+        "pass": ("<script src" not in src) and ("document.createElement('script')" in src),
+        "got": "有 createElement('script')" if "document.createElement('script')" in src else "(没找到加载器)",
     })
     data["cases"].append({
-        "name": "照片说明里写明了「不上传、不保存」（只是给你对照）",
+        "name": "识别引擎有三个镜像兜底（一个站挂了还有下一个）",
+        "pass": src.count("tesseract.js@5.1.1/dist/tesseract.min.js") >= 3,
+        "got": src.count("tesseract.js@5.1.1/dist/tesseract.min.js"),
+    })
+    data["cases"].append({
+        "name": "取不到识别引擎时不静默失败：明说「这条路走不通」，并把人引回粘贴/助手那条路",
+        "pass": ("这条路走不通" in src) and ("粘进下面的框" in src),
+        "got": "已写明" if (("这条路走不通" in src) and ("粘进下面的框" in src)) else "(没写)",
+    })
+    data["cases"].append({
+        "name": "识别结果一律当草稿：界面上写明「药名务必核对，认错要吃错药」",
+        "pass": "吃错药" in src,
+        "got": "已写明" if "吃错药" in src else "(没写)",
+    })
+    data["cases"].append({
+        "name": "照片说明里写明了「不上传、不保存」（识别在本机画布里跑）",
         "pass": ("不上传" in src) and ("不保存" in src),
         "got": "已写明" if (("不上传" in src) and ("不保存" in src)) else "(没写)",
+    })
+    data["cases"].append({
+        "name": "两个入口都在：助手那条 #rx= 链接 + 网页自动识别（互为冗余）",
+        "pass": ("rxDecodeHash" in src) and ("btnRxOcr" in src) and ("rxRunOcr" in src),
+        "got": "都有" if (("rxDecodeHash" in src) and ("btnRxOcr" in src)) else "(缺一个)",
     })
 
     # ---- 源码级：拍底方这块**不做 OCR、不引外部依赖**（识别由助手代劳，2026-10-12 定）----
