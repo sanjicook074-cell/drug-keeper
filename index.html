@@ -1345,16 +1345,23 @@ function bulkRows(days, sign){
   });
 }
 // ★ 2026-10-12 用户要求：这个弹窗要能**挑着调**——列出全部药品（顺序和主页一样）、
-//   每行一个勾选框（默认全勾）、行色按档位标出「哪些药不够了」，没设用法的药勾不了。
-//   勾选状态放 bulkPicked（id → true），每次点开弹窗重置为「能调的都勾上」。
+//   每行一个勾选框、行色按档位标出「哪些药不够了」，没设用法的药勾不了。
+//   勾选状态放 bulkPicked（id → true），每次点开弹窗重置为**默认档**（见 bulkDefaultPick）。
 let bulkPicked = {};
 function bulkPickable(m){ return dailyUse(m) > 0; }      // 没设用法 → 天数换不成数量，调不了
+// 默认勾「已用完 / 偏少」的 —— 也就是真正要补的那批；「充足」的不勾（它不缺，调它属于误操作）。
+// 用户 2026-10-12：「默认打钩的是已用完和偏少的 充足的不用打勾」。
+// 想让充足的也一起调 → 点「全选」，或自己把那个框勾上（全选仍等于「能调的全勾」）。
+function bulkDefaultPick(m){
+  const lv = level(m);
+  return bulkPickable(m) && (lv === 'out' || lv === 'soon');
+}
 function bulkPickedCount(){
   return meds.filter(function(m){ return bulkPickable(m) && bulkPicked[m.id]; }).length;
 }
 function bulkResetPicks(){
   bulkPicked = {};
-  meds.forEach(function(m){ if(bulkPickable(m)) bulkPicked[m.id] = true; });
+  meds.forEach(function(m){ if(bulkDefaultPick(m)) bulkPicked[m.id] = true; });
 }
 
 function openBulk(){
@@ -1412,7 +1419,8 @@ function renderBulk(){
   bulkRows(days, -1).forEach(function(r){ dn[r.m.id] = r; });
 
   $('#bulkSub').textContent = '把「' + (who ? who.name : '当前人') + '」药箱里的 '
-    + meds.length + ' 种药列出来，勾选要调的那些，再按「够吃 ' + days + ' 天」统一加或减。';
+    + meds.length + ' 种药列出来，勾选要调的那些，再按「够吃 ' + days + ' 天」统一加或减。'
+    + '默认只勾「已用完 / 偏少」的；充足的药不缺，要一起调就自己勾上或点「全选」。';
 
   $('#bulkList').innerHTML = order.map(function(m){
     return bulkRowHTML(m, up[m.id], dn[m.id], days);

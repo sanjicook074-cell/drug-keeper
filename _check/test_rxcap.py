@@ -282,35 +282,54 @@ PROBE = r"""
      document.querySelectorAll('#bulkList .disp-name .tag').length === 6,
      document.querySelectorAll('#bulkList .disp-name .tag').length);
 
-  // ★ 勾选框：默认把「能按天换算」的都勾上，没设用法的勾不了
+  // ★ 勾选框：默认**只勾「已用完 / 偏少」**的（充足的不勾），没设用法的勾不了
+  //   2026-10-12 用户要求：「默认打钩的是已用完和偏少的 充足的不用打勾」。
+  function ckOf(n){
+    return document.querySelector('#bulkList input.bulk-ck[data-id="' + byName(n).id + '"]');
+  }
+  function afterOf(n){ return q('#bulkAfter-' + byName(n).id).textContent.trim(); }
+  function setCk(n, on){
+    var c = ckOf(n);
+    c.checked = on;
+    c.dispatchEvent(new Event('change', {bubbles:true}));
+  }
   var cks = document.querySelectorAll('#bulkList input.bulk-ck');
   var nCk = Array.prototype.filter.call(cks, function(c){ return c.checked; }).length;
   var nDis = Array.prototype.filter.call(cks, function(c){ return c.disabled; }).length;
   ck('每行都有勾选框', cks.length === 6, cks.length);
-  ck('默认勾上 5 味、禁用 1 味（没设用法那味）', nCk === 5 && nDis === 1, nCk + ' / ' + nDis);
-  ck('底部写清已勾选几种', /已勾选 5 \/ 5 种/.test(q('#bulkPickHint').textContent),
+  ck('默认勾上 4 味（4 味偏少）、禁用 1 味（没设用法）', nCk === 4 && nDis === 1, nCk + ' / ' + nDis);
+  ck('「偏少」的默认勾上（依洛尤）', ckOf('依洛尤单抗注射液').checked === true, '');
+  ck('「偏少」的默认勾上（氨氯地平）', ckOf('苯磺酸氨氯地平片').checked === true, '');
+  ck('「充足」的默认不勾（阿司匹林）', ckOf('阿司匹林肠溶片').checked === false, '');
+  ck('「充足」的默认不勾 → 那行只写「未勾选」、不给数字', afterOf('阿司匹林肠溶片') === '未勾选',
+     afterOf('阿司匹林肠溶片'));
+  ck('底部写清已勾选几种（4 / 5）', /已勾选 4 \/ 5 种/.test(q('#bulkPickHint').textContent),
      q('#bulkPickHint').textContent);
-  ck('按钮带上了天数', /勾选的 5 种各增加 7 天/.test(q('#btnBulkPlus').textContent)
-     && /勾选的 5 种各减少 7 天/.test(q('#btnBulkMinus').textContent),
+  ck('按钮带上了天数与实数', /勾选的 4 种各增加 7 天/.test(q('#btnBulkPlus').textContent)
+     && /勾选的 4 种各减少 7 天/.test(q('#btnBulkMinus').textContent),
      q('#btnBulkPlus').textContent);
+  ck('说明里写清了默认勾选规则', /默认只勾「已用完 \/ 偏少」/.test(q('#bulkSub').textContent),
+     q('#bulkSub').textContent);
   q('#bulkDays').value = 14; renderBulk();
-  ck('改天数 → 按钮与预览跟着变', /勾选的 5 种各增加 14 天/.test(q('#btnBulkPlus').textContent),
+  ck('改天数 → 按钮与预览跟着变', /勾选的 4 种各增加 14 天/.test(q('#btnBulkPlus').textContent),
      q('#btnBulkPlus').textContent);
   q('#bulkDays').value = 7; renderBulk();
 
-  // ★ 取消勾选一味 → 那一行不再给数字，汇总与按钮当场跟着变
-  var aspId = byName('阿司匹林肠溶片').id;
-  var aspCk = document.querySelector('#bulkList input.bulk-ck[data-id="' + aspId + '"]');
-  aspCk.checked = false;
-  aspCk.dispatchEvent(new Event('change', {bubbles:true}));
-  var aspRow = q('#bulkAfter-' + aspId).textContent.trim();
-  ck('取消勾选后那行写「未勾选」，不再给数字', aspRow === '未勾选', aspRow);
+  // ★ 默认不勾 ≠ 调不了：自己把「充足」那味勾上，它照样能一起调
+  setCk('阿司匹林肠溶片', true);
+  ck('手动勾上充足的药 → 已勾选 5 / 5', /已勾选 5 \/ 5 种/.test(q('#bulkPickHint').textContent),
+     q('#bulkPickHint').textContent);
+  ck('手动勾上后那行照常给数字', /＋7 天/.test(afterOf('阿司匹林肠溶片')), afterOf('阿司匹林肠溶片'));
+
+  // ★ 取消勾选一味（偏少的） → 那一行不再给数字，汇总与按钮当场跟着变
+  setCk('盐酸二甲双胍缓释片', false);
+  ck('取消勾选后那行写「未勾选」，不再给数字', afterOf('盐酸二甲双胍缓释片') === '未勾选',
+     afterOf('盐酸二甲双胍缓释片'));
   ck('取消勾选 → 底部变成已勾选 4 / 5', /已勾选 4 \/ 5 种/.test(q('#bulkPickHint').textContent),
      q('#bulkPickHint').textContent);
   ck('取消勾选 → 按钮文案变成 4 种', /勾选的 4 种各增加 7 天/.test(q('#btnBulkPlus').textContent),
      q('#btnBulkPlus').textContent);
-  ck('没被取消的行照旧给数字', /＋7 天/.test(q('#bulkAfter-' + byName('盐酸二甲双胍缓释片').id).textContent),
-     q('#bulkAfter-' + byName('盐酸二甲双胍缓释片').id).textContent);
+  ck('没被取消的行照旧给数字', /＋7 天/.test(afterOf('苯磺酸氨氯地平片')), afterOf('苯磺酸氨氯地平片'));
 
   // ★ 全不选 → 两个确认按钮禁用（避免"什么都没选就点确认"）
   q('#btnBulkNone').click();
@@ -356,7 +375,11 @@ PROBE = r"""
      R.alerts[R.alerts.length - 1]);
 
   // --- 7d. 减少到负数 → 截到 0，不许出现负库存 ---
+  // 注：默认只勾「已用完 / 偏少」，这里要验全药箱一起减，所以先点「全选」。
   openBulk(); q('#bulkDays').value = 100; renderBulk();
+  q('#btnBulkAll').click();
+  ck('点全选后 5 味都在勾上（含充足的那味）', /已勾选 5 \/ 5 种/.test(q('#bulkPickHint').textContent),
+     q('#bulkPickHint').textContent);
   applyBulk(-1);
   var five = ['苯磺酸氨氯地平片','阿托伐他汀钙片','盐酸二甲双胍缓释片','阿司匹林肠溶片','依洛尤单抗注射液'];
   ck('减 100 天：5 味全到 0，没有负数',
@@ -375,7 +398,8 @@ PROBE = r"""
 
   // --- 7f. ★ 2026-10-12 新增：只勾一部分 → 没勾的必须一根手指都不碰 ---
   // 此刻 5 味都已被减到 0，维生素D 仍是 30。
-  openBulk();                                   // 默认全勾，先把别的取消
+  // 此刻 5 味都已用完 → 默认就把这 5 味全勾上了（「已用完」在默认档里），先把别的取消
+  openBulk();
   ['苯磺酸氨氯地平片','阿托伐他汀钙片','盐酸二甲双胍缓释片','依洛尤单抗注射液']
     .forEach(function(n){
       var c = document.querySelector('#bulkList input.bulk-ck[data-id="' + byName(n).id + '"]');
