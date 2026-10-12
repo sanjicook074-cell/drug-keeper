@@ -184,6 +184,18 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 .grid2 input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
 .grid2 .hintline{font-size:11.5px;color:var(--faint);margin-top:-2px}
 
+/* 「添加药品」的必填 / 选填标记。
+   为什么两边都标：这个表单 8 格必填、只有 2 格选填，光靠「有没有 *」容易看漏 ——
+   选填的那两格主动挂一枚小签，扫一眼就知道哪两格可以跳过。
+   ★ 标签文字必须包在 `.lb` 里：`.grid2 label` 是 column flex，**它的每个子元素都会独占一行** ——
+     直接写 `药品名称<b>*</b>` 会把星号挤到下一行（第一版就是这么翻车的，截图里星号孤零零一行）。 */
+.grid2 label .lb{display:block}
+.grid2 label .req{color:var(--out);font-weight:700;margin-left:3px}
+.grid2 label .opt{font-size:10.5px;font-weight:600;color:var(--faint);
+  border:1px solid var(--line);border-radius:5px;padding:0 4px;margin-left:5px;vertical-align:1px}
+.req-legend{grid-column:1/-1;font-size:11.5px;color:var(--faint);margin-top:1px}
+.req-legend .req{color:var(--out);font-weight:700}
+
 /* 「每次 [1] [片] ，每 [1] 天 [1] 次」——读起来就是一句白话。
    每天吃的药「每」填 1；隔 N 天一次的（维生素B12每 14 天 1 支）填 N。 */
 .dose-row{grid-column:1/-1;display:flex;align-items:center;gap:6px;flex-wrap:wrap;
@@ -418,50 +430,52 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
     <div class="dlg-b">
       <div class="grid2">
         <div class="sec-title">这是什么药</div>
-        <label class="full">药品名称 *
+        <label class="full"><span class="lb">药品名称<b class="req">*</b></span>
           <input name="name" required autocomplete="off" placeholder="如 维生素B2片">
         </label>
-        <label class="full">规格
+        <label class="full"><span class="lb">规格<span class="opt">选填</span></span>
           <input name="spec" autocomplete="off" placeholder="如 20mg / 0.5g">
         </label>
 
         <div class="sec-title">怎么吃</div>
         <div class="dose-row">
           <span>每次</span>
-          <input name="perDose" type="number" step="0.25" min="0" value="1" class="mini" aria-label="每次用量">
-          <input name="unit" value="片" autocomplete="off" class="mini unit" aria-label="单位" placeholder="片">
+          <input name="perDose" type="number" step="0.25" min="0" value="1" class="mini" aria-label="每次用量" required>
+          <input name="unit" value="片" autocomplete="off" class="mini unit" aria-label="单位" placeholder="片" required>
           <span>，每</span>
-          <input name="cycleDays" type="number" step="1" min="1" value="1" class="mini" aria-label="每几天用一次药">
+          <input name="cycleDays" type="number" step="1" min="1" value="1" class="mini" aria-label="每几天用一次药" required>
           <span>天</span>
-          <input name="timesPerCycle" type="number" step="1" min="0" value="1" class="mini" aria-label="每个周期用几次">
+          <input name="timesPerCycle" type="number" step="1" min="0" value="1" class="mini" aria-label="每个周期用几次" required>
           <span>次</span>
         </div>
         <div class="dose-note">
-          <span class="dose-tip">单位可填 片 / 粒 / ml / 支 / 袋</span>
+          <span class="dose-tip">单位可填 片 / 粒 / ml / 支 / 袋 —— <b>这一行四格都是必填</b></span>
           <span id="dosePreview"></span>
         </div>
 
         <div class="sec-title">现在还剩多少</div>
-        <label>余量
-          <input name="stockBase" type="number" step="0.25" min="0" value="0">
+        <label><span class="lb">余量<b class="req">*</b></span>
+          <input name="stockBase" type="number" step="0.25" min="0" value="0" required>
         </label>
-        <label>这个余量是哪天的
-          <input name="stockDate" type="date">
+        <label><span class="lb">这个余量是哪天的<b class="req">*</b></span>
+          <input name="stockDate" type="date" required>
           <span class="hintline">默认今天。上面那格预填的是<b>按用法扣到今天</b>的推算值（和卡片一致）；
             你数的数不一样就直接改上面那格，日期填<b>你数的那天</b>。这两个都不动就不会改掉原来的基准</span>
         </label>
 
         <div class="sec-title">开药限制</div>
-        <label class="full">一次最多能开多少
-          <input name="rxMax" type="number" step="1" min="0" autocomplete="off" placeholder="留空 = 不限">
+        <label class="full"><span class="lb">一次最多能开多少<b class="req">*</b></span>
+          <input name="rxMax" type="number" step="1" min="1" autocomplete="off" placeholder="如 30" required>
           <span class="hintline">医生单次处方的上限 —— 一次挂号只能开一次药，所以这一次能拿到多少
-            就看这里。单位是上面填的「<b id="rxUnitTip">片</b>」；填了才知道要分几次开，
-            卡片和「已经开药」都会按这个数来；不填就当不限量。</span>
+            就看这里。单位是上面填的「<b id="rxUnitTip">片</b>」；卡片和「已经开药」都会按这个数来。
+            拿不准就照上次开药的数量填 —— 它决定「要跑几趟」，不能空着。</span>
         </label>
 
-        <label class="full">备注
+        <label class="full"><span class="lb">备注<span class="opt">选填</span></span>
           <input name="note" autocomplete="off" placeholder="如 晚饭后服 / 冰箱冷藏">
         </label>
+
+        <div class="req-legend"><b class="req">*</b> 为必填；只有<b>规格</b>、<b>备注</b>两格可以留空。</div>
       </div>
     </div>
     <div class="dlg-f">
@@ -1204,7 +1218,15 @@ function openEditor(id){
     };
     f.stockBase.value = preQty;
     f.stockDate.value = todayStr();
-    f.rxMax.value = num(m.rxMax) > 0 ? m.rxMax : '';
+    // 「一次最多能开多少」现在是必填，所以老存档里 rxMax=0（旧的「不限」）要留空让人补填，
+    // 并换一句 placeholder 说明为什么这格是空的 —— 不然看着像 bug。
+    if(num(m.rxMax) > 0){
+      f.rxMax.value = m.rxMax;
+      f.rxMax.placeholder = '如 30';
+    } else {
+      f.rxMax.value = '';
+      f.rxMax.placeholder = '原来是不限，请填一个上限';
+    }
     f.note.value = m.note || '';
   } else {
     $('#dlgTitle').textContent = '添加药品';
@@ -1215,6 +1237,7 @@ function openEditor(id){
     f.stockBase.value = 0;
     f.stockDate.value = todayStr();
     f.rxMax.value = '';
+    f.rxMax.placeholder = '如 30';
   }
   syncRxUnitTip();
   syncDosePreview();
@@ -1253,22 +1276,49 @@ function syncDosePreview(){
 //   2026-10-11 用户点名删掉（余量那格已经预填成卡片的数了，再摆一行算式是冗余）。
 //   别再把它加回来 —— 编辑弹窗里的「余量」预填的就是卡片上的数，这一点别动。
 
+/* ★ 必填口径（2026-10-13 用户要求）：「规格」「备注」选填，**其余全必填**。
+   两层校验，缺一不可：
+     ① HTML 上的 required / min —— 留空、或低于下限时浏览器当场拦下并把光标放到那一格；
+     ② 下面这段 JS —— required 只管「没留空」，管不住「填了 0」：
+        每次用量、每周期几次填 0 等于没填用法（卡片算不出「剩几天」），
+        单次上限填 0 是老口径的「不限」而这一格现在必填 —— 都得照样拦。
+   一次把所有问题列全再弹，别让人改一格试一次。 */
 function submitMed(e){
   e.preventDefault();
   const f = $('#formMed');
   const name = (f.name.value || '').trim();
-  if(!name){ alert('请填药品名称'); return; }
+  const perDose = num(f.perDose.value);
+  const unit = (f.unit.value || '').trim();
+  const cycleDays = num(f.cycleDays.value);
+  const timesPerCycle = num(f.timesPerCycle.value);
+  const stockBase = num(f.stockBase.value);
+  const rxMax = num(f.rxMax.value);
+
+  const miss = [];
+  if(!name) miss.push('药品名称');
+  if(!(perDose > 0)) miss.push('每次用量（要大于 0）');
+  if(!unit) miss.push('单位');
+  if(!(cycleDays >= 1)) miss.push('每几天（至少 1）');
+  if(!(timesPerCycle > 0)) miss.push('每周期几次（要大于 0）');
+  // 余量可以填 0（刚好吃完），但不能空着
+  if((f.stockBase.value || '').trim() === '' || !(stockBase >= 0)) miss.push('余量（填 0 可以，但不能空）');
+  if(!f.stockDate.value) miss.push('余量日期');
+  if(!(rxMax > 0)) miss.push('一次最多能开多少（要大于 0）');
+  if(miss.length){
+    alert('还差这几项：\n· ' + miss.join('\n· ') + '\n\n（只有「规格」和「备注」可以留空）');
+    return;
+  }
 
   const obj = {
     name: name,
     spec: (f.spec.value || '').trim(),
-    perDose: Math.max(0, num(f.perDose.value, 1)),
-    unit: (f.unit.value || '').trim() || '片',
-    cycleDays: Math.max(1, Math.round(num(f.cycleDays.value, 1)) || 1),
-    timesPerCycle: Math.max(0, num(f.timesPerCycle.value, 1)),
-    stockBase: Math.max(0, num(f.stockBase.value)),
+    perDose: perDose,
+    unit: unit || '片',
+    cycleDays: Math.max(1, Math.round(cycleDays) || 1),
+    timesPerCycle: timesPerCycle,
+    stockBase: Math.max(0, stockBase),
     stockDate: f.stockDate.value || todayStr(),
-    rxMax: Math.max(0, num(f.rxMax.value)),
+    rxMax: rxMax,
     note: (f.note.value || '').trim()
   };
 

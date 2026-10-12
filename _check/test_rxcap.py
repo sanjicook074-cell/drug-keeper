@@ -438,19 +438,21 @@ PROBE = r"""
   // 也就是说：**卡片上的数（stockNow）是唯一口径**，编辑弹窗要预填它、存它也存它。
   // 弹窗里那行蓝字「扣到今天：还剩 X 片 … 」**已按用户要求删掉**（2026-10-11 下半场）——
   //   余量那格预填的本来就是卡片上的数，再摆一行算式是冗余。断言改成"这行必须不存在"。
+  //   2026-10-13 起「一次最多能开多少」是**必填**（见 8e），所以这一批夹具也必须带上 rxMax ——
+  //   否则 submitMed 会被拦下、断言「值没变」会**假绿**（8b 那种「只改备注 → 基准不动」本来就该绿的更危险）。
   var demo3 = [
     { name:'编弹窗对账片', spec:'5mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
-      stockBase:14, stockDate:agoD(13) },                        // 扣到今天 = 1 片 / 剩 1 天
+      stockBase:14, stockDate:agoD(13), rxMax:30 },              // 扣到今天 = 1 片 / 剩 1 天
     { name:'每日两片对账', spec:'5mg', perDose:2, unit:'片', cycleDays:1, timesPerCycle:1,
-      stockBase:4, stockDate:todayStr() },                       // 用户举的例子：每日 2 片、4 片 = 2 天
+      stockBase:4, stockDate:todayStr(), rxMax:60 },             // 用户举的例子：每日 2 片、4 片 = 2 天
     { name:'三次两片对账', spec:'5mg', perDose:2, unit:'片', cycleDays:1, timesPerCycle:3,
-      stockBase:12, stockDate:todayStr() },                      // 每次 2 片×每天 3 次 → 12 片 = 2 天
+      stockBase:12, stockDate:todayStr(), rxMax:60 },            // 每次 2 片×每天 3 次 → 12 片 = 2 天
     { name:'零头对账片', spec:'5mg', perDose:2, unit:'片', cycleDays:1, timesPerCycle:1,
-      stockBase:5, stockDate:todayStr() },                       // 5 片 ÷ 每天 2 片 → 2 天多一点
+      stockBase:5, stockDate:todayStr(), rxMax:30 },             // 5 片 ÷ 每天 2 片 → 2 天多一点
     { name:'半天对账片', spec:'5mg', perDose:2, unit:'片', cycleDays:1, timesPerCycle:1,
-      stockBase:1, stockDate:todayStr() },                       // 1 片 < 每天 2 片 → 不够 1 整天
+      stockBase:1, stockDate:todayStr(), rxMax:30 },             // 1 片 < 每天 2 片 → 不够 1 整天
     { name:'没设用法片', spec:'—', perDose:1, unit:'片', cycleDays:1, timesPerCycle:0,
-      stockBase:30, stockDate:todayStr() }                       // 没设用法 → 不递减
+      stockBase:30, stockDate:todayStr(), rxMax:30 }             // 没设用法 → 不递减
   ];
   demo3.forEach(function(d){ d.id = uid(); });
   setMeds(demo3); save(); render();
@@ -538,6 +540,114 @@ PROBE = r"""
   // 新增（还没保存过）的药：余量预填 0，不许出现负数
   openEditor(null);
   ck('新增药品时余量预填 0', num(fmed.stockBase.value) === 0, fmed.stockBase.value);
+  q('#dlgMed').close();
+
+  // --- 8e. ★ 2026-10-13 用户要求：「添加药品」里只有「规格」「备注」选填，**其余全必填** ---
+  //   注意这里验的是 **JS 那一层**：直接调 submitMed() 会跳过 HTML 的 required
+  //   （那是浏览器在 submit 事件**之前**拦的，脚本调函数时根本不走那道门）。
+  //   所以本段专测兜底：空着 / 填 0 必须被拦、且一个字段都不许写进药箱。
+  //   HTML 上那 8 个 required 由 main() 里的源码级断言负责（那边也管「规格/备注不许带 required」）。
+  openEditor(null);
+  var before8e = meds.length;
+  fmed.name.value = '必填校验用片';
+  fmed.spec.value = '';
+  fmed.note.value = '';                        // 这两格是选填，留空
+  fmed.perDose.value = 1;
+  fmed.unit.value = '片';
+  fmed.cycleDays.value = 1;
+  fmed.timesPerCycle.value = 1;
+  fmed.stockBase.value = 0;
+  fmed.stockDate.value = todayStr();
+  fmed.rxMax.value = '';                       // 唯一会空着的必填格
+
+  var al0 = R.alerts.length;
+  submitMed({ preventDefault: function(){} });
+  ck('单次上限空着 → 被拦下，没写进药箱', meds.length === before8e, meds.length - before8e);
+  ck('提示点名了「一次最多能开多少」',
+     /一次最多能开多少/.test(R.alerts.slice(al0).join(' | ')), R.alerts[R.alerts.length - 1]);
+  ck('被拦下时弹窗还开着（没当成功）', q('#dlgMed').open, '');
+
+  // 每次用量填 0 = 没填用法（卡片会算不出「剩几天」）→ 照样拦
+  fmed.rxMax.value = '30';
+  fmed.perDose.value = 0;
+  var al1 = R.alerts.length;
+  submitMed({ preventDefault: function(){} });
+  ck('每次用量填 0 → 被拦下', meds.length === before8e, meds.length - before8e);
+  ck('提示写清了「每次用量（要大于 0）」',
+     /每次用量（要大于 0）/.test(R.alerts.slice(al1).join(' | ')), R.alerts[R.alerts.length - 1]);
+
+  // 每周期几次填 0 → 同理
+  fmed.perDose.value = 1;
+  fmed.timesPerCycle.value = 0;
+  var al2 = R.alerts.length;
+  submitMed({ preventDefault: function(){} });
+  ck('每周期几次填 0 → 被拦下', meds.length === before8e, meds.length - before8e);
+  ck('提示写清了「每周期几次（要大于 0）」',
+     /每周期几次（要大于 0）/.test(R.alerts.slice(al2).join(' | ')), R.alerts[R.alerts.length - 1]);
+
+  // 余量：填 0 可以（刚好吃完），空着不行
+  fmed.timesPerCycle.value = 1;
+  fmed.stockBase.value = '';
+  var al3 = R.alerts.length;
+  submitMed({ preventDefault: function(){} });
+  ck('余量空着 → 被拦下', meds.length === before8e, meds.length - before8e);
+  ck('提示写明余量「填 0 可以，但不能空」',
+     /余量（填 0 可以，但不能空）/.test(R.alerts.slice(al3).join(' | ')),
+     R.alerts[R.alerts.length - 1]);
+
+  // 单次上限填 0 = 老口径的「不限」，这格现在必填 → 也要拦
+  fmed.stockBase.value = 0;
+  fmed.rxMax.value = '0';
+  var al4 = R.alerts.length;
+  submitMed({ preventDefault: function(){} });
+  ck('单次上限填 0 → 被拦下（不再当「不限」）', meds.length === before8e, meds.length - before8e);
+  ck('同上，提示仍是「一次最多能开多少（要大于 0）」',
+     /一次最多能开多少（要大于 0）/.test(R.alerts.slice(al4).join(' | ')),
+     R.alerts[R.alerts.length - 1]);
+
+  // 都填齐了 → 规格 / 备注留空照样存得下去（这两格是选填）
+  fmed.rxMax.value = '30';
+  submitMed({ preventDefault: function(){} });
+  ck('填齐后正常入库（规格/备注留空不影响）', meds.length === before8e + 1, meds.length - before8e);
+  var mk = byName('必填校验用片');
+  ck('入库后 rxMax=30，而 spec / note 是空串',
+     !!mk && mk.rxMax === 30 && mk.spec === '' && mk.note === '',
+     mk ? [mk.rxMax, JSON.stringify(mk.spec), JSON.stringify(mk.note)].join(' / ') : '(没进来)');
+  ck('保存成功后弹窗已关闭', !q('#dlgMed').open, '');
+
+  // 老存档里 rxMax=0（旧的「不限」）→ 编辑时那格必须留空并提示要补填，
+  // 这是「原来是不限」那批药唯一的迁移路径，别让它静默变成 0 上限。
+  var legacy = byName('必填校验用片');
+  legacy.rxMax = 0;
+  openEditor(legacy.id);
+  ck('老药 rxMax=0 → 编辑时那格留空（等人补填）', fmed.rxMax.value === '', '「' + fmed.rxMax.value + '」');
+  ck('并且换了 placeholder 说明为什么是空的',
+     /原来是不限/.test(fmed.rxMax.placeholder), fmed.rxMax.placeholder);
+  q('#dlgMed').close();
+
+  // ★ 上面那些都是「JS 兜底」被拦下的样子。HTML 上那 8 个 required 到底有没有生效？
+  //   直接调 submitMed() 会**绕过**它，所以只能拿浏览器自己的 checkValidity() 来问 ——
+  //   这才是「真人在页面上点保存时会被浏览器拦下」的证据。
+  openEditor(null);
+  var formEl = q('#formMed');
+  fmed.name.value = '必填校验用片';
+  fmed.spec.value = '';
+  fmed.note.value = '';
+  fmed.rxMax.value = '';
+  ck('新增时整表不合法（上限空着 → 原生 required 会拦）',
+     formEl.checkValidity() === false, formEl.checkValidity());
+  var invalids = Array.prototype.map.call(formEl.querySelectorAll('input'), function(el){
+    return el.name + ':' + el.validity.valid;
+  }).filter(function(s){ return /:false$/.test(s); });
+  ck('不合法的那格就是 rxMax（其余全过）',
+     invalids.length === 1 && invalids[0] === 'rxMax:false', invalids.join('、') || '(全过)');
+  fmed.rxMax.value = '30';
+  ck('补上限后整表合法（规格/备注仍留空）', formEl.checkValidity() === true, formEl.checkValidity());
+  // 把「余量」清空 → 又该不合法（它能填 0，但不能空）
+  fmed.stockBase.value = '';
+  ck('余量清空 → 整表又不合法', formEl.checkValidity() === false, formEl.checkValidity());
+  fmed.stockBase.value = '0';
+  ck('余量填 0 → 合法（0 是有效值，不是"没填"）', formEl.checkValidity() === true, formEl.checkValidity());
   q('#dlgMed').close();
 
   // ---- 9. ★ 2026-10-11 用户要求：「又买了药」「校准余量」也走中间弹窗 ----
@@ -952,6 +1062,42 @@ def main():
         "name": "源码里 #numVal 的 step = 1（不再 0.25）",
         "pass": bool(mstep) and mstep.group(1) == "1",
         "got": mstep.group(1) if mstep else "(没找到)",
+    })
+
+    # ---- 源码级：「添加药品」的必填口径（2026-10-13 用户要求）----
+    #   用户原话：「添加药品里 规格和备注是选填 其他的是必填」。
+    #   ★ 为什么非要在源码上再钉一遍：`required` 是**浏览器在 submit 事件之前**拦的，
+    #     插进页面的 JS 探针根本摸不到它 —— DOM 那段只能验 JS 兜底那一层。
+    #     所以「哪几格真的带 required」只在源码上看得到；谁手一滑摘掉一个，这里当场红。
+    mform = re.search(r'<form id="formMed">(.*?)</form>', src, flags=re.S)
+    fbody = mform.group(1) if mform else ""
+
+    def _attrs(field):
+        # ⚠️ 别在名字后面加 \b —— 收尾的是引号 `"`（非单词字符），紧跟空格也是非单词字符，
+        #    中间根本没有单词边界，`\b` 会让这条永远匹配不上（第一次就栽在这：8 格全被判「没带 required」）。
+        m = re.search(r'<input name="%s"([^>]*)>' % re.escape(field), fbody)
+        return m.group(1) if m else None
+
+    want_req = ["name", "perDose", "unit", "cycleDays", "timesPerCycle",
+                "stockBase", "stockDate", "rxMax"]
+    want_opt = ["spec", "note"]
+    bad_req = [k for k in want_req if not (_attrs(k) and "required" in _attrs(k))]
+    bad_opt = [k for k in want_opt if _attrs(k) is None or "required" in _attrs(k)]
+    data["cases"].append({
+        "name": "「添加药品」8 格必填都带 required（药名/每次/单位/每几天/几次/余量/日期/开药上限）",
+        "pass": bool(fbody) and not bad_req,
+        "got": "、".join(bad_req) if bad_req else "8/8",
+    })
+    data["cases"].append({
+        "name": "「规格」「备注」两格没有 required（选填）",
+        "pass": not bad_opt,
+        "got": "、".join(bad_opt) if bad_opt else "2/2",
+    })
+    # 防回潮：上限那格原来写「留空 = 不限」，改成必填后这句必须消失（否则界面自相矛盾）
+    data["cases"].append({
+        "name": "开药上限那格不再写「留空 = 不限」（它现在必填）",
+        "pass": "留空 = 不限" not in src,
+        "got": src.count("留空 = 不限"),
     })
 
     # ---- 源码级：底方这条路只剩「助手通道」（2026-10-13 用户实测后定：浏览器端 OCR 整条删掉）----

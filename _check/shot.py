@@ -26,9 +26,9 @@ DEMO_JS = r"""
     { name:'维生素B2片', spec:'5mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
       stockBase:21, stockDate:agoD(18), rxMax:14, note:'晚饭后服' },
     { name:'葡萄糖酸钙片', spec:'0.5g', perDose:1, unit:'片', cycleDays:1, timesPerCycle:2,
-      stockBase:60, stockDate:agoD(20), note:'随餐服' },
+      stockBase:60, stockDate:agoD(20), rxMax:30, note:'随餐服' },
     { name:'健胃消食片', spec:'0.8g', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
-      stockBase:90, stockDate:agoD(10), note:'空腹服' },
+      stockBase:90, stockDate:agoD(10), rxMax:30, note:'空腹服' },
     { name:'维生素B12注射液', spec:'0.5mg/支', perDose:1, unit:'支', cycleDays:14, timesPerCycle:1,
       stockBase:2, stockDate:agoD(20), rxMax:2, note:'皮下注射，每 2 周 1 次' }
   ];
@@ -53,6 +53,10 @@ HOOKS = {
     # ★ 编辑弹窗：拍的是「余量」那格 —— 预填的就是卡片上那个数（当天推算值），
     #   拍下来是为了核对弹窗与卡片同框一致（用户 2026-10-11 报过这两处对不上）。
     #   挑「每天 2 片」那味：卡片写「余量约 20 片」，弹窗里预填的也该是 20。
+    #   2026-10-13 起这张还兼一份差事：把「哪几格必填、哪两格选填」拍明白
+    #   （带红 `*` 的 8 格 + 规格/备注上的「选填」小签 + 底部那行说明）。
+    #   所以演示数据里**每一味都补上了 rxMax** —— 老数据缺这格会显示成空白提示要补填，
+    #   那是迁移态，不适合当成品图。
     "edit": "openEditor(meds[2].id);",
     # ★ 「又买了药」现在是中间弹窗（原来走浏览器原生 prompt，2026-10-11 用户要求改掉）。
     #   2026-10-12 用户要求把那行实时对照删掉，所以这里只填数、不再调 renderNumCalc。
