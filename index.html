@@ -185,7 +185,7 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 .grid2 .hintline{font-size:11.5px;color:var(--faint);margin-top:-2px}
 
 /* 「每次 [1] [片] ，每 [1] 天 [1] 次」——读起来就是一句白话。
-   每天吃的药「每」填 1；隔 N 天一次的（依洛尤每 14 天 1 支）填 N。 */
+   每天吃的药「每」填 1；隔 N 天一次的（维生素B12每 14 天 1 支）填 N。 */
 .dose-row{grid-column:1/-1;display:flex;align-items:center;gap:6px;flex-wrap:wrap;
   font-size:13px;color:#4b5563;padding:2px 0}
 .dose-row input{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:8px;
@@ -245,6 +245,51 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 .disp-name .tag{margin-left:6px;vertical-align:1px}
 .disp-sum b{color:#374151}
 
+/* ---------- 拍底方批量录入 ---------- */
+#dlgRx{width:min(880px,94vw)}
+.rx-shot{display:flex;gap:12px;align-items:flex-start;margin-bottom:14px;
+  padding-bottom:14px;border-bottom:1px dashed var(--line)}
+.rx-thumb{width:100px;height:128px;flex:none;border:1px solid var(--line);border-radius:10px;
+  background:#f8f9fb;display:grid;place-items:center;overflow:hidden;cursor:pointer;
+  color:var(--faint);font-size:11.5px;line-height:1.5;text-align:center;padding:6px}
+.rx-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.rx-thumb.big{width:min(420px,72vw);height:auto}
+.rx-thumb.big img{object-fit:contain;height:auto;max-height:44vh;width:100%}
+.rx-shot-info{flex:1;min-width:0;font-size:12px;color:var(--muted);line-height:1.7}
+.rx-shot-btns{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:7px}
+.rx-paste{display:flex;flex-direction:column;gap:7px;margin-bottom:14px}
+.rx-paste .lt{font-size:12.5px;color:#4b5563}
+#rxPaste{font:inherit;font-size:12.5px;line-height:1.7;padding:9px 11px;min-height:64px;
+  resize:vertical;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--text)}
+#rxPaste:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.rx-list{display:flex;flex-direction:column;gap:9px;max-height:40vh;overflow:auto}
+.rx-row{border:1px solid var(--line);border-left-width:4px;border-radius:10px;padding:10px 12px;background:#fff}
+.rx-row[data-lv=out]{border-left-color:var(--out);background:#fffafa}
+.rx-row[data-lv=soon]{border-left-color:var(--soon);background:#fffdf6}
+.rx-row[data-lv=ok]{border-left-color:var(--ok)}
+.rx-row[data-lv=na]{border-left-color:var(--na)}
+.rx-line{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.rx-line + .rx-line{margin-top:8px}
+.rx-row input,.rx-row select{font:inherit;font-size:12.5px;padding:6px 9px;
+  border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text)}
+.rx-row input:focus,.rx-row select:focus{outline:none;border-color:var(--brand);
+  box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.rx-row .rx-name{flex:1;min-width:130px;font-weight:600}
+.rx-row .rx-spec{width:118px}
+.rx-row input.mini{width:56px;text-align:center}
+.rx-row .lb{font-size:12px;color:#4b5563}
+.rx-row .rx-del{flex:none;border:none;background:none;color:var(--faint);cursor:pointer;
+  font-size:16px;line-height:1;padding:2px 5px;border-radius:6px}
+.rx-row .rx-del:hover{color:var(--out);background:#fef2f2}
+.rx-days-wrap{margin-left:auto;display:flex;align-items:baseline;gap:6px;font-size:12px;
+  color:var(--muted);background:#f8f9fb;border:1px solid var(--line-2);border-radius:9px;padding:5px 10px}
+.rx-days-wrap input{width:56px;text-align:center;font-weight:650;padding:4px 6px}
+.rx-hint{font-size:11.5px;color:var(--soon);margin-top:6px}
+.rx-empty{text-align:center;padding:24px 10px;color:var(--faint);font-size:13px}
+.rx-act{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:13px 0 0;
+  padding-top:13px;border-top:1px solid var(--line-2);font-size:12.5px;color:var(--muted)}
+.rx-act .sp{flex:1}
+
 /* ---------- 打印 ---------- */
 @media print{
   body{background:#fff}
@@ -276,6 +321,7 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
       <button class="btn ghost" id="btnImport">导入</button>
       <button class="btn ghost" id="btnExport">导出备份</button>
       <button class="btn ghost" id="btnBulk" title="按「够吃 N 天」统一加减这个药箱里所有药品的存量">批量调存量</button>
+      <button class="btn ghost" id="btnRx" title="拿一张底方/处方（拍下来或粘贴文字），一次把上面的药都记进来">拍底方录入</button>
       <button class="btn primary" id="btnAdd">＋ 添加药品</button>
     </div>
   </header>
@@ -345,7 +391,7 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
       <div class="grid2">
         <div class="sec-title">这是什么药</div>
         <label class="full">药品名称 *
-          <input name="name" required autocomplete="off" placeholder="如 阿托伐他汀钙片">
+          <input name="name" required autocomplete="off" placeholder="如 维生素B2片">
         </label>
         <label class="full">规格
           <input name="spec" autocomplete="off" placeholder="如 20mg / 0.5g">
@@ -393,6 +439,52 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
     <div class="dlg-f">
       <button type="button" class="btn ghost" id="btnCancel">取消</button>
       <button type="submit" class="btn primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 拍底方批量录入（2026-10-12 用户要求）：
+     底方 = 医院打印的那种处方。**这里不做 OCR** —— 照片只是给你照着的对照物，
+     字怎么变成药，有两条路：① 你照着照片把一行行打/粘进来（本页解析）；② 直接把照片发给
+     助手，由它替你认字算好，再给你一条带 #rx= 的链接，点开就是这个弹窗、药已经填好。
+     之所以不在网页里做 OCR：中文药品名认错一两个字是要吃错药的，而这个页面是单文件、
+     零依赖、离线可用 —— 塞一个几十兆的识别模型进来不划算（见 README「为什么不做自动识别」）。 -->
+<dialog id="dlgRx">
+  <form id="formRx">
+    <div class="dlg-h">
+      <h3>拍底方批量录入</h3>
+      <p id="rxSub">照着底方把药填进来，程序按底方的「数量 × 规格」和「频次」算出每味够吃多少天，你确认一下就行。</p>
+    </div>
+    <div class="dlg-b">
+
+      <div class="rx-shot">
+        <div class="rx-thumb" id="rxThumb" title="点这里拍 / 选照片">点这里<br>拍 / 选照片</div>
+        <div class="rx-shot-info">
+          <div class="rx-shot-btns">
+            <button type="button" class="btn ghost sm" id="btnRxShot">拍 / 选照片</button>
+            <button type="button" class="btn ghost sm" id="btnRxClear" hidden>移除照片</button>
+          </div>
+          <div>照片<b>只在你自己这块屏幕上</b>显示给你对照（不上传、不保存、关掉就没了）。手机上点「拍 / 选照片」会直接开相机。</div>
+        </div>
+      </div>
+      <input type="file" id="rxPhoto" accept="image/*" capture="environment" hidden>
+
+      <div class="rx-paste">
+        <span class="lt">① 拍完之后，照着底方把药名一行行粘/打进来 —— <b>整行原样粘</b>就行，规格、数量、频次都不用你拆：</span>
+        <textarea id="rxPaste" autocomplete="off" placeholder="例（一行一味，直接粘底方上的那行字）：&#10;阿莫西林胶囊(康贝)[0.25g*8] 2盒 6.26 0.5g 每日2次 口服&#10;维生素B6片(Ⅰ)[华康][10mg*30] 1瓶 19.88 10mg 每日一次 口服"></textarea>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn ghost sm" id="btnRxParse">解析成药品</button>
+          <button type="button" class="btn ghost sm" id="btnRxAddOne">＋ 手动加一味</button>
+        </div>
+      </div>
+
+      <div class="rx-list" id="rxList"></div>
+      <div class="disp-sum" id="rxSum"></div>
+
+    </div>
+    <div class="dlg-f">
+      <button type="button" class="btn ghost" id="btnRxCancel">取消</button>
+      <button type="submit" class="btn primary" id="btnRxOk">全部加入药箱</button>
     </div>
   </form>
 </dialog>
@@ -655,7 +747,7 @@ function saveSettings(){ store.set(LS_SET, JSON.stringify(settings)); }
 /* -------------------- 计算核心 -------------------- */
 // 用药周期：每 cycleDays 天用 timesPerCycle 次。
 // 每天吃的药 → cycleDays = 1，此时与「每日 N 次」完全等价（老数据零迁移）；
-// 隔 N 天一次的（依洛尤单抗每 14 天 1 支这类长效药）→ cycleDays = N、timesPerCycle = 1。
+// 隔 N 天一次的（维生素B12注射液每 14 天 1 支这类长效药）→ cycleDays = N、timesPerCycle = 1。
 function cycle(m){
   const days = Math.max(1, Math.round(num(m.cycleDays, 1)) || 1);
   const raw = (m.timesPerCycle != null) ? m.timesPerCycle : m.timesPerDay;  // timesPerDay 是改名前的老字段
@@ -823,8 +915,10 @@ function renderList(){
       + '<p>还没有记录任何药品。<br>把家里在吃的药都记进来，之后就知道什么时候该开了。</p>'
       + '<div class="row">'
       + '<button class="btn primary" id="btnAdd2">添加第一种药</button>'
+      + '<button class="btn ghost" id="btnRx2">拍底方批量录入</button>'
       + '</div></div>';
     const a = $('#btnAdd2'); if(a) a.addEventListener('click', function(){ openEditor(null); });
+    const b2 = $('#btnRx2'); if(b2) b2.addEventListener('click', function(){ openRx(); });
     $('#listHint').textContent = '';
     return;
   }
@@ -1489,6 +1583,417 @@ function applyBulk(sign){
     + (unchanged ? '\n\n有 ' + unchanged + ' 种换算后不足 0.01，实际没变。' : ''));
 }
 
+/* -------------------- 拍底方批量录入（2026-10-12） --------------------
+   底方 = 医院打印的处方。这一块**不做 OCR**，照片只当对照物（见弹窗里那段注释）。
+   网页干的活是：
+     ① 你照着照片把底方上的药名那行**原样粘/打**进来（`rxParseText`）；
+     ② 程序把那行拆成 药名 / 规格 / 每盒几片 / 本次数量 / 每次几片 / 频次（`rxParseLine`）；
+     ③ 按「本次总量 ÷ 每天用量」算出**每味够吃多少天**，摆在你面前让你确认（可改）；
+     ④ 勾选要录的，一次写进药箱（`submitRx`）。
+   另一条路：把照片直接发给助手，它替你认字算好，给你一条带 `#rx=` 的链接（`rxDecodeHash`）——
+   点开就是同这个弹窗，药已经填好，你核对一下点「加入药箱」。 */
+
+let rxRows = [];        // 弹窗里正在确认的行
+let rxSeq = 0;          // 行序号（key 用，和数据库里的 id 无关）
+let rxPhotoURL = '';    // 只是 objectURL，给对照用；关掉弹窗就撤销，绝不进存储
+
+// 常用频次。底方的「频次」列就是这几个词，所以直接用下拉选项——比让人填两个数字靠谱。
+// 值编码成「每几天_几天几次」，跟 med 里的 cycleDays / timesPerCycle 一一对应。
+const RX_FREQ = [
+  ['1_1','每日 1 次'], ['1_2','每日 2 次'], ['1_3','每日 3 次'], ['1_4','每日 4 次'],
+  ['2_1','隔日 1 次'], ['7_1','每周 1 次'], ['7_2','每周 2 次'],
+  ['14_1','每 2 周 1 次'], ['28_1','每 4 周 1 次'], ['custom','自定义…']
+];
+function rxFreqKey(r){
+  const k = r.cycleDays + '_' + r.timesPerCycle;
+  for(let i = 0; i < RX_FREQ.length; i++){ if(RX_FREQ[i][0] === k) return k; }
+  return 'custom';
+}
+function rxNewRow(o){
+  o = o || {};
+  return {
+    key: 'rx' + (++rxSeq),
+    name: (o.name || '').trim(),
+    spec: (o.spec || '').trim(),
+    unit: (o.unit || '').trim() || '片',
+    perDose: Math.max(0, num(o.perDose, 1)),
+    cycleDays: Math.max(1, Math.round(num(o.cycleDays, 1)) || 1),
+    timesPerCycle: Math.max(0, num(o.timesPerCycle, 1)),
+    total: Math.max(0, num(o.total)),
+    note: (o.note || '').trim(),
+    warn: o.warn || '',
+    picked: o.picked !== false
+  };
+}
+// 每天用量 / 够吃天数 —— 和卡片同一套口径（`dailyUse` 是唯一的算法）
+function rxDailyUse(r){
+  return dailyUse({ perDose: r.perDose, timesPerCycle: r.timesPerCycle, cycleDays: r.cycleDays });
+}
+function rxDaysOf(r){
+  const d = rxDailyUse(r);
+  if(d <= 0) return null;
+  return Math.max(0, Math.floor(num(r.total) / d + 1e-9));
+}
+// 行上的档位色 = 「加进来之后卡片会是哪一档」，用的是真函数，不另写一套判断
+function rxLevel(r){
+  if(!(r.name || '').trim()) return 'na';
+  if(rxDailyUse(r) <= 0) return 'na';
+  return level({ perDose: r.perDose, timesPerCycle: r.timesPerCycle, cycleDays: r.cycleDays,
+                 stockBase: r.total, stockDate: todayStr() });
+}
+
+/* ---- 解析 ---- */
+// 全角 → 半角（底方上「１」「（」这类全角字符直接粘过来也能认）
+function rxHalf(s){
+  return String(s == null ? '' : s)
+    .replace(/[\uFF01-\uFF5E]/g, function(c){ return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
+    .replace(/\u3000/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+const RX_MASS = 'mg|g|ml|ug|iu';
+const RX_CNT  = '片|粒|支|贴|袋|滴|喷|丸|包';
+// 明显不是药品的行（表头、金额、医师、说明…）→ 不当药品解析
+const RX_NOT_DRUG = /(处方|就诊|医嘱|金额|合计|医师|医生|审核|核对|打印|日期|登记号|机构|医保|科室|姓名|性别|年龄|诊断|备注|提示|有效期|取药|药房|窗口|单价|数量|用量|频次|用法|药品名称|规格|条码|条形码|编号|患者|社会保险|基金|自付|支付)/;
+
+function rxIsDrugLine(line){
+  const s = rxHalf(line);
+  if(s.length < 2) return false;
+  if(!/[\u4e00-\u9fa5]/.test(s)) return false;          // 必须有中文
+  if(RX_NOT_DRUG.test(s)) return false;
+  return true;
+}
+
+// 把底方上的**一行**拆成结构化字段。宁少勿错：认不出来的字段留默认值 + 给一句提醒，
+// 让人在那格上改，绝不猜一个像样的数糊过去。
+function rxParseLine(line){
+  let s = rxHalf(line);
+  if(!s) return null;
+
+  // ① 方括号里的都是标签（商品名 / 规格），先摘出来
+  const tags = [];
+  s = s.replace(/\[([^\]]*)\]/g, function(_, inner){ tags.push(inner); return ' '; });
+  // ② 圆括号：里面是数字/罗马数字就并入规格候选，否则当商品名丢掉（不影响药名）
+  const parens = [];
+  s = s.replace(/[(（]([^)）]*)[)）]/g, function(_, inner){ parens.push(inner); return ' '; });
+  s = s.replace(/\s+/g, ' ').trim();
+
+  // ③ 药名 = 开头到「数量」之前。优先切在「N盒/N瓶…」前面（最可靠），
+  //    切不到再退回「第一个空格+数字」；都没有就把整行当药名。
+  let name = s, rest = '';
+  const cut1 = s.search(/\s+\d+(?:\.\d+)?\s*(?:盒|瓶|袋|板|包|支|罐)/);
+  const cut = (cut1 >= 0) ? cut1 : s.search(/\s+\d/);
+  if(cut >= 0){ name = s.slice(0, cut); rest = s.slice(cut + 1); }
+  else {
+    const cut2 = s.search(/\s+(?:每日|每天|一日|隔日|每周|每\d|每[一二两三四五六]|口服|外用|皮下|舌下|含服|吸入|滴眼|饭前|饭后|睡前)/);
+    if(cut2 >= 0){ name = s.slice(0, cut2); rest = s.slice(cut2 + 1); }
+  }
+  name = name.replace(/\s+/g, '').trim();
+
+  // 药名末尾如果挂着「数字+单位」（手打「阿莫西林胶囊 0.25g …」），把它挪去当规格
+  let extraSpec = '';
+  const tail = name.match(/^(.*?)(\d+(?:\.\d+)?\s*(?:mg|g|ml|ug|iu|μg))$/i);
+  if(tail && tail[1]){ extraSpec = tail[2]; name = tail[1]; }
+
+  // ④ 规格：挑一个带「*N」或带单位的
+  const pickSpec = function(arr){
+    let i;
+    for(i = 0; i < arr.length; i++){ if(/[*×x]\s*\d/i.test(arr[i]) && /\d/.test(arr[i])) return arr[i]; }
+    for(i = 0; i < arr.length; i++){ if(new RegExp('\\d\\s*(?:' + RX_MASS + '|' + RX_CNT + ')', 'i').test(arr[i])) return arr[i]; }
+    return '';
+  };
+  let spec = pickSpec(tags) || pickSpec(parens) || extraSpec;
+  if(!spec){ const m = rest.match(new RegExp('(\\d+(?:\\.\\d+)?\\s*(?:' + RX_MASS + '))', 'i')); if(m) spec = m[1]; }
+
+  // ⑤ 规格里拆出「每盒几个」和「一个多少剂量」
+  const perPackM  = spec.match(/[*×x]\s*(\d+)\s*([^\d\s]*)/);
+  const perPack   = perPackM ? Number(perPackM[1]) : null;
+  const packUnit  = perPackM && perPackM[2] ? rxHalf(perPackM[2]).replace(/[()（）]/g, '') : '';
+  const doseM     = spec.match(new RegExp('(\\d+(?:\\.\\d+)?)\\s*(' + RX_MASS + ')', 'i'));
+  const doseUnit  = doseM ? String(doseM[2]).toLowerCase() : '';   // 单位（mg / g / ml）
+  const dosePerU  = doseM ? Number(doseM[1]) : 0;                  // 一个多少剂量
+
+  // ⑥ 本次开了几个（盒/瓶…）
+  const qtyM = rest.match(/(\d+(?:\.\d+)?)\s*(盒|瓶|袋|板|包|支|罐)/);
+  const qty = qtyM ? Number(qtyM[1]) : 0;
+
+  // ⑦ 「用量」列：与规格同单位的那个数（0.5g ÷ 0.25g = 每次 2 片）；
+  //    没有就找计数单位（1 贴 / 1 片）。
+  const amts = [];
+  const amtRe = new RegExp('(\\d+(?:\\.\\d+)?)\\s*(' + RX_MASS + '|' + RX_CNT + ')', 'gi');
+  let am;
+  while((am = amtRe.exec(rest))){ amts.push({ v: Number(am[1]), u: rxHalf(am[2]).toLowerCase() }); }
+  let perDose = 1;
+  const byMass = amts.filter(function(a){ return a.u === doseUnit; })[0];
+  if(byMass && dosePerU > 0){
+    perDose = round2(byMass.v / dosePerU);            // 同单位才敢除
+  } else if(amts.length && new RegExp('^(?:' + RX_CNT + ')$').test(amts[0].u)){
+    perDose = amts[0].v;                              // 「1 贴」这种直接就是每次用量
+  }
+  if(!(perDose > 0)) perDose = 1;
+
+  // ⑧ 单位：规格里的包装单位 → 药名推断 → 用量单位 → 片
+  let unit = packUnit;
+  if(!unit){
+    if(/注射|针剂|单抗/.test(name)) unit = '支';
+    else if(/贴膏|贴剂|凝胶贴|巴布/.test(name)) unit = '贴';
+    else if(/胶囊|软胶囊/.test(name)) unit = '粒';
+    else if(/颗粒|散剂|冲剂/.test(name)) unit = '袋';
+    else if(/滴剂|滴丸/.test(name)) unit = '滴';
+    else if(/喷雾|气雾|鼻喷/.test(name)) unit = '喷';
+    else if(/片|丸/.test(name)) unit = '片';
+    else if(amts.length && new RegExp('^(?:' + RX_CNT + ')$').test(amts[0].u)) unit = amts[0].u;
+    else unit = '片';
+  }
+
+  // ⑨ 频次（底方的「频次」列）
+  const CN = { '一':1, '二':2, '两':2, '三':3, '四':4, '五':5, '六':6, '七':7 };
+  const cn = function(v){ if(v == null) return null; return /^\d+$/.test(v) ? Number(v) : (CN[v] == null ? null : CN[v]); };
+  const f = rest + ' ' + s;
+  let cycleDays = 1, timesPerCycle = 1, freqHit = false;
+  let m2 = f.match(/(?:每日|每天|一日)\s*([一二两三四五六七八九]|\d+)\s*次/);
+  if(m2){ timesPerCycle = cn(m2[1]) || 1; cycleDays = 1; freqHit = true; }
+  if(!freqHit && /(?:每日|每天|一日|qd)/.test(f)){ timesPerCycle = 1; cycleDays = 1; freqHit = true; }
+  // 「每晚」也是每日一次（氯雷他定这类安眠药底方上就这么写）
+  if(!freqHit && /(每晚|每夜|睡前|qn)/.test(f)){ timesPerCycle = 1; cycleDays = 1; freqHit = true; }
+  if(!freqHit && /(\d+)\s*次\s*[\/每]\s*(?:日|天)/.test(f)){
+    timesPerCycle = Number(RegExp.$1); cycleDays = 1; freqHit = true;
+  }
+  if(!freqHit && /隔[日天]/.test(f)){ cycleDays = 2; timesPerCycle = 1; freqHit = true; }
+  if(!freqHit){
+    m2 = f.match(/每\s*([一二两三四五六七八九\d]+)\s*(?:周|星期)\s*([一二两三四五六七八九\d]+)?\s*次?/);
+    if(m2){ cycleDays = 7 * (cn(m2[1]) || 1); timesPerCycle = m2[2] ? (cn(m2[2]) || 1) : 1; freqHit = true; }
+  }
+  if(!freqHit){
+    m2 = f.match(/每\s*([一二两三四五六七八九\d]+)\s*个?\s*月\s*([一二两三四五六七八九\d]+)?\s*次?/);
+    if(m2){ cycleDays = 28 * (cn(m2[1]) || 1); timesPerCycle = m2[2] ? (cn(m2[2]) || 1) : 1; freqHit = true; }
+  }
+  if(!freqHit){
+    m2 = f.match(/每\s*([一二两三四五六七八九\d]+)\s*天\s*([一二两三四五六七八九\d]+)?\s*次?/);
+    if(m2){ cycleDays = Math.max(1, cn(m2[1]) || 1); timesPerCycle = m2[2] ? (cn(m2[2]) || 1) : 1; freqHit = true; }
+  }
+  if(!freqHit && /(\d+)\s*次\s*[\/每]\s*(?:周|星期)/.test(f)){
+    cycleDays = 7; timesPerCycle = Number(RegExp.$1); freqHit = true;
+  }
+
+  // ⑩ 用法 → 备注（口服是常态，不写；外用 / 皮下注射 这类留着有用）
+  let note = '';
+  const useM = rest.match(/(皮下注射|肌肉注射|静脉|外用|涂患处|含服|舌下|吸入|滴眼|滴鼻|口服|嚼服|冲服)/);
+  if(useM && useM[1] !== '口服') note = useM[1];
+
+  // ⑪ 本次总量 = 数量 × 每盒几个
+  let total = (qty > 0 ? qty : 1) * (perPack == null ? 1 : perPack);
+  let warn = '';
+  if(perPack == null && qty > 1){
+    warn = '没认出每盒多少' + unit + '，请核对「本次开到」';
+  }
+  if(!freqHit) warn = (warn ? warn + '；' : '') + '没认出频次，默认「每日 1 次」，请核对';
+
+  return rxNewRow({
+    name: name, spec: spec, unit: unit,
+    perDose: perDose, cycleDays: cycleDays, timesPerCycle: timesPerCycle,
+    total: round2(total), note: note, warn: warn
+  });
+}
+
+// 把一段文字（整张处方粘进来）逐行解析成药品行
+function rxParseText(text){
+  const out = [];
+  String(text == null ? '' : text).split(/\r?\n/).forEach(function(raw){
+    if(!rxIsDrugLine(raw)) return;
+    const r = rxParseLine(raw);
+    if(r && r.name) out.push(r);
+  });
+  return out;
+}
+
+/* ---- 渲染 ---- */
+function rxRowHTML(r){
+  const d = rxDailyUse(r);
+  const dl = rxDaysOf(r);
+  const u = esc(r.unit || '片');
+  const key = rxFreqKey(r);
+  let opts = '';
+  RX_FREQ.forEach(function(o){
+    opts += '<option value="' + o[0] + '"' + (o[0] === key ? ' selected' : '') + '>' + o[1] + '</option>';
+  });
+  const custom = key === 'custom';
+  return '<div class="rx-row" data-lv="' + rxLevel(r) + '" data-key="' + r.key + '">'
+    +   '<div class="rx-line">'
+    +     '<input type="checkbox" class="bulk-ck rx-ck"' + (r.picked ? ' checked' : '') + '>'
+    +     '<input type="text" class="rx-name" autocomplete="off" placeholder="药品名称" value="' + esc(r.name) + '">'
+    +     '<input type="text" class="rx-spec" autocomplete="off" placeholder="规格" value="' + esc(r.spec) + '">'
+    +     '<button type="button" class="rx-del" title="删掉这一行">×</button>'
+    +   '</div>'
+    +   '<div class="rx-line">'
+    +     '<span class="lb">每次</span>'
+    +     '<input type="number" class="mini rx-pd" step="0.25" min="0" value="' + fmtNum(r.perDose) + '">'
+    +     '<input type="text" class="rx-unit" style="width:54px" autocomplete="off" value="' + u + '">'
+    +     '<select class="rx-freq" title="底方上的「频次」">' + opts + '</select>'
+    +     (custom
+            ? '<span class="lb" style="display:inline-flex;align-items:center;gap:5px">每'
+              + '<input type="number" class="mini rx-cd" min="1" step="1" value="' + r.cycleDays + '">天'
+              + '<input type="number" class="mini rx-tc" min="0" step="1" value="' + r.timesPerCycle + '">次</span>'
+            : '')
+    +     '<span class="lb">本次开到</span>'
+    +     '<input type="number" class="mini rx-total" step="0.25" min="0" value="' + fmtNum(r.total) + '">'
+    +     '<span class="lb rx-u2">' + u + '</span>'
+    +     '<span class="rx-days-wrap">够吃'
+    +       '<input type="number" class="rx-days-in" step="1" min="0" value="' + (dl == null ? '' : dl) + '"'
+    +         (d > 0 ? '' : ' disabled title="没设用法，算不出天数"') + '>天</span>'
+    +   '</div>'
+    +   (r.warn ? '<div class="rx-hint">' + esc(r.warn) + '</div>' : '')
+    + '</div>';
+}
+
+function renderRx(){
+  const list = $('#rxList');
+  const keep = list.scrollTop;
+  if(!rxRows.length){
+    list.innerHTML = '<div class="rx-empty">还没有药。上面拍一张底方，或把处方文字粘进来点「解析成药品」，'
+      + '也可以直接「＋ 手动加一味」。</div>';
+    list.scrollTop = 0;
+    rxSyncFoot();
+    return;
+  }
+  list.innerHTML = rxRows.map(rxRowHTML).join('');
+  list.scrollTop = keep;              // 别让人改一格就被弹回顶部
+  rxSyncFoot();
+}
+
+// 底部汇总：勾了几味、加入后会是什么档位（和卡片同一套判断）
+function rxSyncFoot(){
+  const picked = rxRows.filter(function(r){ return r.picked; });
+  const named = picked.filter(function(r){ return (r.name || '').trim(); });
+  const cnt = { out:0, soon:0, ok:0, na:0 };
+  named.forEach(function(r){ cnt[rxLevel(r)]++; });
+  const bits = [];
+  if(cnt.out) bits.push('<b>' + cnt.out + '</b> 味已用完');
+  if(cnt.soon) bits.push('<b>' + cnt.soon + '</b> 味偏少');
+  if(cnt.ok) bits.push('<b>' + cnt.ok + '</b> 味充足');
+  if(cnt.na) bits.push('<b>' + cnt.na + '</b> 味未设用法');
+  $('#rxSum').innerHTML = '共 <b>' + rxRows.length + '</b> 味，勾选 <b>' + picked.length + '</b> 味'
+    + (named.length ? '（其中 ' + bits.join('、') + '）' : '')
+    + '。<br>加入后「余量」= 你确认的够吃天数 × 每天用量，基准日是今天 —— 和卡片同一套算法。';
+  const ok = $('#btnRxOk');
+  ok.disabled = named.length === 0;
+  ok.textContent = named.length ? '把勾选的 ' + named.length + ' 味加入药箱' : '全部加入药箱';
+}
+
+/* ---- 开 / 关 / 照片 ---- */
+function rxDropPhoto(){
+  if(rxPhotoURL){ try { URL.revokeObjectURL(rxPhotoURL); } catch(e){} rxPhotoURL = ''; }
+  const img = $('#rxThumb').querySelector('img');
+  if(img){ img.remove(); }
+  $('#rxThumb').className = 'rx-thumb';
+  $('#rxThumb').innerHTML = '点这里<br>拍 / 选照片';
+  const c = $('#btnRxClear'); if(c) c.hidden = true;
+  const f = $('#rxPhoto'); if(f) f.value = '';
+}
+function rxShowPhoto(file){
+  rxDropPhoto();
+  try {
+    rxPhotoURL = URL.createObjectURL(file);
+  } catch(e){ return; }
+  const th = $('#rxThumb');
+  th.innerHTML = '';
+  const img = document.createElement('img');
+  img.src = rxPhotoURL;
+  img.alt = '底方照片';
+  th.appendChild(img);
+  th.className = 'rx-thumb';
+  const c = $('#btnRxClear'); if(c) c.hidden = false;
+}
+function rxReset(){
+  rxRows = [];
+  rxDropPhoto();
+  $('#rxPaste').value = '';
+  $('#rxSub').textContent = '照着底方把药填进来，程序按底方的「数量 × 规格」和「频次」算出每味够吃多少天，你确认一下就行。';
+}
+function openRx(rows, fromWho){
+  rxReset();
+  if(fromWho){
+    $('#rxSub').innerHTML = '<b>' + esc(fromWho) + '</b> 已经从你的底方照片上认好了，'
+      + '你核对一下每味「够吃多少天」，没问题就点右下角加入药箱。';
+  }
+  if(rows && rows.length){
+    rxRows = rows.map(function(x){ return rxNewRow(x); });
+  }
+  renderRx();
+  $('#dlgRx').showModal();
+}
+
+/* ---- 提交 ---- */
+function submitRx(e){
+  e.preventDefault();
+  const picked = rxRows.filter(function(r){ return r.picked; });
+  if(!picked.length){ alert('还没勾选任何药。'); return; }
+  const bad = picked.filter(function(r){ return !(r.name || '').trim(); });
+  if(bad.length){ alert('有 ' + bad.length + ' 味还没填药品名称 —— 补上，或把那一行的勾去掉。'); return; }
+
+  picked.forEach(function(r){
+    meds.push({
+      id: uid(),
+      name: r.name.trim(),
+      spec: (r.spec || '').trim(),
+      perDose: Math.max(0, num(r.perDose, 1)),
+      unit: (r.unit || '').trim() || '片',
+      cycleDays: Math.max(1, Math.round(num(r.cycleDays, 1)) || 1),
+      timesPerCycle: Math.max(0, num(r.timesPerCycle, 1)),
+      stockBase: round2(Math.max(0, num(r.total))),   // 这次开回来的量 = 今天的余量
+      stockDate: todayStr(),
+      rxMax: 0,
+      note: (r.note || '').trim()
+    });
+  });
+  save(); render();
+  $('#dlgRx').close();
+  const who = curPerson();
+  alert('已把 ' + picked.length + ' 味药加入' + (who ? '「' + who.name + '」' : '') + '药箱。\n\n'
+    + '「余量」记的是你这次开的量，基准日是今天；卡片上的「剩 N 天」按你确认的天数走，之后每天自动往下扣。');
+  rxReset();
+}
+
+/* ---- 链接预填（给「把照片发给助手」那条路用）----
+   `#rx=<base64url(JSON)>`：打开页面就把这些药摆进上面的弹窗。
+   为什么走 hash：hash 不会发给服务器（照片和数据都不出本机），也能直接贴在聊天里发。 */
+function rxEncode(list){
+  const json = JSON.stringify({ v: 1, rows: list || [] });
+  return btoa(unescape(encodeURIComponent(json)))       // btoa 只吃 latin1，先用 UTF-8 包一层
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function rxDecodeHash(){
+  const m = /(?:^|[#&])rx=([A-Za-z0-9\-_]+)/.exec(location.hash || '');
+  if(!m) return null;
+  try {
+    const b64 = m[1].replace(/-/g, '+').replace(/_/g, '/');
+    const obj = JSON.parse(decodeURIComponent(escape(atob(b64))));
+    if(!obj || !Array.isArray(obj.rows) || !obj.rows.length) return null;
+    return obj;
+  } catch(e){ return null; }
+}
+
+// 行内改动后把这一行上该跟着变的数就地改掉（不整表重画 —— 重画会让人正在打字的那格失焦）。
+// 谁在被打字就不动谁：否则「1.」这种中间状态会被 fmtNum 洗成「1」，越打越别扭。
+function rxByKey(k){
+  return rxRows.filter(function(x){ return x.key === k; })[0];
+}
+function rxSyncRow(r, row){
+  if(!row) return;
+  const d = rxDailyUse(r);
+  const dl = rxDaysOf(r);
+  const tot = row.querySelector('.rx-total');
+  const dys = row.querySelector('.rx-days-in');
+  const u2  = row.querySelector('.rx-u2');
+  if(tot && document.activeElement !== tot) tot.value = fmtNum(r.total);
+  if(dys){
+    if(document.activeElement !== dys) dys.value = (dl == null ? '' : dl);
+    dys.disabled = d <= 0;
+  }
+  if(u2) u2.textContent = r.unit || '片';
+  row.setAttribute('data-lv', rxLevel(r));
+}
+
 /* ★ 这里原本有一段内置示例数据，外加一个「看示例」按钮和一个 URL 参数。
    2026-09-28 开源前按用户要求**整段删除**：内置的假数据里带着病情描述，属于「已经输入过的信息」，
    不该跟着代码发出去。现在打开就是空药箱，由用户自己填 —— 别再把它加回来。
@@ -1710,6 +2215,101 @@ $('#bulkList').addEventListener('change', function(e){
 });
 $('#formBulk').addEventListener('submit', function(e){ e.preventDefault(); });
 
+/* ---- 拍底方批量录入 ---- */
+$('#btnRx').addEventListener('click', function(){ openRx(); });
+$('#btnRxShot').addEventListener('click', function(){ $('#rxPhoto').click(); });
+$('#rxThumb').addEventListener('click', function(){
+  const th = $('#rxThumb');
+  if(!th.querySelector('img')){ $('#rxPhoto').click(); return; }   // 还没照片 → 点它当「拍」
+  th.classList.toggle('big');                                     // 有照片 → 点一下放大 / 收起来
+});
+$('#rxPhoto').addEventListener('change', function(e){
+  const f = e.target.files && e.target.files[0];
+  if(f) rxShowPhoto(f);
+  e.target.value = '';
+});
+$('#btnRxClear').addEventListener('click', rxDropPhoto);
+$('#btnRxParse').addEventListener('click', function(){
+  const got = rxParseText($('#rxPaste').value);
+  if(!got.length){
+    alert('没认出药品行。一行一味，把底方上那行字原样粘进来就行（要含中文药名）。');
+    return;
+  }
+  // 已经在列表里的（同名同规格）不再加一遍 —— 免得粘两次变成两份
+  let added = 0;
+  got.forEach(function(r){
+    const dup = rxRows.some(function(x){
+      return x.name === r.name && (x.spec || '') === (r.spec || '');
+    });
+    if(!dup){ rxRows.push(r); added++; }
+  });
+  $('#rxPaste').value = '';
+  renderRx();
+  if(!added) alert('这些药已经在下面的列表里了。');
+});
+$('#btnRxAddOne').addEventListener('click', function(){
+  rxRows.push(rxNewRow({ name: '', unit: '片', perDose: 1, cycleDays: 1, timesPerCycle: 1, total: 0 }));
+  renderRx();
+  const list = $('#rxList');
+  list.scrollTop = list.scrollHeight;
+  const last = list.querySelector('.rx-row:last-child input.rx-name');
+  if(last) last.focus();
+});
+// 行内编辑：文字格只回写数据（不动 DOM，免得打字时失焦）；数字格顺手把「够吃几天 / 本次开到」双向对齐。
+// 用户之前定的口径就是这个：**余量 = 够吃天数 × 每天用量**，所以改天数就反算总量，改总量就把天数重算。
+$('#rxList').addEventListener('input', function(e){
+  const row = e.target.closest('.rx-row'); if(!row) return;
+  const r = rxByKey(row.getAttribute('data-key')); if(!r) return;
+  const t = e.target, cl = t.classList;
+  if(cl.contains('rx-name')) r.name = t.value;
+  else if(cl.contains('rx-spec')) r.spec = t.value;
+  else if(cl.contains('rx-unit')) r.unit = t.value.trim() || '片';
+  else if(cl.contains('rx-pd')) r.perDose = Math.max(0, num(t.value));
+  else if(cl.contains('rx-cd')) r.cycleDays = Math.max(1, Math.round(num(t.value, 1)) || 1);
+  else if(cl.contains('rx-tc')) r.timesPerCycle = Math.max(0, num(t.value));
+  else if(cl.contains('rx-total')) r.total = Math.max(0, num(t.value));
+  else if(cl.contains('rx-days-in')) r.total = round2(Math.max(0, num(t.value)) * rxDailyUse(r));
+  else return;
+  // 人动过这一行的字段了 → 解析时留下的那句提醒（「没认出每盒多少…」）就不再念了
+  if(cl.contains('rx-name') || cl.contains('rx-spec') || cl.contains('rx-unit') || cl.contains('rx-pd')
+     || cl.contains('rx-cd') || cl.contains('rx-tc') || cl.contains('rx-total') || cl.contains('rx-days-in')){
+    const hint = row.querySelector('.rx-hint');
+    if(hint) hint.remove();
+    r.warn = '';
+  }
+  rxSyncRow(r, row);
+  rxSyncFoot();
+});
+$('#rxList').addEventListener('change', function(e){
+  const t = e.target;
+  const row = t.closest ? t.closest('.rx-row') : null;
+  if(!row) return;
+  const r = rxByKey(row.getAttribute('data-key')); if(!r) return;
+  if(t.classList.contains('rx-ck')){ r.picked = t.checked; rxSyncFoot(); return; }
+  if(t.classList.contains('rx-freq')){
+    if(t.value !== 'custom'){
+      const p = t.value.split('_');
+      r.cycleDays = Number(p[0]); r.timesPerCycle = Number(p[1]);
+      r.warn = '';
+    }
+    renderRx();          // 换成「自定义…」要多露出两个输入框，只能重画
+    return;
+  }
+  rxSyncRow(r, row); rxSyncFoot();
+});
+$('#rxList').addEventListener('click', function(e){
+  const del = e.target.closest ? e.target.closest('.rx-del') : null;
+  if(!del) return;
+  const row = del.closest('.rx-row');
+  rxRows = rxRows.filter(function(x){ return x.key !== row.getAttribute('data-key'); });
+  renderRx();
+});
+$('#btnRxCancel').addEventListener('click', function(){ $('#dlgRx').close(); });
+$('#formRx').addEventListener('submit', submitRx);
+// 弹窗一关就把照片扔掉（objectURL 释放掉，照片本来也不进存储）；
+// 但**不**清空已经填好的行 —— 手滑关掉再打开还能接着改。
+$('#dlgRx').addEventListener('close', rxDropPhoto);
+
 // 单个数字弹窗（又买了药 / 校准余量）—— 输入时不再有实时对照行要同步（2026-10-12 已删）
 $('#btnNumCancel').addEventListener('click', function(){ $('#dlgNum').close(); });
 $('#formNum').addEventListener('submit', submitNum);
@@ -1723,6 +2323,16 @@ $('#fileImport').addEventListener('change', function(e){
 /* -------------------- 启动 -------------------- */
 load();
 render();          // 原本这里还有一条「URL 带参数就载入示例」的分支，已随内置示例一起删掉
+
+// 「把底方照片直接发给助手」那条路：助手认好字后会给你一条带 #rx= 的链接，
+// 打开就把上面的弹窗摆好、药已经填上，核对一下点「加入药箱」即可。
+// 读完立刻把 hash 抹掉 —— 否则下次刷新又摆一遍，手一滑就重复入库了。
+(function(){
+  const preset = rxDecodeHash();
+  if(!preset) return;
+  try { history.replaceState(null, '', location.pathname + location.search); } catch(e){}
+  openRx(preset.rows, preset.from || '助手');
+})();
 
 })();
 </script>

@@ -21,15 +21,15 @@ DEMO_JS = r"""
 (function(){
   var agoD = function(n){ var d = new Date(); d.setDate(d.getDate() - n); return fmtDate(d); };
   var demo = [
-    { name:'苯磺酸氨氯地平片', spec:'5mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+    { name:'维生素C片', spec:'100mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
       stockBase:14, stockDate:agoD(13), rxMax:7, note:'早饭后服' },
-    { name:'阿托伐他汀钙片', spec:'20mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+    { name:'维生素B2片', spec:'5mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
       stockBase:21, stockDate:agoD(18), rxMax:14, note:'晚饭后服' },
-    { name:'盐酸二甲双胍缓释片', spec:'0.5g', perDose:1, unit:'片', cycleDays:1, timesPerCycle:2,
+    { name:'葡萄糖酸钙片', spec:'0.5g', perDose:1, unit:'片', cycleDays:1, timesPerCycle:2,
       stockBase:60, stockDate:agoD(20), note:'随餐服' },
-    { name:'阿司匹林肠溶片', spec:'100mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+    { name:'健胃消食片', spec:'0.8g', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
       stockBase:90, stockDate:agoD(10), note:'空腹服' },
-    { name:'依洛尤单抗注射液', spec:'140mg/支', perDose:1, unit:'支', cycleDays:14, timesPerCycle:1,
+    { name:'维生素B12注射液', spec:'0.5mg/支', perDose:1, unit:'支', cycleDays:14, timesPerCycle:1,
       stockBase:2, stockDate:agoD(20), rxMax:2, note:'皮下注射，每 2 周 1 次' }
   ];
   demo.forEach(function(d){ d.id = uid(); });
@@ -47,7 +47,7 @@ HOOKS = {
     # ★ 批量调存量（2026-10-12 改版）：列出**全部**药品、可勾选、顺序同主页、按档位着色。
     #   这里临时多塞一味「没设用法」的药，为的是把「勾选框禁用 + 没法按天算 + 底部那行说明」拍进来
     #   （只加在这一张里，别的截图和主页不受影响）。
-    "bulk": "var d = meds.concat([{ id:uid(), name:'维生素D滴剂', spec:'400IU', perDose:1, unit:'粒',"
+    "bulk": "var d = meds.concat([{ id:uid(), name:'维生素E软胶囊', spec:'400IU', perDose:1, unit:'粒',"
             " cycleDays:1, timesPerCycle:0, stockBase:30, stockDate:todayStr() }]);"
             " setMeds(d); save(); render(); openBulk();",
     # ★ 编辑弹窗：拍的是「余量」那格 —— 预填的就是卡片上那个数（当天推算值），
@@ -62,6 +62,12 @@ HOOKS = {
     # ★ 校准余量：同一个弹窗的另一种模式，同样已无实时对照行（2026-10-12）。
     #   拍它是因为用户就是在这个弹窗里提的「不用 0.25 这一档」——留一张可核 step=1。
     "calib": "calibMed(meds[2].id);",
+    # ★ 拍底方批量录入（2026-10-12 新增）：把底方原文解析后摆进弹窗，拍「每行都算好了够吃几天」。
+    #   照片区在这里是空的 —— 无头浏览器没法真拍照，那条路靠 _check 里的断言兜。
+    "rx": "openRx(rxParseText(['维生素B6片(Ⅰ)[华康][10mg*30]  1瓶  19.88  10mg  每日一次  口服',"
+          " '阿莫西林胶囊(康贝)[0.25g*8]  2盒  6.26  0.5g  每日2次  口服',"
+          " '麝香壮骨膏[40mg*6贴]  5盒  57.87  1贴  每日一次  外用',"
+          " '维生素B12注射液[甲钴胺][1ml:0.5mg*]  1盒  15.60  0.5mg  每两周一次  皮下注射'].join('\\n')));",
 }
 
 

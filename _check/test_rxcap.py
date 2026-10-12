@@ -54,15 +54,15 @@ PROBE = r"""
   // ---- 0. 前置：自注入示例数据（程序内的 loadDemo 已按开源要求删除，测试自己造）----
   var agoD = function(n){ var d = new Date(); d.setDate(d.getDate() - n); return fmtDate(d); };
   var demo = [
-    { name:'苯磺酸氨氯地平片', spec:'5mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+    { name:'维生素C片', spec:'100mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
       stockBase:14, stockDate:agoD(13), rxMax:7 },
-    { name:'阿托伐他汀钙片', spec:'20mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+    { name:'维生素B2片', spec:'5mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
       stockBase:21, stockDate:agoD(18), rxMax:14 },
-    { name:'盐酸二甲双胍缓释片', spec:'0.5g', perDose:1, unit:'片', cycleDays:1, timesPerCycle:2,
+    { name:'葡萄糖酸钙片', spec:'0.5g', perDose:1, unit:'片', cycleDays:1, timesPerCycle:2,
       stockBase:60, stockDate:agoD(20) },
-    { name:'阿司匹林肠溶片', spec:'100mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+    { name:'健胃消食片', spec:'0.8g', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
       stockBase:90, stockDate:agoD(10) },
-    { name:'依洛尤单抗注射液', spec:'140mg/支', perDose:1, unit:'支', cycleDays:14, timesPerCycle:1,
+    { name:'维生素B12注射液', spec:'0.5mg/支', perDose:1, unit:'支', cycleDays:14, timesPerCycle:1,
       stockBase:2, stockDate:agoD(20), rxMax:2 }
   ];
   demo.forEach(function(d){ d.id = uid(); });
@@ -71,22 +71,22 @@ PROBE = r"""
   ck('自注入 5 种药后渲染成功', meds.length === 5, meds.length);
 
   // ---- 1. 有单次上限、且一次开不完：入库量 = 上限，不是理论缺口 ----
-  var a = byName('苯磺酸氨氯地平片');
-  ck('氨氯地平 理论缺口=29', a && needUnits(a) === 29, a ? needUnits(a) : null);
-  ck('氨氯地平 单次限=7', a && rxCap(a) === 7, a ? rxCap(a) : null);
-  ck('氨氯地平 需补=7（跟单次限）', a && dispQty(a) === 7, a ? dispQty(a) : null);
-  ck('氨氯地平 得开 5 次', a && rxTrips(a) === 5, a ? rxTrips(a) : null);
+  var a = byName('维生素C片');
+  ck('维生素C 理论缺口=29', a && needUnits(a) === 29, a ? needUnits(a) : null);
+  ck('维生素C 单次限=7', a && rxCap(a) === 7, a ? rxCap(a) : null);
+  ck('维生素C 需补=7（跟单次限）', a && dispQty(a) === 7, a ? dispQty(a) : null);
+  ck('维生素C 得开 5 次', a && rxTrips(a) === 5, a ? rxTrips(a) : null);
 
   // ---- 2. 有上限、需求刚好 <= 上限：入库量 = 上限（一次挂号开满）----
-  var e = byName('依洛尤单抗注射液');
-  ck('依洛尤 理论缺口=2', e && needUnits(e) === 2, e ? needUnits(e) : null);
-  ck('依洛尤 需补=2（=上限）', e && dispQty(e) === 2, e ? dispQty(e) : null);
+  var e = byName('维生素B12注射液');
+  ck('维生素B12 理论缺口=2', e && needUnits(e) === 2, e ? needUnits(e) : null);
+  ck('维生素B12 需补=2（=上限）', e && dispQty(e) === 2, e ? dispQty(e) : null);
 
   // ---- 3. 没设单次上限：入库量 = 补满目标天数 ----
-  var m = byName('阿司匹林肠溶片');            // 无 rxMax，示例里余量大、不在清单
+  var m = byName('健胃消食片');            // 无 rxMax，示例里余量大、不在清单
   if(m){ m.stockBase = 0; m.stockDate = todayStr(); }
   render();
-  ck('阿司匹林 无上限 需补=30', m && dispQty(m) === 30, m ? dispQty(m) : null);
+  ck('健胃消食 无上限 需补=30', m && dispQty(m) === 30, m ? dispQty(m) : null);
 
   // ---- 3b. ★ 卡片上不应该再有「需补 / 单次限 / 得开 N 次」----
   var cards = document.querySelectorAll('#list .med');
@@ -98,9 +98,9 @@ PROBE = r"""
   ck('卡片文案不含「单次限」', txtAll.indexOf('单次限') < 0, '');
   ck('卡片文案不含「得开」', txtAll.indexOf('得开') < 0, '');
   ck('卡片仍保留「余量约」', /余量约/.test(txtAll), '');
-  // 颜色信号还在：氨氯地平只剩 1 天 → 偏少(soon)，卡片 data-lv 应为 soon
-  var c1 = card('苯磺酸氨氯地平片');
-  ck('氨氯地平卡片是偏少色', c1 && c1.getAttribute('data-lv') === 'soon',
+  // 颜色信号还在：维生素C只剩 1 天 → 偏少(soon)，卡片 data-lv 应为 soon
+  var c1 = card('维生素C片');
+  ck('维生素C卡片是偏少色', c1 && c1.getAttribute('data-lv') === 'soon',
      c1 ? c1.getAttribute('data-lv') : '(无卡片)');
 
   // ---- 3c. 只留三档文案：已用完 / 偏少 / 充足 ----
@@ -117,7 +117,7 @@ PROBE = r"""
   ck('可见文字里无「紧急」', bodyTxt.indexOf('紧急') < 0, '');
   ck('统计栏用「偏少（≤N天）」', /偏少（≤\d+天）/.test(bodyTxt), bodyTxt.slice(0, 240));
   ck('统计栏含「已用完」「充足」', bodyTxt.indexOf('已用完') >= 0 && bodyTxt.indexOf('充足') >= 0, '');
-  ck('卡片 tag 是「偏少」', /苯磺酸氨氯地平片\s*偏少/.test(bodyTxt), '');
+  ck('卡片 tag 是「偏少」', /维生素C片\s*偏少/.test(bodyTxt), '');
   // 硬断言：卡片上出现的档位文字只能是这几档
   var tags = [], ts = document.querySelectorAll('#list .med-name .tag'), ti;
   for(ti = 0; ti < ts.length; ti++) tags.push(ts[ti].textContent.trim());
@@ -170,10 +170,10 @@ PROBE = r"""
   var plan = dispPlan();
   var pm = {};
   plan.forEach(function(p){ pm[p.m.name] = p.qty; });
-  ck('弹窗计划含 5 种药（阿司匹林被改成 0 余量后也进清单）', plan.length === 5, plan.length);
-  ck('弹窗 氨氯地平入库=7', pm['苯磺酸氨氯地平片'] === 7, pm['苯磺酸氨氯地平片']);
-  ck('弹窗 阿托伐他汀入库=14', pm['阿托伐他汀钙片'] === 14, pm['阿托伐他汀钙片']);
-  ck('弹窗 依洛尤入库=2', pm['依洛尤单抗注射液'] === 2, pm['依洛尤单抗注射液']);
+  ck('弹窗计划含 5 种药（健胃消食被改成 0 余量后也进清单）', plan.length === 5, plan.length);
+  ck('弹窗 维生素C入库=7', pm['维生素C片'] === 7, pm['维生素C片']);
+  ck('弹窗 维生素B2入库=14', pm['维生素B2片'] === 14, pm['维生素B2片']);
+  ck('弹窗 维生素B12入库=2', pm['维生素B12注射液'] === 2, pm['维生素B12注射液']);
 
   openDisp();
   var sub = q('#dispSub') ? q('#dispSub').textContent : '';
@@ -184,40 +184,40 @@ PROBE = r"""
 
   // ---- 5. 真点一次「已经开药」，看库存是不是按上限加 ----
   var before = {
-    a: stockNow(byName('苯磺酸氨氯地平片')),
-    b: stockNow(byName('阿托伐他汀钙片')),
-    c: stockNow(byName('依洛尤单抗注射液'))
+    a: stockNow(byName('维生素C片')),
+    b: stockNow(byName('维生素B2片')),
+    c: stockNow(byName('维生素B12注射液'))
   };
   submitDisp({ preventDefault: function(){} });
   var after = {
-    a: byName('苯磺酸氨氯地平片').stockBase,
-    b: byName('阿托伐他汀钙片').stockBase,
-    c: byName('依洛尤单抗注射液').stockBase
+    a: byName('维生素C片').stockBase,
+    b: byName('维生素B2片').stockBase,
+    c: byName('维生素B12注射液').stockBase
   };
-  ck('入库后 氨氯地平 = 1+7 = 8', after.a === 8, JSON.stringify([before.a, after.a]));
-  ck('入库后 阿托伐他汀 = 3+14 = 17', after.b === 17, JSON.stringify([before.b, after.b]));
-  ck('入库后 依洛尤 = 1+2 = 3', after.c === 3, JSON.stringify([before.c, after.c]));
+  ck('入库后 维生素C = 1+7 = 8', after.a === 8, JSON.stringify([before.a, after.a]));
+  ck('入库后 维生素B2 = 3+14 = 17', after.b === 17, JSON.stringify([before.b, after.b]));
+  ck('入库后 维生素B12 = 1+2 = 3', after.c === 3, JSON.stringify([before.c, after.c]));
   ck('提示还剩 1 种没到位', /还有\s*1\s*种/.test(R.alerts.join(' | ')), R.alerts.join(' | '));
 
   // ---- 6. 缺药但补满后离开清单 ----
-  var asp = byName('阿司匹林肠溶片');
-  ck('阿司匹林补满后 30 天、已不在清单',
+  var asp = byName('健胃消食片');
+  ck('健胃消食补满后 30 天、已不在清单',
      asp && daysLeft(asp) > settings.alertDays && !inRefill(asp), asp ? daysLeft(asp) : null);
 
   // ---- 7. 批量调整存量（整个药箱统一 ±N 天）----
   // 重置到已知状态（前面几段动过数据），并补一味「没设用法」的药来验跳过分支。
   var demo2 = [
-    { name:'苯磺酸氨氯地平片', spec:'5mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+    { name:'维生素C片', spec:'100mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
       stockBase:14, stockDate:agoD(13), rxMax:7 },                  // 现 1，每日 1
-    { name:'阿托伐他汀钙片', spec:'20mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+    { name:'维生素B2片', spec:'5mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
       stockBase:21, stockDate:agoD(18), rxMax:14 },                 // 现 3，每日 1
-    { name:'盐酸二甲双胍缓释片', spec:'0.5g', perDose:1, unit:'片', cycleDays:1, timesPerCycle:2,
+    { name:'葡萄糖酸钙片', spec:'0.5g', perDose:1, unit:'片', cycleDays:1, timesPerCycle:2,
       stockBase:60, stockDate:agoD(20) },                           // 现 20，每日 2 → 7 天=14 片
-    { name:'阿司匹林肠溶片', spec:'100mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+    { name:'健胃消食片', spec:'0.8g', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
       stockBase:90, stockDate:agoD(10) },                           // 现 80，每日 1
-    { name:'依洛尤单抗注射液', spec:'140mg/支', perDose:1, unit:'支', cycleDays:14, timesPerCycle:1,
+    { name:'维生素B12注射液', spec:'0.5mg/支', perDose:1, unit:'支', cycleDays:14, timesPerCycle:1,
       stockBase:2, stockDate:agoD(20), rxMax:2 },                   // 现 1，每 14 天 1 支 → 7 天=0.5 支
-    { name:'维生素D滴剂', spec:'400IU', perDose:1, unit:'粒', cycleDays:1, timesPerCycle:0,
+    { name:'维生素E软胶囊', spec:'400IU', perDose:1, unit:'粒', cycleDays:1, timesPerCycle:0,
       stockBase:30, stockDate:todayStr() }                          // 没设用法 → 应被跳过
   ];
   demo2.forEach(function(d){ d.id = uid(); });
@@ -228,21 +228,21 @@ PROBE = r"""
   var upR = {}, dnR = {};
   bulkRows(7, 1).forEach(function(r){ upR[r.m.name] = r; });
   bulkRows(7, -1).forEach(function(r){ dnR[r.m.name] = r; });
-  ck('氨氯地平 现 1 片 → 加 7 天 = 8 片', upR['苯磺酸氨氯地平片'].next === 8, upR['苯磺酸氨氯地平片'].next);
-  ck('氨氯地平 减 7 天 → 0 且标记已截断',
-     dnR['苯磺酸氨氯地平片'].next === 0 && dnR['苯磺酸氨氯地平片'].floored === true,
-     JSON.stringify(dnR['苯磺酸氨氯地平片']));
-  ck('二甲双胍 每日 2 片 → 加 7 天 = 34（+14）', upR['盐酸二甲双胍缓释片'].next === 34,
-     upR['盐酸二甲双胍缓释片'].next);
-  ck('依洛尤 每 14 天 1 支 → 加 7 天 = 1.5（+0.5）', upR['依洛尤单抗注射液'].next === 1.5,
-     upR['依洛尤单抗注射液'].next);
-  ck('阿司匹林 现 80 → 加 7 天 = 87', upR['阿司匹林肠溶片'].next === 87, upR['阿司匹林肠溶片'].next);
-  ck('没设用法的那味被跳过', upR['维生素D滴剂'].skip === true && dnR['维生素D滴剂'].skip === true, '');
-  ck('跳过的药不会被改动（next 仍 30）', upR['维生素D滴剂'].next === 30, upR['维生素D滴剂'].next);
+  ck('维生素C 现 1 片 → 加 7 天 = 8 片', upR['维生素C片'].next === 8, upR['维生素C片'].next);
+  ck('维生素C 减 7 天 → 0 且标记已截断',
+     dnR['维生素C片'].next === 0 && dnR['维生素C片'].floored === true,
+     JSON.stringify(dnR['维生素C片']));
+  ck('葡萄糖酸钙 每日 2 片 → 加 7 天 = 34（+14）', upR['葡萄糖酸钙片'].next === 34,
+     upR['葡萄糖酸钙片'].next);
+  ck('维生素B12 每 14 天 1 支 → 加 7 天 = 1.5（+0.5）', upR['维生素B12注射液'].next === 1.5,
+     upR['维生素B12注射液'].next);
+  ck('健胃消食 现 80 → 加 7 天 = 87', upR['健胃消食片'].next === 87, upR['健胃消食片'].next);
+  ck('没设用法的那味被跳过', upR['维生素E软胶囊'].skip === true && dnR['维生素E软胶囊'].skip === true, '');
+  ck('跳过的药不会被改动（next 仍 30）', upR['维生素E软胶囊'].next === 30, upR['维生素E软胶囊'].next);
 
   // --- 7b. 弹窗预览（2026-10-12：可勾选 + 顺序同主页 + 档位色）---
-  // 这一段的 demo2 正好能验顺序：录入顺序是 氨氯/阿托/二甲/阿司匹林/依洛尤/维D，
-  // 而按档位排完后 依洛尤（每 14 天 1 支，剩 14 天 = 偏少）要排到阿司匹林（剩 80 天 = 充足）前面。
+  // 这一段的 demo2 正好能验顺序：录入顺序是 氨氯/阿托/二甲/健胃消食/维生素B12/维D，
+  // 而按档位排完后 维生素B12（每 14 天 1 支，剩 14 天 = 偏少）要排到健胃消食（剩 80 天 = 充足）前面。
   function namesOf(sel){
     return Array.prototype.map.call(document.querySelectorAll(sel), function(el){
       var t = el.firstChild;
@@ -264,8 +264,8 @@ PROBE = r"""
   ck('弹窗里的排列顺序和主页一致',
      homeOrder.length === 6 && homeOrder.join('|') === bulkOrder.join('|'),
      '主页 ' + homeOrder.join(' / ') + '　弹窗 ' + bulkOrder.join(' / '));
-  ck('排序确实按档位重排了（依洛尤排在阿司匹林前面，不是录入顺序）',
-     bulkOrder.indexOf('依洛尤单抗注射液') < bulkOrder.indexOf('阿司匹林肠溶片'),
+  ck('排序确实按档位重排了（维生素B12排在健胃消食前面，不是录入顺序）',
+     bulkOrder.indexOf('维生素B12注射液') < bulkOrder.indexOf('健胃消食片'),
      bulkOrder.join(' / '));
 
   // ★ 颜色：行上有档位标记，且档位和主页的 level() 一致
@@ -298,11 +298,11 @@ PROBE = r"""
   var nDis = Array.prototype.filter.call(cks, function(c){ return c.disabled; }).length;
   ck('每行都有勾选框', cks.length === 6, cks.length);
   ck('默认勾上 4 味（4 味偏少）、禁用 1 味（没设用法）', nCk === 4 && nDis === 1, nCk + ' / ' + nDis);
-  ck('「偏少」的默认勾上（依洛尤）', ckOf('依洛尤单抗注射液').checked === true, '');
-  ck('「偏少」的默认勾上（氨氯地平）', ckOf('苯磺酸氨氯地平片').checked === true, '');
-  ck('「充足」的默认不勾（阿司匹林）', ckOf('阿司匹林肠溶片').checked === false, '');
-  ck('「充足」的默认不勾 → 那行只写「未勾选」、不给数字', afterOf('阿司匹林肠溶片') === '未勾选',
-     afterOf('阿司匹林肠溶片'));
+  ck('「偏少」的默认勾上（维生素B12）', ckOf('维生素B12注射液').checked === true, '');
+  ck('「偏少」的默认勾上（维生素C）', ckOf('维生素C片').checked === true, '');
+  ck('「充足」的默认不勾（健胃消食）', ckOf('健胃消食片').checked === false, '');
+  ck('「充足」的默认不勾 → 那行只写「未勾选」、不给数字', afterOf('健胃消食片') === '未勾选',
+     afterOf('健胃消食片'));
   ck('底部写清已勾选几种（4 / 5）', /已勾选 4 \/ 5 种/.test(q('#bulkPickHint').textContent),
      q('#bulkPickHint').textContent);
   ck('按钮带上了天数与实数', /勾选的 4 种各增加 7 天/.test(q('#btnBulkPlus').textContent)
@@ -316,20 +316,20 @@ PROBE = r"""
   q('#bulkDays').value = 7; renderBulk();
 
   // ★ 默认不勾 ≠ 调不了：自己把「充足」那味勾上，它照样能一起调
-  setCk('阿司匹林肠溶片', true);
+  setCk('健胃消食片', true);
   ck('手动勾上充足的药 → 已勾选 5 / 5', /已勾选 5 \/ 5 种/.test(q('#bulkPickHint').textContent),
      q('#bulkPickHint').textContent);
-  ck('手动勾上后那行照常给数字', /＋7 天/.test(afterOf('阿司匹林肠溶片')), afterOf('阿司匹林肠溶片'));
+  ck('手动勾上后那行照常给数字', /＋7 天/.test(afterOf('健胃消食片')), afterOf('健胃消食片'));
 
   // ★ 取消勾选一味（偏少的） → 那一行不再给数字，汇总与按钮当场跟着变
-  setCk('盐酸二甲双胍缓释片', false);
-  ck('取消勾选后那行写「未勾选」，不再给数字', afterOf('盐酸二甲双胍缓释片') === '未勾选',
-     afterOf('盐酸二甲双胍缓释片'));
+  setCk('葡萄糖酸钙片', false);
+  ck('取消勾选后那行写「未勾选」，不再给数字', afterOf('葡萄糖酸钙片') === '未勾选',
+     afterOf('葡萄糖酸钙片'));
   ck('取消勾选 → 底部变成已勾选 4 / 5', /已勾选 4 \/ 5 种/.test(q('#bulkPickHint').textContent),
      q('#bulkPickHint').textContent);
   ck('取消勾选 → 按钮文案变成 4 种', /勾选的 4 种各增加 7 天/.test(q('#btnBulkPlus').textContent),
      q('#btnBulkPlus').textContent);
-  ck('没被取消的行照旧给数字', /＋7 天/.test(afterOf('苯磺酸氨氯地平片')), afterOf('苯磺酸氨氯地平片'));
+  ck('没被取消的行照旧给数字', /＋7 天/.test(afterOf('维生素C片')), afterOf('维生素C片'));
 
   // ★ 全不选 → 两个确认按钮禁用（避免"什么都没选就点确认"）
   q('#btnBulkNone').click();
@@ -350,25 +350,25 @@ PROBE = r"""
   ck('全选不会把「没设用法」那味的禁用框勾上',
      (function(){
        var c = document.querySelector('#bulkList input.bulk-ck[data-id="'
-         + byName('维生素D滴剂').id + '"]');
+         + byName('维生素E软胶囊').id + '"]');
        return c.disabled === true && c.checked === false;
      })(), '');
 
   // --- 7c. 真的执行：增加 ---
   var alertsBefore = R.alerts.length;
   applyBulk(1);
-  ck('加 7 天：氨氯地平 8', byName('苯磺酸氨氯地平片').stockBase === 8,
-     byName('苯磺酸氨氯地平片').stockBase);
-  ck('加 7 天：阿托伐他汀 10', byName('阿托伐他汀钙片').stockBase === 10,
-     byName('阿托伐他汀钙片').stockBase);
-  ck('加 7 天：二甲双胍 34', byName('盐酸二甲双胍缓释片').stockBase === 34,
-     byName('盐酸二甲双胍缓释片').stockBase);
-  ck('加 7 天：依洛尤 1.5', byName('依洛尤单抗注射液').stockBase === 1.5,
-     byName('依洛尤单抗注射液').stockBase);
-  ck('加 7 天：没设用法的那味没被动（仍 30）', byName('维生素D滴剂').stockBase === 30,
-     byName('维生素D滴剂').stockBase);
-  ck('基准日滚到今天', byName('苯磺酸氨氯地平片').stockDate === todayStr(),
-     byName('苯磺酸氨氯地平片').stockDate);
+  ck('加 7 天：维生素C 8', byName('维生素C片').stockBase === 8,
+     byName('维生素C片').stockBase);
+  ck('加 7 天：维生素B2 10', byName('维生素B2片').stockBase === 10,
+     byName('维生素B2片').stockBase);
+  ck('加 7 天：葡萄糖酸钙 34', byName('葡萄糖酸钙片').stockBase === 34,
+     byName('葡萄糖酸钙片').stockBase);
+  ck('加 7 天：维生素B12 1.5', byName('维生素B12注射液').stockBase === 1.5,
+     byName('维生素B12注射液').stockBase);
+  ck('加 7 天：没设用法的那味没被动（仍 30）', byName('维生素E软胶囊').stockBase === 30,
+     byName('维生素E软胶囊').stockBase);
+  ck('基准日滚到今天', byName('维生素C片').stockDate === todayStr(),
+     byName('维生素C片').stockDate);
   ck('加完弹窗已关闭', !q('#dlgBulk').open, '');
   ck('提示说清了改了几味、改了多少天',
      /已把 5 种药的存量增加 7 天的量/.test(R.alerts.slice(alertsBefore).join(' | ')),
@@ -381,43 +381,43 @@ PROBE = r"""
   ck('点全选后 5 味都在勾上（含充足的那味）', /已勾选 5 \/ 5 种/.test(q('#bulkPickHint').textContent),
      q('#bulkPickHint').textContent);
   applyBulk(-1);
-  var five = ['苯磺酸氨氯地平片','阿托伐他汀钙片','盐酸二甲双胍缓释片','阿司匹林肠溶片','依洛尤单抗注射液'];
+  var five = ['维生素C片','维生素B2片','葡萄糖酸钙片','健胃消食片','维生素B12注射液'];
   ck('减 100 天：5 味全到 0，没有负数',
      five.every(function(n){ return byName(n).stockBase === 0; }),
      five.map(function(n){ return byName(n).stockBase; }).join('/'));
-  ck('减到 0 的药 level 是「已用完」', byName('阿司匹林肠溶片') && level(byName('阿司匹林肠溶片')) === 'out',
-     level(byName('阿司匹林肠溶片')));
-  ck('没设用法的那味仍是 30', byName('维生素D滴剂').stockBase === 30,
-     byName('维生素D滴剂').stockBase);
+  ck('减到 0 的药 level 是「已用完」', byName('健胃消食片') && level(byName('健胃消食片')) === 'out',
+     level(byName('健胃消食片')));
+  ck('没设用法的那味仍是 30', byName('维生素E软胶囊').stockBase === 30,
+     byName('维生素E软胶囊').stockBase);
   ck('提示里说明了被减到 0 的味数', /已减到 0/.test(R.alerts[R.alerts.length - 1]),
      R.alerts[R.alerts.length - 1]);
 
   // --- 7e. 「增加」必须和单药「又买了药」同一口径（stockNow 基础上加） ---
   ck('批量加完后 stockNow == stockBase（基准日=今天，没被重复扣）',
-     byName('维生素D滴剂').stockBase === stockNow(byName('维生素D滴剂')), '');
+     byName('维生素E软胶囊').stockBase === stockNow(byName('维生素E软胶囊')), '');
 
   // --- 7f. ★ 2026-10-12 新增：只勾一部分 → 没勾的必须一根手指都不碰 ---
-  // 此刻 5 味都已被减到 0，维生素D 仍是 30。
+  // 此刻 5 味都已被减到 0，维生素E 仍是 30。
   // 此刻 5 味都已用完 → 默认就把这 5 味全勾上了（「已用完」在默认档里），先把别的取消
   openBulk();
-  ['苯磺酸氨氯地平片','阿托伐他汀钙片','盐酸二甲双胍缓释片','依洛尤单抗注射液']
+  ['维生素C片','维生素B2片','葡萄糖酸钙片','维生素B12注射液']
     .forEach(function(n){
       var c = document.querySelector('#bulkList input.bulk-ck[data-id="' + byName(n).id + '"]');
       c.checked = false;
       c.dispatchEvent(new Event('change', {bubbles:true}));
     });
-  ck('只留阿司匹林勾选（已勾选 1 / 5）', /已勾选 1 \/ 5 种/.test(q('#bulkPickHint').textContent),
+  ck('只留健胃消食勾选（已勾选 1 / 5）', /已勾选 1 \/ 5 种/.test(q('#bulkPickHint').textContent),
      q('#bulkPickHint').textContent);
   var alerts2 = R.alerts.length;
   applyBulk(1);
-  ck('只勾一种 → 它确实变了（0 → 7）', byName('阿司匹林肠溶片').stockBase === 7,
-     byName('阿司匹林肠溶片').stockBase);
-  ck('没勾的没被动（氨氯地平仍 0）', byName('苯磺酸氨氯地平片').stockBase === 0,
-     byName('苯磺酸氨氯地平片').stockBase);
-  ck('没勾的没被动（二甲双胍仍 0）', byName('盐酸二甲双胍缓释片').stockBase === 0,
-     byName('盐酸二甲双胍缓释片').stockBase);
-  ck('没设用法的没被动（维生素D 仍 30）', byName('维生素D滴剂').stockBase === 30,
-     byName('维生素D滴剂').stockBase);
+  ck('只勾一种 → 它确实变了（0 → 7）', byName('健胃消食片').stockBase === 7,
+     byName('健胃消食片').stockBase);
+  ck('没勾的没被动（维生素C仍 0）', byName('维生素C片').stockBase === 0,
+     byName('维生素C片').stockBase);
+  ck('没勾的没被动（葡萄糖酸钙仍 0）', byName('葡萄糖酸钙片').stockBase === 0,
+     byName('葡萄糖酸钙片').stockBase);
+  ck('没设用法的没被动（维生素E 仍 30）', byName('维生素E软胶囊').stockBase === 30,
+     byName('维生素E软胶囊').stockBase);
   ck('提示只说改了 1 种', /已把 1 种药的存量增加 7 天的量/.test(R.alerts.slice(alerts2).join(' | ')),
      R.alerts[R.alerts.length - 1]);
 
@@ -428,8 +428,8 @@ PROBE = r"""
   applyBulk(1);
   ck('一种都没勾时点确认被拦下并提示', /还没勾选任何药/.test(R.alerts.slice(alerts3).join(' | ')),
      R.alerts[R.alerts.length - 1]);
-  ck('被拦下时数据没动（阿司匹林仍 7）', byName('阿司匹林肠溶片').stockBase === 7,
-     byName('阿司匹林肠溶片').stockBase);
+  ck('被拦下时数据没动（健胃消食仍 7）', byName('健胃消食片').stockBase === 7,
+     byName('健胃消食片').stockBase);
   q('#dlgBulk').close();
 
   // ---- 8. ★ 2026-10-11 用户两次报 bug 后的定稿口径 ----
@@ -629,6 +629,176 @@ PROBE = r"""
   ck('署名只出现一次', document.querySelectorAll('.foot-sig').length === 1,
      document.querySelectorAll('.foot-sig').length);
 
+  // ---- 10. ★ 2026-10-12 用户要求：拍底方批量录入 ----
+  //   用户原话：「用户能直接拍照 来批量录入开过的药品 然后程序引导用户确认每种药都能用多少天
+  //   …在我的药品里 现在只有添加第一种药的按钮 应该再加一个拍底方录入药品的按钮」。
+  //   ★ 识别那一步交给助手（人来看照片），**网页里不做 OCR**：不引外部脚本、不下载模型，
+  //     因为中文药品名认错一两个字是要吃错药的，而这是个单文件、离线可用的页面。
+  //   ★ 下面的每一行都**照真底方的版式**写（药名(商品名)[厂家][规格] 数量 单价 用量 频次 用法），
+  //     但药名一律是中性示例 —— 2026-10-12 用户要求「全换成中性药名」：真底方原文属于
+  //     「已经输入过的信息」，不该跟着开源代码分发（他 2026-09-28 对内置示例数据就是这条要求）。
+  //     版式特征一个没丢：圆括号罗马数字、方括号商品名/厂家、`*每盒数`、瓶/盒/支、
+  //     用量÷规格 = 每次几片、每日 N 次 / 每两周 / 每晚 / 外用 / 皮下注射。
+  //     本机另有一份**不进仓库**的真药名名单（`_check/_tmp_deny_names.txt`，被 .gitignore 挡着），
+  //     `main()` 拿它扫 index.html —— 以后谁再顺手粘一段真底方进来，断言当场红。
+
+  // 10a. 两个入口
+  ck('顶部工具栏有「拍底方录入」按钮', !!q('#btnRx'), '');
+  setMeds([]); save(); render();
+  ck('空药箱里也加了「拍底方批量录入」（和「添加第一种药」并排）',
+     !!(q('#btnRx2') && q('#btnAdd2')), '');
+  setMeds([{ id: uid(), name:'占位药', spec:'5mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+             stockBase:30, stockDate:todayStr() }]);
+  save(); render();
+
+  // 10b. 逐行解析：真底方原文 → 结构化字段
+  var a1 = rxParseLine('维生素B6片(Ⅰ)[华康][10mg*30]  1瓶  19.88  10mg  每日一次  口服');
+  ck('维生素B6片：药名拆对（括号里的「华康」没混进名字）', a1.name === '维生素B6片', a1.name);
+  ck('维生素B6片：规格 10mg*30、单位「片」', a1.spec === '10mg*30' && a1.unit === '片',
+     a1.spec + ' / ' + a1.unit);
+  ck('维生素B6片：1 瓶 × 30 片 → 本次 30 片', a1.total === 30, a1.total);
+  ck('维生素B6片：每次 1 片 · 每日 1 次 → 够 30 天', a1.perDose === 1 && rxDaysOf(a1) === 30,
+     a1.perDose + ' / ' + rxDaysOf(a1));
+
+  var a2 = rxParseLine('阿莫西林胶囊(康贝)[0.25g*8]  2盒  6.26  0.5g  每日2次  口服');
+  ck('阿莫西林：用量 0.5g ÷ 规格 0.25g → 每次 2 粒', a2.perDose === 2, a2.perDose);
+  ck('阿莫西林：胶囊 → 单位自动取「粒」', a2.unit === '粒', a2.unit);
+  ck('阿莫西林：2 盒 × 8 粒 → 16 粒，够 4 天', a2.total === 16 && rxDaysOf(a2) === 4,
+     a2.total + ' / ' + rxDaysOf(a2));
+
+  var a3 = rxParseLine('维生素B12注射液[甲钴胺][1ml:0.5mg*]  1盒  15.60  0.5mg  每两周一次  皮下注射');
+  ck('维生素B12：「每两周一次」→ 每 14 天 1 次', a3.cycleDays === 14 && a3.timesPerCycle === 1,
+     a3.cycleDays + ' / ' + a3.timesPerCycle);
+  ck('维生素B12：注射液 → 单位「支」，够 14 天', a3.unit === '支' && rxDaysOf(a3) === 14,
+     a3.unit + ' / ' + rxDaysOf(a3));
+  ck('维生素B12：「皮下注射」进备注', a3.note === '皮下注射', a3.note);
+
+  var a4 = rxParseLine('麝香壮骨膏[40mg*6贴]  5盒  57.87  1贴  每日一次  外用');
+  ck('麝香壮骨：规格里的包装单位「贴」被认出来', a4.unit === '贴' && a4.total === 30,
+     a4.unit + ' / ' + a4.total);
+  ck('麝香壮骨：「外用」进备注', a4.note === '外用', a4.note);
+  ck('口服的不写进备注（免得每张卡片都挂个「口服」）', a1.note === '', '「' + a1.note + '」');
+
+  var a5 = rxParseLine('氯雷他定片[10mg*14]  1盒  6.58  10mg  每晚  口服');
+  ck('「每晚」当每日 1 次 → 够 14 天', a5.cycleDays === 1 && rxDaysOf(a5) === 14, rxDaysOf(a5));
+
+  var a6 = rxParseLine('阿奇霉素片[0.25g*60]  2盒  6.12  0.5g  每日2次  口服');
+  ck('规格 0.25g + 用量 0.5g → 每次 2 片', a6.perDose === 2, a6.perDose);
+  ck('2 盒 × 60 片 → 120 片，够 30 天', a6.total === 120 && rxDaysOf(a6) === 30,
+     a6.total + ' / ' + rxDaysOf(a6));
+
+  // 认不出来的字段：留默认值 + 明确提醒，绝不猜一个看起来很像的数
+  var a7 = rxParseLine('阿莫西林胶囊 0.25g 2盒 0.5g 每日2次');
+  ck('手打行也认得出（末尾那个 0.25g 挪去当规格，不进药名）',
+     a7.name === '阿莫西林胶囊' && a7.spec === '0.25g', a7.name + ' / ' + a7.spec);
+  ck('没认出每盒多少 → 明确提醒去核对，不瞎填', /没认出每盒多少/.test(a7.warn), a7.warn);
+
+  // 10c. 整段处方粘进来：表头 / 金额 / 医师 / 打印日期这类行要跳过
+  var bulk = rxParseText([
+    '药品名称（规格）  数量  单价  用量  频次  用法  备注',
+    '奥美拉唑肠溶胶囊[20mg*8]  1盒  28.50  20mg  每日一次  口服',
+    '金额：913.65元',
+    '医师：王小鸭',
+    '叶酸片[4mg*30]  1盒  8.21  4mg  每日一次  口服',
+    '',
+    '打印日期：2026-10-12 10:43:57'
+  ].join('\n'));
+  ck('一段处方文字 → 只挑出真正的药（跳过表头/金额/医师/打印日期/空行）', bulk.length === 2, bulk.length);
+  ck('挑出来的正是那两味药',
+     bulk.length === 2 && bulk[0].name === '奥美拉唑肠溶胶囊' && bulk[1].name === '叶酸片',
+     bulk.map(function(x){ return x.name; }).join(' / '));
+
+  // 10d. 弹窗里走一遍：粘 → 解析 → 逐味确认天数 → 一次入库
+  openRx();
+  ck('刚打开时列表是空的、给了引导', /还没有药/.test(q('#rxList').textContent),
+     q('#rxList').textContent.slice(0, 30));
+  q('#rxPaste').value = '维生素B6片(Ⅰ)[华康][10mg*30] 1瓶 19.88 10mg 每日一次 口服\n'
+                      + '阿莫西林胶囊(康贝)[0.25g*8] 2盒 6.26 0.5g 每日2次 口服';
+  q('#btnRxParse').click();
+  ck('解析后列出 2 行', document.querySelectorAll('#rxList .rx-row').length === 2,
+     document.querySelectorAll('#rxList .rx-row').length);
+  ck('每行当场给出「够吃几天」（30 / 4）',
+     q('#rxList .rx-row:nth-child(1) .rx-days-in').value === '30'
+     && q('#rxList .rx-row:nth-child(2) .rx-days-in').value === '4',
+     q('#rxList .rx-row:nth-child(1) .rx-days-in').value + ' / '
+     + q('#rxList .rx-row:nth-child(2) .rx-days-in').value);
+  ck('解析完清空粘贴框（免得手一抖粘两遍）', q('#rxPaste').value === '', '「' + q('#rxPaste').value + '」');
+  ck('汇总写清勾了几味、加入后各档位几味', /共 2 味，勾选 2 味/.test(q('#rxSum').textContent),
+     q('#rxSum').textContent.slice(0, 44));
+  ck('按钮写清要加几味', /把勾选的 2 味加入药箱/.test(q('#btnRxOk').textContent),
+     q('#btnRxOk').textContent);
+
+  // ★ 确认天数是**双向**的：改天数 → 本次开到跟着反算（用户定的口径「余量 = 天数 × 每天用量」）
+  var d1 = q('#rxList .rx-row:nth-child(1) .rx-days-in');
+  d1.value = '60';
+  d1.dispatchEvent(new Event('input', {bubbles:true}));
+  ck('把「够吃 30 天」改成 60 天 → 「本次开到」跟着变 60 片',
+     q('#rxList .rx-row:nth-child(1) .rx-total').value === '60',
+     q('#rxList .rx-row:nth-child(1) .rx-total').value);
+  var t2 = q('#rxList .rx-row:nth-child(2) .rx-total');
+  t2.value = '40';
+  t2.dispatchEvent(new Event('input', {bubbles:true}));
+  ck('把「16 粒」改成 40 粒 → 够吃天数变成 10 天',
+     q('#rxList .rx-row:nth-child(2) .rx-days-in').value === '10',
+     q('#rxList .rx-row:nth-child(2) .rx-days-in').value);
+  ck('行色跟着档位变（40 粒 = 10 天 ≤ 偏少线 → soon）',
+     q('#rxList .rx-row:nth-child(2)').getAttribute('data-lv') === 'soon',
+     q('#rxList .rx-row:nth-child(2)').getAttribute('data-lv'));
+  var sel2 = q('#rxList .rx-row:nth-child(2) .rx-freq');
+  sel2.value = '1_3';
+  sel2.dispatchEvent(new Event('change', {bubbles:true}));
+  ck('频次下拉改成「每日 3 次」→ 天数当场重算成 6 天',
+     q('#rxList .rx-row:nth-child(2) .rx-days-in').value === '6',
+     q('#rxList .rx-row:nth-child(2) .rx-days-in').value);
+
+  // 取消勾选一味 → 汇总/按钮跟着变，入库时那味一根手指都不碰
+  var ck2 = q('#rxList .rx-row:nth-child(2) .rx-ck');
+  ck2.checked = false;
+  ck2.dispatchEvent(new Event('change', {bubbles:true}));
+  ck('取消勾选 → 汇总变成「勾选 1 味」', /勾选 1 味/.test(q('#rxSum').textContent),
+     q('#rxSum').textContent.slice(0, 30));
+  ck('取消勾选 → 按钮也变成 1 味', /把勾选的 1 味加入药箱/.test(q('#btnRxOk').textContent),
+     q('#btnRxOk').textContent);
+
+  var before10 = meds.length;
+  submitRx({ preventDefault: function(){} });
+  ck('提交后药箱只多了 1 条（没勾的那味没进来）', meds.length === before10 + 1, meds.length - before10);
+  var nm1 = byName('维生素B6片');
+  ck('入库各项写对（余量 60 / 基准今天 / 每次 1 片 / 每日 1 次）',
+     !!nm1 && nm1.stockBase === 60 && nm1.stockDate === todayStr()
+     && nm1.perDose === 1 && nm1.timesPerCycle === 1 && nm1.cycleDays === 1,
+     nm1 ? [nm1.stockBase, nm1.stockDate, nm1.perDose, nm1.timesPerCycle, nm1.cycleDays].join(' / ') : '(没进来)');
+  ck('卡片上的天数 = 弹窗里确认过的天数（60 天）', mday('维生素B6片') === '60', mday('维生素B6片'));
+  ck('没勾的那味确实没被加进来',
+     !meds.some(function(x){ return x.name === '阿莫西林胶囊'; }), '');
+
+  // 10e. 「把照片发给助手」那条路：带 #rx= 的链接打开就把药摆好
+  var enc = rxEncode([{ name:'维生素B12注射液', spec:'1ml:0.5mg*', unit:'支', perDose:1,
+                        cycleDays:14, timesPerCycle:1, total:1 }]);
+  ck('rxEncode 产出的是 URL 安全字符（能直接贴进聊天发出去）',
+     /^[A-Za-z0-9\-_]+$/.test(enc) && enc.length > 20, enc.slice(0, 20) + '…');
+  var back = JSON.parse(decodeURIComponent(escape(
+    atob(enc.replace(/-/g, '+').replace(/_/g, '/')))));
+  ck('这段编码解得回原来那味药',
+     back.rows.length === 1 && back.rows[0].name === '维生素B12注射液', back.rows[0].name);
+  openRx(back.rows, '助手');
+  ck('预填的弹窗里药已经摆好、天数也算好了',
+     document.querySelectorAll('#rxList .rx-row').length === 1
+     && q('#rxList .rx-row:nth-child(1) .rx-days-in').value === '14',
+     document.querySelectorAll('#rxList .rx-row').length + ' 行');
+  ck('说明里写清「助手已经认好了，你核对一下」',
+     /已经从你的底方照片上认好/.test(q('#rxSub').textContent), q('#rxSub').textContent.slice(0, 36));
+  q('#dlgRx').close();
+
+  // 名称空着的行：拦下，不许静默入库
+  openRx([{ name:'', unit:'片', perDose:1, cycleDays:1, timesPerCycle:1, total:10 }]);
+  var n0 = meds.length;
+  submitRx({ preventDefault: function(){} });
+  ck('名称空着的那味被拦下（没入库）', meds.length === n0, meds.length - n0);
+  ck('并且给了提示', /还没填药品名称/.test(R.alerts[R.alerts.length - 1]),
+     R.alerts[R.alerts.length - 1]);
+  q('#dlgRx').close();
+
   R.meds = meds.map(function(x){ return x.name + '|qty=' + dispQty(x) + '|cap=' + rxCap(x); });
 
   var pre = document.createElement('pre');
@@ -707,6 +877,52 @@ def main():
         "pass": bool(mstep) and mstep.group(1) == "1",
         "got": mstep.group(1) if mstep else "(没找到)",
     })
+
+    # ---- 源码级：拍底方这块**不做 OCR、不引外部依赖**（识别由助手代劳，2026-10-12 定）----
+    n_net = len(re.findall(r'''(?:src|href)\s*=\s*["\']https?://''', src))
+    data["cases"].append({
+        "name": "页面里没有任何外部脚本/样式依赖（src/href 都不到外网）",
+        "pass": n_net == 0,
+        "got": n_net,
+    })
+    data["cases"].append({
+        "name": "没有把 OCR 引擎塞进网页（tesseract 一次都没出现）",
+        "pass": src.lower().count("tesseract") == 0,
+        "got": src.lower().count("tesseract"),
+    })
+    data["cases"].append({
+        "name": "照片说明里写明了「不上传、不保存」（只是给你对照）",
+        "pass": ("不上传" in src) and ("不保存" in src),
+        "got": "已写明" if (("不上传" in src) and ("不保存" in src)) else "(没写)",
+    })
+
+    # ---- 源码级：拍底方这块**不做 OCR、不引外部依赖**（识别由助手代劳，2026-10-12 定）----
+    # ★ 2026-10-12 用户要求「全换成中性药名」：真底方上的药名属于「已经输入过的信息」，
+    #   不该跟着开源代码分发（他 2026-09-28 对内置示例数据就是这条要求）。
+    #   名单**只在本机**（`_check/_tmp_deny_names.txt`，被 .gitignore 的 `_check/_tmp_*` 挡着）——
+    #   把真药名写进断言本身就把它们发出去了，所以这里读外部文件，没有名单就跳过这条。
+    here = os.path.dirname(os.path.abspath(__file__))
+    deny = os.path.join(here, "_tmp_deny_names.txt")
+    if os.path.exists(deny):
+        with open(deny, encoding="utf-8") as fh:
+            names = [ln.strip() for ln in fh
+                     if ln.strip() and not ln.lstrip().startswith("#")]
+        ships = [("index.html", src)]
+        for fn in ("README.md", "_check/test_rxcap.py", "_check/shot.py"):
+            p = os.path.join(os.path.dirname(here), fn)
+            if os.path.exists(p):
+                with open(p, encoding="utf-8") as fh:
+                    ships.append((fn, fh.read()))
+        hits = []
+        for nm in names:
+            for fn, txt in ships:
+                if nm in txt:
+                    hits.append("%s→%s" % (nm, fn))
+        data["cases"].append({
+            "name": "要发布的文件里没有真底方上的药名（本机名单 %d 条）" % len(names),
+            "pass": not hits,
+            "got": "、".join(hits) if hits else "0",
+        })
 
     fails = [c for c in data["cases"] if not c["pass"]]
     for c in data["cases"]:
