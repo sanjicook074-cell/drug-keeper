@@ -154,7 +154,47 @@ t1, _ = X.cell_text(route_words, 1427.5, 1589.0, *X.row_yband(lay, 1))
 ck('整格结果 第 0 行「用法」= 口服（不是「口服服」）', t0 == '口服', t0)
 ck('整格结果 第 1 行「用法」= 口服', t1 == '口服', t1)
 
-print('== 10. 不联网、不额外依赖 ==')
+print('== 10. 按张对账 sheets_of() / 归属 patient_of() ==')
+# ★ 2026-10-13 事故后加的。当时工具**算出了**对账、也**读到了**抬头，可 to_link 只塞了 rows ——
+#   两样都在拼链接那一步丢了（验证做了、没传出来，等于没做）。
+#   而且 patient_of 第一版照抄了 meta 的**中文键**（姓名/性别），页面 patient.name 取不到，
+#   弹窗顶上照样打印"底方上没写姓名"、把药记到当前人名下。这两条就钉住这两处。
+import json as _json
+import base64 as _b64
+
+res1 = {'meta': {'姓名': '甲', '性别': '男', '年龄': '63', '金额': 20.45},
+        'rows': [1, 2], 'check': {'sum': 20.45, 'amount': 20.45, 'ok': True}}
+res2 = {'meta': {'金额': 6.58}, 'rows': [1], 'check': {'sum': 6.58, 'amount': 6.58, 'ok': True}}
+sh = X.sheets_of([res1, res2])
+ck('按张出对账：一张一条，带 i / n / amount / sum',
+   sh == [{'i': 1, 'n': 2, 'amount': 20.45, 'sum': 20.45},
+          {'i': 2, 'n': 1, 'amount': 6.58, 'sum': 6.58}], sh)
+ck('金额没读到 → amount 写 None（不编一个数糊过去）',
+   X.sheets_of([{'meta': {}, 'rows': [1], 'check': None}])
+   == [{'i': 1, 'n': 1, 'amount': None, 'sum': None}], '')
+
+p = X.patient_of([res1, res2])
+ck('归属用英文键（页面 patient.name 才取得到）',
+   p.get('name') == '甲' and p.get('sex') == '男' and p.get('age') == '63', p)
+ck('只认第 1 张抬头（第 2 张没姓名，不许把两张混起来）', p.get('name') == '甲', p)
+ck('patient 里不夹无关字段（金额不进 patient）', '金额' not in p and 'amount' not in p, p)
+
+
+def _payload(link):
+    b = link.split('#rx=')[1].replace('-', '+').replace('_', '/')
+    b += '=' * (-len(b) % 4)
+    return _json.loads(_b64.b64decode(b).decode('utf-8'))
+
+
+ROW1 = X.RxRow(name='测试片', total=3)
+pl = _payload(X.to_link([ROW1], 'X', p, sh))
+ck('to_link 把 patient 一起编进去了', pl.get('patient', {}).get('name') == '甲', pl.get('patient'))
+ck('to_link 把 sheets 一起编进去了（逐张对账不再被丢掉）',
+   len(pl.get('sheets') or []) == 2 and pl['sheets'][0]['amount'] == 20.45, pl.get('sheets'))
+ck('to_link 不传 patient / sheets 时也照旧能编（老调用姿势仍可用）',
+   isinstance(_payload(X.to_link([ROW1], 'X')), dict), '')
+
+print('== 11. 不联网、不额外依赖 ==')
 src = open(os.path.join(ROOT, 'tools', 'rx_local', 'rx_local.py'), encoding='utf-8').read()
 ck('没有 requests/urllib 之类的联网调用',
    all(k not in src for k in ('requests.', 'urllib.request', 'http.client')), '有联网调用')

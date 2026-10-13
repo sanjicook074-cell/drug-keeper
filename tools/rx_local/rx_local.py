@@ -921,8 +921,21 @@ def _meta(text: str) -> dict:
 
 
 # ================================================================== 7. 输出
-def to_link(rows: list[RxRow], url: str) -> str:
-    payload = {'v': 1, 'rows': [r.to_page_row() for r in rows]}
+def to_link(rows: list[RxRow], url: str, patient: dict | None = None,
+            sheets: list | None = None) -> str:
+    """拼 #rx= 链接（页面打开就预填）。
+
+    ★ 2026-10-13 加 patient / sheets。之前这里**只塞了 rows** ——
+      工具明明算出了对账（check）、也读到了抬头（meta），却在拼链接这一步**两样都丢了**。
+      于是"助手认得对不对"摊到用户眼前只剩一张药单，没有任何可核的东西：
+      验证做了、没传出来，等于没做。这也正是那次事故（认错一味 + 漏一味、总数还对得上）
+      能溜过去的同一个洞 —— 后来把这一块补成页面上的「对账」条。
+    """
+    payload = {'v': 1, 'from': '本机离线工具', 'rows': [r.to_page_row() for r in rows]}
+    if patient:
+        payload['patient'] = {k: v for k, v in patient.items() if v not in (None, '')}
+    if sheets:
+        payload['sheets'] = sheets
     js = json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
     b64 = base64.urlsafe_b64encode(js.encode('utf-8')).decode('ascii').rstrip('=')
     return url + '#rx=' + b64
@@ -987,30 +1000,87 @@ def report(res: dict, path: str) -> None:
         print('  ' + ln)
 
 
+def sheets_of(results: list) -> list:
+    """把逐张解析结果压成「按张对账」列表 [{i, n, amount, sum}]。
+
+    ⚠️ 必须**按张**列，不能只报一个合计数：丢一味 + 编一味，总数照样对得上 ——
+       2026-10-13 那次事故就是这么溜过去的（三张合起来对一次账，单张各错一点互相抵消）。
+       这一条也写进了页面的 #rx-agent-guide，别只改一边。
+    """
+    out = []
+    for i, res in enumerate(results, 1):
+        rs = res.get('rows') or []
+        c = res.get('check') or {}
+        out.append({'i': i, 'n': len(rs),
+                    'amount': (res.get('meta') or {}).get('金额'),
+                    'sum': c.get('sum')})
+    return out
+
+
+def patient_of(results: list) -> dict:
+    """这份底方是谁的 —— **只认第 1 张**抬头。
+
+    同一次就诊的几张单子抬头本应一致；混着取会把"这份底方是谁的"搞成"谁都像"，
+    抄错就是记到别人名下（页面会按这个名字定位药箱）。
+    """
+    m = (results[0].get('meta') or {}) if results else {}
+    # ⚠️ 键名必须是**契约里的英文键**（#rx-agent-guide 的 patient 一节）：
+    #    这里第一版照抄了 meta 的中文键（姓名/性别/…），结果页面里 patient.name 取不到 ——
+    #    弹窗顶部照样打印「底方上没写姓名」，把药记到当前人名下。
+    #    和 to_link 那次是同一类：数据传了，键名不对，等于没传。
+    p = {'name': m.get('姓名'), 'sex': m.get('性别'), 'age': m.get('年龄'),
+         'dx': m.get('诊断'), 'hospital': m.get('医院'),
+         'date': m.get('就诊日期'), 'rxNo': m.get('处方号')}
+    return {k: v for k, v in p.items() if v not in (None, '')}
+
+
 def main():
     ap = argparse.ArgumentParser(description='处方单本地解析（Windows 内置 OCR）')
-    ap.add_argument('image')
+    ap.add_argument('image', nargs='+',
+                    help='底方照片，可给多张（多张会合成一条链接，对账**按张**列）')
     ap.add_argument('--json', help='把结果写成 JSON')
     ap.add_argument('--url', default='', help='拼 #rx= 链接用的页面地址')
     ap.add_argument('--dump-ocr', action='store_true', help='打印每一步 OCR 的原始结果')
     a = ap.parse_args()
 
-    res = parse_prescription(a.image, debug=a.dump_ocr)
-    report(res, a.image)
+    results = [parse_prescription(p, debug=a.dump_ocr) for p in a.image]
+    for p, res in zip(a.image, results):
+        report(res, p)
 
-    if a.url and res.get('ok'):
+    rows = [r for res in results for r in (res.get('rows') or [])]
+    sheets = sheets_of(results)
+    patient = patient_of(results)
+    ok = any(res.get('ok') for res in results)
+
+    if len(results) > 1:
+        print()
+        print('按张对账（★ 必须逐张：合起来对一次账，单张各错一点会互相抵消）')
+        for s in sheets:
+            amt, sm = s['amount'], s['sum']
+            if amt is None or sm is None:
+                print('  第 %d 张：%d 味 · 没读到金额，对不了账' % (s['i'], s['n']))
+            else:
+                print('  第 %d 张：%d 味 · 单据 %.2f = 算出来 %.2f → %s'
+                      % (s['i'], s['n'], amt, sm,
+                         '对得上 ✓' if abs(amt - sm) < 0.02 else '对不上 ✗（回去核这张）'))
+        print('  合计 %d 味' % len(rows))
+
+    if a.url and ok:
         print()
         print('#rx= 链接（点开就是填好的弹窗）：')
-        print('  ' + to_link(res['rows'], a.url))
+        print('  ' + to_link(rows, a.url, patient, sheets))
 
     if a.json:
-        data = {'ok': res.get('ok'), 'orientation': res.get('orientation'),
-                'meta': res.get('meta'), 'check': res.get('check'),
+        data = {'ok': ok,
+                'orientation': results[0].get('orientation'),
+                'meta': results[0].get('meta'),
+                'check': results[0].get('check'),
+                'sheets': sheets, 'patient': patient,
                 'rows': [dict(r.to_page_row(), qty=r.qty, qtyUnit=r.qty_unit,
                               price=r.price, doseRaw=r.dose_raw, freqRaw=r.freq_raw,
                               routeRaw=r.route_raw, rawNameCell=r.raw_name_cell,
-                              perPack=None, sources=r.sources) for r in res.get('rows', [])],
-                'cells': res.get('report_rows')}
+                              perPack=None, sources=r.sources) for r in rows],
+                'cells': [c for res in results for c in (res.get('report_rows') or [])]}
         with open(a.json, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         print('\nJSON → %s' % a.json)

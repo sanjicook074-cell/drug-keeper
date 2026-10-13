@@ -292,6 +292,39 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 .rx-days-wrap input{width:56px;text-align:center;font-weight:650;padding:4px 6px}
 .rx-hint{font-size:11.5px;color:var(--soon);margin-top:6px}
 .rx-empty{text-align:center;padding:24px 10px;color:var(--faint);font-size:13px}
+
+/* 「这份底方是谁的」+ 去重结果 —— 弹窗顶上那条（2026-10-13 加）
+   ★ 起因是一次真实事故：助手把底方上的一味药换成了另一个同类药，还少了一味真的；
+     药味总数没变，所以「8 种全部在列」那句自检看着是过的。见 #rx-agent-guide 里的「三条硬规矩」。*/
+.rx-who{margin-bottom:12px;padding:10px 12px;border:1px solid var(--line-2);border-left:3px solid var(--brand);
+  border-radius:10px;background:#f8f9fb;font-size:12.5px;line-height:1.8;color:#4b5563}
+.rx-who b{color:var(--text)}
+.rx-who .warn{color:var(--soon)}
+.rx-who .ok{color:var(--ok)}
+.rx-who .dup{color:var(--muted)}
+/* 「助手是怎么读的」—— 对账结果（2026-10-13 加，和 .rx-who 同一族、同一次事故）
+   ★ 这一块存在的唯一理由：**校验得看得见**。
+     同一次事故里，助手认错了一味、还漏了一味，总数照样是 8 —— 因为**没人做过对账**，
+     所以"我认得对不对"这件事全靠它自述一句"全部录入"，没有任何东西能反驳它。
+     底方上印着一个「金额」，那是**一个数**；把 N 行读数代进去算 Σ(数量×单价) 对不对得上，
+     就把"读 N 行"这个难题压成了"对 1 个数"。对不上 → 这 N 行里必有一行读错了。
+     页面没有照片，验不了"读得准不准"；但它能验助手**自报的数自不自洽**，并把它摆给人看。
+     缺了这块依据 → 不能沉默（沉默会被读成"没问题"），要明说"没人替你对过"。*/
+.rx-audit{margin-bottom:12px;padding:10px 12px;border:1px solid var(--line-2);border-left:3px solid var(--ok);
+  border-radius:10px;background:#f8f9fb;font-size:12.5px;line-height:1.85;color:#4b5563}
+.rx-audit.bad{border-left-color:var(--out);background:#fef7f7}
+.rx-audit.miss{border-left-color:var(--soon);background:#fffcf5}
+.rx-audit b{color:var(--text)}
+.rx-audit .hd{font-weight:650;color:var(--text);margin-bottom:3px}
+.rx-audit .sh{font-variant-numeric:tabular-nums;color:var(--muted)}
+.rx-audit .ok{color:var(--ok)}
+.rx-audit .bad{color:var(--out);font-weight:650}
+.rx-audit .miss{color:var(--soon)}
+.rx-audit .why{margin-top:4px;color:var(--muted)}
+/* 行上「药箱里已有」的角标：这一味默认不勾（去重） */
+.rx-row[data-dup="1"]{border-left-color:var(--line);background:#fafbfc}
+.rx-row .rx-duptag{flex:none;font-size:10.5px;font-weight:650;color:var(--muted);
+  border:1px solid var(--line);border-radius:5px;padding:1px 5px;background:#f3f4f6;white-space:nowrap}
 .rx-act{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:13px 0 0;
   padding-top:13px;border-top:1px solid var(--line-2);font-size:12.5px;color:var(--muted)}
 .rx-act .sp{flex:1}
@@ -502,6 +535,9 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
     </div>
     <div class="dlg-b">
 
+      <div class="rx-who" id="rxWho" hidden></div>
+      <div class="rx-audit" id="rxAudit" hidden></div>
+
       <div class="rx-howto">
         这个页面<b>不认照片</b>。底方照片请直接<b>发给 AI 助手</b>（帮你开这个页面的那个），
         它把药认好、够吃多少天也算好，回你一条链接 —— <b>点开那条链接，药就已经填在这儿了</b>，
@@ -545,47 +581,118 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 2026-10-13 已把那套整条删掉），认照片这件事整条交给你。
 你只要产出**一条链接**，用户点开，药就已经摆好在弹窗里等着入库。
 
+⚠️ 先把这一条读完（2026-10-13 加，起因是一次真实事故）：
+   有一次，助手把底方上的一味药**换成了另一个同类药**，同时又**漏掉一味真的** ——
+   药味总数还是 8，"8 种全部录入"这句自检**看上去是过的**，于是没人发现。
+   → 下面「三条硬规矩」是硬要求，不是建议。**总数对得上 ≠ 认对了。**
+
+■ 三条硬规矩（都为了同一件事：让"我认出来的"能被逐条核对）
+   1) **逐字照抄**：rows 里的 name 必须是底方纸上**原样印着**的那几个字。
+      不许换成同类药、商品名、或"更常见的那味"，也不许自作主张"纠正"成你觉得更合理的药。
+      认不清就把 name **留空**、在 warn 里写「药名没认准」，让人自己补 —— 别猜一个像样的糊过去。
+      中文药名认错一两个字就是吃错药。
+      · 底方上括号里的商品名/厂家（如「某某片(品牌名)」）**不要塞进 name**；要留就写在 note 里。
+   2) **闭合校验（防丢药、防凑数）—— 必须按「张」做，不是合起来做一次**：
+      · 数药味：每张底方的「药品名称」列有几味，记下来；Σ 各张 = rows 的条数。
+      · 对账：**每张**底方的 Σ(数量 × 单价) 应该等于**那一张**上印的「金额」。
+      ⚠️ 为什么强调「按张」：三张加起来对一次账的话，**单张各错一点也能互相抵消**
+        （丢一味 + 编一味，总数照样对得上）—— 那正是上面那次事故怎么溜过去的。
+      任何一条对不上，就回去重读那一张，别硬报"已全部录入"。
+      ★ **这两条算完必须写进 sheets 交上来**（见下「■ sheets」）—— 不能只在心里过一遍：
+        页面会把每一张的对账摆到用户眼前。你没报上来的，用户只会当成"没人替他核过"。
+        （工具 tools/rx_local/rx_local.py 已经自动按张算好并塞进链接，用它就不用手算。）
+   3) **这份底方是谁的**：patient 必须从底方抬头**照抄**（见下），不许拿用户昵称或上下文猜。
+      页面会照它**定位药箱**：抄错了，药就记到别人名下了。
+
 ■ 产出什么
     <页面URL>#rx=<base64url(JSON)>
-    · JSON 形如 {"v":1,"from":"助手","rows":[ {…}, {…} ]}
+    · JSON 形如 {"v":1,"from":"助手","patient":{…},"sheets":[ {…} ],"rows":[ {…}, {…} ]}
     · base64url = UTF-8 编码 → base64 → 把 '+' 换成 '-'、'/' 换成 '_'、去掉结尾的 '=' 补位
     · 一定用 hash（# 后面）而不是 query：hash 不会发往服务器，药品数据不出用户本机；
       也能直接贴在聊天里发给用户。
     · 用户点开会自动打开「底方录入」弹窗并预填；页面读一次就把 hash 抹掉，不会重复入库。
 
+■ patient —— 这一份底方是谁的（照抄底方抬头；抄不到就留空，**别编**）
+    name     就诊人姓名（底方上「姓名：」后面那两三个字）★关键字段
+    sex      性别（男 / 女）
+    age      年龄（数字，如 "63"）
+    dx       诊断（照抄，多项用「、」分开）
+    date     就诊日期 YYYY-MM-DD
+    hospital 医院名
+    rxNo     处方号
+    ★ 页面会把这一块显示在弹窗顶上给用户核对：「这份底方是「某某 · 男 · 63岁」的」。
+      如果药箱里正好有叫这个名字的人，页面会**自动切到他/她的药箱**再入库；
+      没有这个人，页面会问一句要不要新建。**姓名抄错 → 药就记到别人名下了。**
+    ⚠️ 键名就是上面这几个英文（name / sex / age / dx / date / hospital / rxNo），
+      别照抄中文抬头行。写成 {"姓名":"某某"} 页面取不到，只会在顶上打印"底方上没写姓名"。
+
+■ sheets —— 对账依据（**必交**；交不上来，页面会明说"没人替你核过"）
+    [{"i":1,"n":2,"amount":20.45,"sum":20.45},
+     {"i":2,"n":1,"amount":6.58, "sum":6.58},
+     {"i":3,"n":5,"amount":913.65,"sum":913.65}]
+    i       第几张底方（从 1 起，按发给你的顺序）
+    n       这一张上有**几味**药（底方「药品名称」列有几行）
+    amount  这一张单据上印的「金额」（读不到写 null —— **别编**）
+    sum     这一张 Σ(数量 × 单价) 你自己算出来的值（算不了写 null）
+    ★ 页面会逐张核：|sum − amount| 是否 < 0.02、Σn 是否等于 rows 条数，
+      并把这几行**原样显示给用户**。整块缺了 → 弹窗顶上写"助手没交对账依据"；
+      某张对不上 → 标红并提示"先别入库"。页面手上没有照片，只能核你自报的数自不自洽，
+      够不够还得用户拿照片扫一眼 —— 但至少"有没有人核过"这件事，从此是看得见的。
+    ★ 手机端认照片那条路最容易省这一步（"8 味都在"看着就对了）—— 那正是那次事故的直接原因。
+
 ■ rows 每一味的字段（都可省，省了用默认值）
-    name           药名（必填，中文，如 "阿奇霉素片"）
+    name           药名（必填，中文，**逐字照抄**，如 "阿奇霉素片"）
     spec           规格，照抄底方那一列，如 "0.5g*60"
     unit           单位：片/粒/支/贴/袋/滴/喷/丸/包（默认 片）
     perDose        每次吃几个（默认 1）
     cycleDays      频次里的"每几天"（每日=1，隔日=2，每周=7，每 4 周=28；默认 1）
     timesPerCycle  频次里的"几天吃几次"（每日 2 次=2；默认 1）
     total          本次一共开回来多少个（= 数量 × 每盒几个）
-    note           备注：口服不用写；外用 / 皮下注射 这类留着有用
-    picked         true/false，是否默认勾选（默认 true）
+    note           备注：口服不用写；外用 / 皮下注射 / 商品名 这类写这儿
+    picked         true/false，是否默认勾选（**页面还会自己去重**，见下 —— 你只管都列上）
+    warn           你没把握的地方（药名没认准 / 数量含糊 …），页面会原样显示给用户
 
-■ 两条硬口径（务必按这个算，否则用户看到的"够吃多少天"会错）
+■ 两条换算口径（务必按这个算，否则用户看到的"够吃多少天"会错）
     · 每天用量 = perDose × timesPerCycle ÷ cycleDays
     · 够吃天数 = total ÷ 每天用量          ← 卡片上的"剩 N 天"就从这来
     表格里「数量 × 每盒几个」才是 total：底方写"2盒 0.5g*60"就是 2×60 = 120。
 
+■ 去重：这一条**不用你做**，页面自己会做
+    用户以后还会再发底方（复诊、换药、同一张重复发）。页面拿到 rows 后会自动跟
+    **这个人药箱里已有的药**比一遍：**同名的自动认成"已有"、取消勾选**，
+    只把**新出现的**留在勾选状态，并在弹窗顶上写清「已有 N 味（已取消勾选）、本次新增 M 味」。
+    → 所以你**照实把这一次底方上的药全列出来**就行：**别自己删、别自己去重** ——
+      你看不到用户药箱里有什么，你删掉的就真的没了。重复的交给页面挑。
+
 ■ 现成的工具（本机、离线、照片不出本机）
-    tools/rx_local/rx_local.py —— 直接吃照片，输出结构化药行 + 可直接发布的链接：
-        python tools/rx_local/rx_local.py 底方照片.jpg
-    它走 Windows 系统自带的 OCR（Windows.Media.Ocr），零联网。上面两条口径它已经实现了，直接用。
+    tools/rx_local/rx_local.py —— 直接吃照片（**可以一次给多张**），输出结构化药行 + 可发布的链接：
+        python tools/rx_local/rx_local.py 底方1.jpg 底方2.jpg 底方3.jpg --url 页面地址
+    它走 Windows 系统自带的 OCR（Windows.Media.OCR），零联网。上面两条换算口径它已经实现。
+    ★ 它已经会把 patient（第 1 张的抬头）和 **sheets（逐张对账）** 一起塞进 #rx= 链接，
+      所以**优先用它**：你对账这一步就不用手工算了。多张一起给，它自己按张列。
+    ★ 但它**只认字、不认药** —— 没有药名字典，读出什么就是什么（读数本身也会有错），
+      而且它也会"拿不准就放大重读、还拿不准就写进 warn"，所以它给的结果
+      **仍要**按上面「三条硬规矩」自己过一遍，尤其是药名逐字核对。
     这套方法的细节沉淀在技能 win-ocr-offline-parse 里。
 
 ■ 没有工具时的最小示例（Python）
     import json, base64
     rows = [{"name":"阿奇霉素片","spec":"0.5g*60","unit":"片",
              "perDose":2,"cycleDays":1,"timesPerCycle":2,"total":120,"note":""}]
-    p = json.dumps({"v":1,"from":"助手","rows":rows}, ensure_ascii=False).encode()
+    patient = {"name":"某某","sex":"女","age":"58","dx":"咽炎","date":"2026-10-12"}
+    sheets = [{"i":1,"n":len(rows),"amount":64.50,"sum":2*6.26+1*51.98}]   # 对账依据，别省
+    p = json.dumps({"v":1,"from":"助手","patient":patient,"sheets":sheets,"rows":rows},
+                   ensure_ascii=False).encode()
     h = base64.urlsafe_b64encode(p).decode().rstrip("=")
     print("https://你的页面地址/#rx=" + h)
 
 ■ 别忘的两件事
     · 中文药名认错一两个字是要吃错药的 —— 拿不准的字段宁可留空让人自己填，别猜一个"像样的数"糊过去。
-    · 算完对一下账：Σ(数量 × 单价) 应该等于底方上的金额；对不上就说明列读错了，回头看一眼。
+      （那次事故里把「4mg」写成「5mg」就是这么来的：那个药真有 4mg 和 5mg 两种剂型，
+        猜 5mg 看着毫无破绽 —— 所以"看着合理"不能当理由。）
+    · **底方上的「金额」是你能拿到的最硬的一个锚**：它是一个数，比 N 行药名好读得多。
+      把 N 行的读数代进去算 Σ(数量×单价)，对不上 → 这 N 行里必有一行读错了。
+      一次读 N 行会错，读 1 个数不太会错 —— 这就是「把 N 行压成 1 个数」的意思。
 </script>
 
 <!-- 批量填用法（2026-10-13 用户要求）：
@@ -1376,6 +1483,21 @@ function addPerson(){
   if($('#dlgSet').open) renderPeopleMgr();
 }
 
+/* 按给定名字直接建人 —— 走「底方上抄下来的姓名」那条路（addPerson 是弹 prompt 问名字的）。
+   名字已存在就不建，返回 null，让人自己决定。 */
+function addPersonNamed(name){
+  const n = String(name == null ? '' : name).trim();
+  if(!n) return null;
+  if(people.some(function(p){ return p.name === n; })) return null;
+  const p = { id: uid(), name: n, note: '', meds: [] };
+  people.push(p);
+  currentId = p.id;      // 底方上的药就记在他/她名下
+  syncMeds();
+  save(); render();
+  if($('#dlgSet').open) renderPeopleMgr();
+  return p;
+}
+
 function renamePerson(id, name){
   const p = people.filter(function(x){ return x.id === id; })[0];
   if(!p) return;
@@ -1795,8 +1917,34 @@ function rxNewRow(o){
     total: Math.max(0, num(o.total)),
     note: (o.note || '').trim(),
     warn: o.warn || '',
+    // 「药箱里已有」—— 去重标记（见 rxMarkExisting）。只影响默认勾选和那枚角标，
+    // 用户想勾还是能勾。★ 它不是"这行错了"，别拿它当校验失败用。
+    existing: !!o.existing,
     picked: o.picked !== false
   };
+}
+
+/* ---- 去重：把"这个人药箱里已经有"的行挑出来 ----
+   判「同名」用的归一化：全角转半角 → 去掉（商品名）括号 → 去掉所有空白 → 小写。
+   为什么只按**药名**比、不比规格：用户要的是"重复的挑出来，只加新出现的"，
+   同一味药换了厂家/规格还是同一味药；规格不同也算重复更安全（宁可让人手勾，别默默塞两遍）。*/
+function rxNormName(s){
+  return String(s == null ? '' : s)
+    .replace(/[\uFF01-\uFF5E]/g, function(c){ return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
+    .replace(/[（(][^）)]*[）)]/g, '')
+    .replace(/\s+/g, '')
+    .toLowerCase();
+}
+function rxMarkExisting(rows, person){
+  const have = {};
+  (((person || {}).meds) || []).forEach(function(m){ have[rxNormName(m.name)] = true; });
+  let dup = 0;
+  (rows || []).forEach(function(r){
+    const hit = !!have[rxNormName(r.name)];
+    r.existing = hit;
+    if(hit){ r.picked = false; dup++; }
+  });
+  return dup;
 }
 // 每天用量 / 够吃天数 —— 和卡片同一套口径（`dailyUse` 是唯一的算法）
 function rxDailyUse(r){
@@ -1993,11 +2141,13 @@ function rxRowHTML(r){
     opts += '<option value="' + o[0] + '"' + (o[0] === key ? ' selected' : '') + '>' + o[1] + '</option>';
   });
   const custom = key === 'custom';
-  return '<div class="rx-row" data-lv="' + rxLevel(r) + '" data-key="' + r.key + '">'
+  return '<div class="rx-row" data-lv="' + rxLevel(r) + '" data-key="' + r.key + '"'
+    +       (r.existing ? ' data-dup="1"' : '') + '>'
     +   '<div class="rx-line">'
     +     '<input type="checkbox" class="bulk-ck rx-ck"' + (r.picked ? ' checked' : '') + '>'
     +     '<input type="text" class="rx-name" autocomplete="off" placeholder="药品名称" value="' + esc(r.name) + '">'
     +     '<input type="text" class="rx-spec" autocomplete="off" placeholder="规格" value="' + esc(r.spec) + '">'
+    +     (r.existing ? '<span class="rx-duptag" title="这个人药箱里已经有这味药，默认不重复入库">药箱里已有</span>' : '')
     +     '<button type="button" class="rx-del" title="删掉这一行">×</button>'
     +   '</div>'
     +   '<div class="rx-line">'
@@ -2047,7 +2197,9 @@ function rxSyncFoot(){
   if(cnt.soon) bits.push('<b>' + cnt.soon + '</b> 味偏少');
   if(cnt.ok) bits.push('<b>' + cnt.ok + '</b> 味充足');
   if(cnt.na) bits.push('<b>' + cnt.na + '</b> 味未设用法');
+  const dup = rxRows.filter(function(r){ return r.existing; }).length;
   $('#rxSum').innerHTML = '共 <b>' + rxRows.length + '</b> 味，勾选 <b>' + picked.length + '</b> 味'
+    + (dup ? '（另有 <b>' + dup + '</b> 味药箱里已有，默认没勾 → 不会重复入库）' : '')
     + (named.length ? '（其中 ' + bits.join('、') + '）' : '')
     + '。<br>加入后「余量」= 你确认的够吃天数 × 每天用量，基准日是今天 —— 和卡片同一套算法。';
   const ok = $('#btnRxOk');
@@ -2066,14 +2218,21 @@ function rxSay(msg, cls){
 }
 
 /* ---- 把解析出来的行并进列表（同名同规格不重复加）----
-   「解析成药品」按钮和自动识别都走这里，免得两处规则走偏。 */
+   「解析成药品」按钮和自动识别都走这里，免得两处规则走偏。
+   ★ 2026-10-13：加进来时顺手跟药箱比一遍 —— 已有的那几味标成"药箱里已有"、默认不勾，
+     跟 `#rx=` 链接那条路同一套规则（同一份底方粘两遍也不会重复入库）。 */
 function rxAddRows(got){
+  const have = {};
+  meds.forEach(function(m){ have[rxNormName(m.name)] = true; });
+  rxRows.forEach(function(x){ have[rxNormName(x.name)] = true; });   // 列表里已有的也算，免得粘两遍
   let added = 0;
   (got || []).forEach(function(r){
     const dup = rxRows.some(function(x){
       return x.name === r.name && (x.spec || '') === (r.spec || '');
     });
-    if(!dup){ rxRows.push(r); added++; }
+    if(dup) return;
+    if(have[rxNormName(r.name)]){ r.existing = true; r.picked = false; }
+    rxRows.push(r); added++;
   });
   if(added) renderRx();
   return added;
@@ -2196,21 +2355,168 @@ function openUse(){
 function rxReset(){
   rxRows = [];
   rxSay('');
+  const wh = $('#rxWho');
+  if(wh){ wh.innerHTML = ''; wh.hidden = true; }
   const lt = $('#rxPasteLt');
   if(lt) lt.innerHTML = '也可以把底方上的药名<b>一行行原样粘</b>进来 —— 规格、数量、频次都不用你拆：';
   $('#rxPaste').value = '';
   $('#rxSub').textContent = '底方照片交给助手（AI）认，它回你一条链接，点开药就填好了；'
     + '也可以把药名粘进来，或手动加一味。吃法和天数在下一个窗口一次填完，程序按「天数 × 每天用量」算出每味开多少。';
 }
-function openRx(rows, fromWho){
+
+/* 这份底方是谁的 —— 定位到一个人。三种情况：
+   matched：药箱里有同名的人 → 切过去（底方的药就该记在他/她名下）
+   created：没有这个人，用户同意新建 → 建好切过去
+   kept   ：没有这个人但用户不建（或底方根本没写姓名）→ 留在当前人身上，页面会提醒
+   ★ 不写姓名时**不乱猜**：宁可让用户自己看一眼，也别把别人的药记到这个人名下。 */
+function rxResolveTarget(patient){
+  const want = rxNormName(patient && patient.name);
+  if(!want) return { person: curPerson(), how: 'unknown' };
+  const hit = people.filter(function(p){ return rxNormName(p.name) === want; })[0];
+  if(hit){
+    if(hit.id !== currentId) switchPerson(hit.id);
+    return { person: hit, how: 'matched' };
+  }
+  const nm = String(patient.name || '').trim();
+  const nowName = ((curPerson() || {}).name) || '';
+  if(window.confirm('药箱里还没有叫「' + nm + '」的人。\n\n'
+      + '要新建一个「' + nm + '」，把这份底方记到他/她名下吗？\n'
+      + '（点「取消」就记到当前「' + nowName + '」名下）')){
+    const np = addPersonNamed(nm);
+    if(np) return { person: np, how: 'created' };
+  }
+  return { person: curPerson(), how: 'kept' };
+}
+
+/* 弹窗顶上那条：这份底方是谁的 + 去重结果（2026-10-13 加，事故问责项） */
+function rxWho(t, patient, dup){
+  const el = $('#rxWho');
+  if(!el) return;
+  // 手动点「底方录入」（没有链接、也没有药行）时不显示这一块 —— 那时候没什么好交代的
+  if(!patient && !rxRows.length){ el.innerHTML = ''; el.hidden = true; return; }
+  const p = patient || {};
+  const nm = ((t && t.person) || {}).name || '';
+  const bits = [];
+  if(p.name) bits.push('<b>' + esc(p.name) + '</b>');
+  if(p.sex) bits.push(esc(p.sex));
+  if(p.age) bits.push(esc(String(p.age)) + '岁');
+
+  const meta = [];
+  if(p.hospital) meta.push(esc(p.hospital));
+  if(p.date) meta.push(esc(p.date));
+  if(p.rxNo) meta.push('处方号 ' + esc(p.rxNo));
+
+  const L = [];
+  if(bits.length){
+    L.push('这份底方是 ' + bits.join(' · ') + ' 的'
+      + (meta.length ? '（' + meta.join(' · ') + '）' : '')
+      + (t.how === 'matched' ? ' —— 已切到他/她的药箱。' : ''));
+  } else {
+    L.push('<span class="warn">底方上没写姓名</span> —— 这些药记到当前「' + esc(nm)
+      + '」名下，请自己确认一下是谁的（发底方时让助手把姓名一起带上）。');
+  }
+  if(p.dx) L.push('诊断：' + esc(p.dx));
+  if(t.how === 'created') L.push('药箱里原来没有这个人，已新建「' + esc(nm) + '」并切过去。');
+  if(t.how === 'kept') L.push('<span class="warn">没有新建人</span>，仍记在当前「' + esc(nm)
+    + '」名下 —— 如果不对，先取消、在顶上切到正确的人再来。');
+
+  const total = rxRows.length;
+  if(dup > 0){
+    L.push('<span class="dup">其中 <b>' + dup + '</b> 味这个人药箱里已有（已自动取消勾选），'
+      + '本次<b>新增 ' + (total - dup) + '</b> 味。</span>');
+  } else if(total){
+    L.push('<span class="ok">这 ' + total + ' 味都是新的，没有跟药箱重的。</span>');
+  }
+
+  el.innerHTML = L.join('<br>');
+  el.hidden = false;
+}
+
+/* 弹窗顶上第二块：助手「是怎么读的」—— 把对账依据摆到台面上（2026-10-13 加，同一次事故）
+   ★ 为什么要这一块：同一次事故里助手**认错一味、又漏一味**，药味总数照样是 8；
+     因为**压根没人做过对账**，"我认得对不对"全靠它自述一句"全部录入"，没有东西能反驳它。
+     底方上印着一个「金额」——那是**一个数**。把 N 行读数代进去算 Σ(数量×单价) 对不对得上，
+     就把「读 N 行」压成了「对 1 个数」：对不上，这 N 行里必有一行读错。
+     页面手上没有照片，验不了"读得准不准"；但它能验助手**自报的数自不自洽**（行数 / 金额），
+     而且**核不了就得明说"核不了"** —— 沉默会被当成"没问题"，那正是这次栽的地方。 */
+function rxAudit(sheets, rows, fromWho, patient){
+  const el = $('#rxAudit');
+  if(!el) return;
+  const n = (rows || []).length;
+  if(!n){ el.innerHTML = ''; el.hidden = true; return; }
+  // 「对账依据」这件事只对**助手给的链接**提要求：用户自己粘文字 / 手动加的时候，
+  // 压根没有"谁读的"这回事，不该冒出来质问他"没人替你核过"。
+  const fromAgent = !!(fromWho || (patient && (patient.name || patient.rxNo)));
+
+  if(!Array.isArray(sheets) || !sheets.length){
+    if(!fromAgent){ el.innerHTML = ''; el.hidden = true; return; }
+    el.className = 'rx-audit miss';
+    el.innerHTML = '<div class="hd">这批药是怎么来的</div>'
+      + '助手<b>没交「对账依据」</b> —— <span class="miss">读漏没读漏、读错没读错，没人替你对过</span>。'
+      + '<div class="why">对着照片自己数一下：一共几味药？每张单子上的「金额」，跟上面这些药能不能对上？</div>';
+    el.hidden = false;
+    return;
+  }
+
+  const list = sheets.slice().sort(function(a, b){ return num(a.i) - num(b.i); });
+  const lines = [], bads = [];
+  let tot = 0;
+  list.forEach(function(x){
+    const k = num(x.n);
+    tot += k;
+    const noAmt = (x.amount === null || x.amount === undefined || x.amount === '');
+    const noSum = (x.sum === null || x.sum === undefined || x.sum === '');
+    const a = noAmt ? null : num(x.amount);
+    const s = noSum ? null : num(x.sum);
+    let tail;
+    if(a === null || s === null){
+      tail = '<span class="miss">没报金额，对不了账</span>';
+      bads.push('第 ' + num(x.i) + ' 张没报「单据金额」');
+    } else if(Math.abs(a - s) >= 0.02){
+      tail = '<span class="bad">对不上：单据 ' + fmtNum(a) + ' 元，算出来 ' + fmtNum(s) + ' 元</span>';
+      bads.push('第 ' + num(x.i) + ' 张对不上账');
+    } else {
+      tail = '<span class="ok">✓ 单据 ' + fmtNum(a) + ' 元 = 算出来 ' + fmtNum(s) + ' 元</span>';
+    }
+    lines.push('第 ' + num(x.i) + ' 张：<span class="sh">' + k + ' 味</span> · ' + tail);
+  });
+  if(tot !== n){
+    lines.push('<span class="bad">行数对不上：各张加起来 ' + tot + ' 味，清单里却有 ' + n + ' 味</span>');
+    bads.push('行数不符');
+  }
+
+  const good = !bads.length;
+  el.className = 'rx-audit' + (good ? '' : ' bad');
+  el.innerHTML = (good
+      ? '<div class="hd">助手交了对账 ✓ <span class="sh">（' + list.length + ' 张底方，共 ' + n + ' 味）</span></div>'
+      : '<div class="hd">对账没通过 ⚠</div>')
+    + lines.join('<br>')
+    + (good
+        ? '<div class="why">这些是助手自己报的数、自己算的账 —— 页面只能核它自不自洽。'
+          + '药名还得你对着照片扫一眼（尤其跟下面标了「拿不准」的行对一对）。</div>'
+        : '<div class="why"><b>先别入库</b>：金额或行数对不上，说明这一批里必有药读错了'
+          + '（丢一味 / 编一味 / 数量单价读错）。回去核那张单子，或让助手重读一次。</div>');
+  el.hidden = false;
+}
+
+function openRx(rows, fromWho, patient, sheets){
   rxReset();
+  const t = rxResolveTarget(patient);
+  const list = (rows || []).map(function(x){ return rxNewRow(x); });
+  const dup = rxMarkExisting(list, t.person);     // ← 去重：已有的取消勾选
+  rxRows = list;
+  rxWho(t, patient, dup);
+  rxAudit(sheets, list, fromWho, patient);
+  const who = ((t.person || {}).name) || '';
+  const sub = [];
   if(fromWho){
-    $('#rxSub').innerHTML = '<b>' + esc(fromWho) + '</b> 已经从你的底方照片上认好了，'
-      + '你核对一下每味「够吃多少天」，没问题就点右下角加入药箱。';
+    sub.push('<b>' + esc(fromWho) + '</b> 已经从你的底方照片上认好了，'
+      + '你核对一下药名和每味「够吃多少天」，没问题就点右下角加入药箱。');
+  } else {
+    sub.push('药已经摆在这儿了 —— 核对一下药名和「够吃多少天」，没问题就点右下角加入药箱。');
   }
-  if(rows && rows.length){
-    rxRows = rows.map(function(x){ return rxNewRow(x); });
-  }
+  if(who) sub.push('这批记到「<b>' + esc(who) + '</b>」的药箱。');
+  $('#rxSub').innerHTML = sub.join(' ');
   renderRx();
   $('#dlgRx').showModal();
 }
@@ -2249,8 +2555,10 @@ function submitRx(e){
 /* ---- 链接预填（给「把照片发给助手」那条路用）----
    `#rx=<base64url(JSON)>`：打开页面就把这些药摆进上面的弹窗。
    为什么走 hash：hash 不会发给服务器（照片和数据都不出本机），也能直接贴在聊天里发。 */
-function rxEncode(list){
-  const json = JSON.stringify({ v: 1, rows: list || [] });
+function rxEncode(list, patient){
+  const obj = { v: 1, rows: list || [] };
+  if(patient) obj.patient = patient;     // 「这份底方是谁的」—— 页面照它定位药箱 + 去重
+  const json = JSON.stringify(obj);
   return btoa(unescape(encodeURIComponent(json)))       // btoa 只吃 latin1，先用 UTF-8 包一层
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
@@ -2662,7 +2970,7 @@ render();          // 原本这里还有一条「URL 带参数就载入示例」
   const preset = rxDecodeHash();
   if(!preset) return;
   try { history.replaceState(null, '', location.pathname + location.search); } catch(e){}
-  openRx(preset.rows, preset.from || '助手');
+  openRx(preset.rows, preset.from || '助手', preset.patient, preset.sheets);
 })();
 
 })();

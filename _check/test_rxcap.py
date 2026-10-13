@@ -25,12 +25,17 @@ CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 PROBE = r"""
 /* ===== 注入的测试代码（必须插在主 IIFE 内部，否则 meds/各函数都看不见）===== */
 (function(){
-  var R = { alerts: [], cases: [], prompts: [] };
+  var R = { alerts: [], cases: [], prompts: [], confirms: [] };
   window.__T = R;
   window.alert = function(m){ R.alerts.push(String(m)); };
   // ★ 记录原生 prompt 有没有被调用过：2026-10-11 用户要求「又买了药 / 校准余量」
   //   不许再用浏览器自带的小框，必须走中间弹窗。这里把它换成只记账、不弹的桩。
   window.prompt = function(m){ R.prompts.push(String(m)); return null; };
+  // ★ confirm 也换成桩（2026-10-13）：底方带了个"药箱里没有的人"时，页面会问一句要不要新建。
+  //   不换掉的话无头 Chrome 会弹真对话框 —— 既可能挂住 --dump-dom，也测不了"到底问没问"。
+  //   默认回 true（同意新建）；用例要测"用户点了取消"就临时把 R.confirmAnswer 置 false。
+  R.confirmAnswer = true;
+  window.confirm = function(m){ R.confirms.push(String(m)); return R.confirmAnswer; };
   function q(s){ return document.querySelector(s); }
   function ck(name, cond, got){ R.cases.push({ name: name, pass: !!cond, got: got }); }
   function card(name){
@@ -923,6 +928,175 @@ PROBE = r"""
      R.alerts[R.alerts.length - 1]);
   q('#dlgRx').close();
 
+  // 10f. ★ 2026-10-13 事故后加：「这份底方是谁的」+ 重复的药挑出来、只加新出现的。
+  //   起因：手机端助手把底方上的一味药**换成了另一个同类药**，同时又**漏掉一味真的** ——
+  //   药味总数没变，所以"8 种全部录入"那句自检**看上去是过的**（总数对上 ≠ 认对）。
+  //   页面这边能管住两件事：① 抄下底方抬头（patient）来**定位药箱**；
+  //                       ② 跟这个人的药箱比一遍，**重复的取消勾选、只加新出现的**。
+  (function(){
+    R.confirms = [];
+    var backTo = currentId;
+
+    // 造一个人「乙」，药箱里已经有「维生素C片」；底方里既有它（重复），也有新的一味
+    var yi = { id: uid(), name: '乙', note: '', meds: [
+      { id: uid(), name:'维生素C片', spec:'100mg', perDose:1, unit:'片', cycleDays:1,
+        timesPerCycle:1, stockBase:20, stockDate: todayStr(), rxMax:30 }
+    ] };
+    people.push(yi); save(); render();
+
+    openRx([ { name:'维生素C片', spec:'100mg', unit:'片', perDose:1, cycleDays:1,
+               timesPerCycle:1, total:30 },
+             { name:'蒙脱石散', spec:'3g*10', unit:'袋', perDose:3, cycleDays:1,
+               timesPerCycle:3, total:30 } ],
+           '助手',
+           { name:'乙', sex:'女', age:'58', dx:'腹泻', date:'2026-10-12',
+             hospital:'某某医院', rxNo:'A1234567' });
+
+    ck('底方带姓名 → 自动切到那个人的药箱（不再记到当前人身上）',
+       (curPerson() || {}).name === '乙', (curPerson() || {}).name);
+    ck('重复的那味也照样列出来（不偷偷删掉）',
+       document.querySelectorAll('#rxList .rx-row').length === 2,
+       document.querySelectorAll('#rxList .rx-row').length);
+    var c1 = q('#rxList .rx-row:nth-child(1) .rx-ck');
+    var c2 = q('#rxList .rx-row:nth-child(2) .rx-ck');
+    ck('药箱里已有的那味 → 自动取消勾选', !!c1 && c1.checked === false, c1 && c1.checked);
+    ck('新出现的那味 → 保持勾选', !!c2 && c2.checked === true, c2 && c2.checked);
+    ck('已有的那行挂了「药箱里已有」角标', !!q('#rxList .rx-row:nth-child(1) .rx-duptag'), '');
+    ck('新的那行没有那个角标', !q('#rxList .rx-row:nth-child(2) .rx-duptag'), '');
+    var wt = q('#rxWho').textContent.replace(/\s+/g, ' ');
+    ck('弹窗顶上写清「这份底方是谁的」（姓名/性别/年龄/医院/日期）',
+       /乙/.test(wt) && /女/.test(wt) && /58/.test(wt) && /某某医院/.test(wt)
+       && /2026-10-12/.test(wt), wt.slice(0, 70));
+    ck('诊断也照抄显示出来了', /腹泻/.test(wt), wt.slice(0, 110));
+    ck('去重结果写清：已有 1 味（已取消勾选）、本次新增 1 味',
+       /已有/.test(wt) && /新增 1/.test(wt), wt.slice(0, 150));
+    ck('底部汇总也说清"另有 1 味已有、默认没勾"',
+       /另有/.test(q('#rxSum').textContent) && /不会重复入库/.test(q('#rxSum').textContent),
+       q('#rxSum').textContent.slice(0, 90));
+
+    var before = meds.length;
+    submitRx({ preventDefault: function(){} });
+    ck('只把新的那味加进药箱（重复的没塞第二遍）', meds.length === before + 1, meds.length - before);
+    ck('药箱里「维生素C片」仍然只有 1 条',
+       meds.filter(function(x){ return x.name === '维生素C片'; }).length === 1, '');
+    ck('新的那味进来了', !!byName('蒙脱石散'), !!byName('蒙脱石散'));
+
+    // 同一张底方再发一次（复诊/重发）→ 这回两味都已有，一味都不该勾
+    openRx([ { name:'维生素C片', spec:'100mg', unit:'片', perDose:1, cycleDays:1, timesPerCycle:1, total:30 },
+             { name:'蒙脱石散', spec:'3g*10', unit:'袋', perDose:3, cycleDays:1, timesPerCycle:3, total:30 } ],
+           '助手', { name:'乙' });
+    ck('同一张底方重发 → 两味都不勾（没有新的可加）',
+       document.querySelectorAll('#rxList .rx-ck:checked').length === 0,
+       document.querySelectorAll('#rxList .rx-ck:checked').length);
+    ck('全重复时确认按钮 disabled', q('#btnRxOk').disabled === true, q('#btnRxOk').disabled);
+    q('#dlgRx').close();
+
+    // 底方没写姓名 → **不乱猜、不切人**，但必须提醒去确认
+    var keepId = currentId;
+    openRx([ { name:'开塞露', unit:'支', perDose:1, cycleDays:1, timesPerCycle:1, total:1 } ]);
+    ck('底方没写姓名 → 不动当前的人', currentId === keepId, currentId === keepId);
+    ck('并且提醒「底方上没写姓名、自己确认是谁的」',
+       /没写姓名/.test(q('#rxWho').textContent), q('#rxWho').textContent.slice(0, 50));
+    q('#dlgRx').close();
+
+    // 底方上的人药箱里没有 → 问一句再新建（不悄悄替他建）
+    var nPeople = people.length;
+    openRx([ { name:'开塞露', unit:'支', perDose:1, cycleDays:1, timesPerCycle:1, total:1 } ],
+           '助手', { name:'丙' });
+    ck('药箱没这个人 → 弹框问过（把名字带上了）',
+       R.confirms.length >= 1 && /丙/.test(R.confirms[R.confirms.length - 1]),
+       R.confirms[R.confirms.length - 1] || '(没问)');
+    ck('同意后新建这个人并切过去',
+       (curPerson() || {}).name === '丙' && people.length === nPeople + 1,
+       ((curPerson() || {}).name) + ' / ' + people.length);
+    q('#dlgRx').close();
+
+    // 用户点了「取消」→ 不建人，但要说清"仍记在当前人名下"
+    R.confirmAnswer = false;
+    nPeople = people.length;
+    openRx([ { name:'开塞露', unit:'支', perDose:1, cycleDays:1, timesPerCycle:1, total:1 } ],
+           '助手', { name:'戊' });
+    ck('点「取消」→ 不新建人', people.length === nPeople, people.length - nPeople);
+    ck('点「取消」→ 明说仍记在当前人名下，别让人以为记对了',
+       /没有新建人/.test(q('#rxWho').textContent), q('#rxWho').textContent.slice(0, 80));
+    R.confirmAnswer = true;
+    q('#dlgRx').close();
+
+    // 编码往返：patient 要跟着一起进去
+    var e2 = rxEncode([{ name:'开塞露', unit:'支', perDose:1, cycleDays:1, timesPerCycle:1, total:1 }],
+                      { name:'丁', sex:'男', age:'70' });
+    var b2 = JSON.parse(decodeURIComponent(escape(atob(e2.replace(/-/g, '+').replace(/_/g, '/')))));
+    ck('rxEncode 会把 patient 一起编进去（链接里带着"这是谁的底方"）',
+       !!b2.patient && b2.patient.name === '丁', JSON.stringify(b2.patient || null));
+
+    // 还原：切回原来那个人，别影响后面的断言
+    switchPerson(backTo);
+  })();
+
+  // 10g. ★ 2026-10-13 事故后加（第二轮）：**对账依据必须看得见**。
+  //   10f 管的是"这份底方是谁的"和"重复的挑出来"；这一段管的是**"你到底读全了没有"**。
+  //   事故里助手认错一味 + 漏一味、药味总数还是 8 —— 因为**压根没人对过账**。
+  //   现在要求它把「每张几味 / 单据金额 / 自己算的合计」交上来（sheets），页面逐张核并显示。
+  //   ★ 核心不是"页面能验真"（它没照片，验不了），而是**"有没有人核过"从此看得见**：
+  //     缺依据不能沉默（沉默会被读成"没问题"），对不上要标红并说"先别入库"。
+  (function(){
+    var backTo2 = currentId;
+    var A = function(){ return q('#rxAudit'); };
+    var txt = function(){ return A().textContent.replace(/\s+/g, ' '); };
+    var ROWS = [ { name:'测试甲片', unit:'片', perDose:1, cycleDays:1, timesPerCycle:1, total:10 },
+                 { name:'测试乙胶囊', unit:'粒', perDose:1, cycleDays:1, timesPerCycle:1, total:20 } ];
+
+    // ① 交了 sheets、逐张都对得上 → 显示 ✓，不是报错样式
+    openRx(ROWS, '助手', { name:'己' },
+           [ { i:1, n:1, amount:20.45, sum:20.45 }, { i:2, n:1, amount:6.58, sum:6.58 } ]);
+    ck('交了对账且都对得上 → 显示对账块，且不是报错样式',
+       A().hidden === false && /助手交了对账/.test(txt()) && A().className.indexOf('bad') < 0,
+       A().className + ' | ' + txt().slice(0, 60));
+    ck('逐张写出「第 N 张 · 几味 · 单据 = 算出来」',
+       /第 1 张/.test(txt()) && /第 2 张/.test(txt()) && /20\.45/.test(txt()) && /6\.58/.test(txt()),
+       txt().slice(0, 120));
+    ck('并说清这是助手自报的数、页面只能核它自不自洽',
+       /自不自洽/.test(txt()), txt().slice(-70));
+
+    // ② 某张 sum ≠ amount → 标红 + 明说"先别入库"
+    openRx(ROWS, '助手', { name:'己' },
+           [ { i:1, n:1, amount:20.45, sum:38.21 }, { i:2, n:1, amount:6.58, sum:6.58 } ]);
+    ck('某张对不上账 → 整块变报错样式', A().className.indexOf('bad') >= 0, A().className);
+    ck('没通过的账不许显示成 ✓（不能乱标"交了对账"）',
+       !/助手交了对账/.test(txt()), txt().slice(0, 40));
+    ck('说清是第几张、两个数都摆出来',
+       /第 1 张/.test(txt()) && /38\.21/.test(txt()), txt().slice(0, 120));
+    ck('并提示「先别入库」', /先别入库/.test(txt()), txt().slice(-60));
+
+    // ③ 各张味数之和 ≠ 清单条数 → 报行数对不上（丢一味/编一味会在这里露出来）
+    openRx(ROWS, '助手', { name:'己' }, [ { i:1, n:5, amount:20.45, sum:20.45 } ]);
+    ck('各张味数之和 ≠ 清单条数 → 报行数对不上',
+       /行数对不上/.test(txt()) && A().className.indexOf('bad') >= 0, txt().slice(0, 120));
+
+    // ④ 没交 sheets → **不能沉默**（沉默会被读成"没问题"，那正是这次栽的地方）
+    openRx(ROWS, '助手', { name:'己' });
+    ck('没交对账依据 → 明说"没人替你对过"，并给下一步（自己数一遍）',
+       A().hidden === false && /没交/.test(txt()) && /替你对过/.test(txt()) && /数一下/.test(txt()),
+       txt().slice(0, 110));
+
+    // ⑤ 金额没读到（null）→ 算"对不了账"，绝不冒充通过
+    openRx(ROWS, '助手', { name:'己' }, [ { i:1, n:2, amount:null, sum:null } ]);
+    ck('金额读到 null → 说"对不了账"、标红，不冒充通过',
+       /对不了账/.test(txt()) && A().className.indexOf('bad') >= 0, txt().slice(0, 90));
+
+    // ⑥ 手动录 / 粘文字进来的 → 没有"助手读数"这回事，不显示这一块
+    openRx();
+    ck('手动录（没有药行）→ 不显示对账块', A().hidden === true, A().hidden);
+    q('#dlgRx').close();
+    // 有药行、但**不是助手给的**（用户自己粘的文字）→ 也不该冒出来质问"没人替你核过"
+    openRx([ { name:'测试丙片', unit:'片', perDose:1, cycleDays:1, timesPerCycle:1, total:5 } ]);
+    ck('自己粘文字进来的（不是助手给的）→ 不显示对账块',
+       A().hidden === true, A().hidden + ' | ' + txt().slice(0, 50));
+    q('#dlgRx').close();
+
+    switchPerson(backTo2);      // 还原，别影响后面的断言
+  })();
+
   function rxFinish(){
     R.meds = meds.map(function(x){ return x.name + '|qty=' + dispQty(x) + '|cap=' + rxCap(x); });
     var pre = document.createElement('pre');
@@ -954,6 +1128,16 @@ def cross_check_link():
         {"name": "麝香壮骨膏", "spec": "40mg*6贴", "unit": "贴", "perDose": 1,
          "cycleDays": 1, "timesPerCycle": 1, "total": 6, "note": "外用", "warn": "", "picked": True},
     ]
+    # ★ 2026-10-13：patient / sheets 也要一起过这条往返 ——
+    #   当年 to_link 只塞了 rows，把对账结果和抬头都丢了（验证做了没传出来 == 没做），
+    #   这里就是钉住"别再丢"。patient 的键名必须是英文（name/sex/…）：
+    #   工具第一版照抄了 meta 的中文键，页面 patient.name 取不到，顶上照样打印"底方上没写姓名"。
+    # ⚠️ 姓名必须用页面里**已存在**的那个人（默认叫「我」）。用一个陌生名字的话，
+    #    `rxResolveTarget` 会弹 `confirm('药箱里没这个人，要新建吗？')` —— headless 没人应答，
+    #    页面**永久阻塞**、dump-dom 直接 180 秒超时（第一版就栽在这，看着像"chrome 挂了"）。
+    patient = {"name": "我", "sex": "女", "age": "58"}
+    sheets = [{"i": 1, "n": 1, "amount": 12.52, "sum": 12.52},
+              {"i": 2, "n": 1, "amount": 51.98, "sum": 51.98}]
     how = "按同一口径另编的（rx_local 导不进来，这条就不算数）"
     b64 = None
     try:                                   # 首选：真用本地工具那只编码器
@@ -966,12 +1150,13 @@ def cross_check_link():
                      cycle_days=1, times_per_cycle=2, total=120),
             RX.RxRow(name="麝香壮骨膏", spec="40mg*6贴", unit="贴", per_dose=1,
                      cycle_days=1, times_per_cycle=1, total=6, note="外用"),
-        ], "").split("#rx=")[1]
+        ], "", patient, sheets).split("#rx=")[1]
         how = "tools/rx_local 的 to_link"
     except Exception as e:                 # 装不了 Pillow 也别把整套自检拖死
         how = "按同一口径另编的（rx_local 导不进来：%r）" % e
         b64 = base64.urlsafe_b64encode(
-            json.dumps({"v": 1, "rows": rows_js}, ensure_ascii=False,
+            json.dumps({"v": 1, "rows": rows_js, "patient": patient, "sheets": sheets},
+                       ensure_ascii=False,
                        separators=(",", ":")).encode("utf-8")).decode("ascii").rstrip("=")
 
     tmpdir = tempfile.mkdtemp(prefix="dk_link_")
@@ -984,6 +1169,17 @@ def cross_check_link():
     dom_ns = re.sub(r"<script\b.*?</script>", "", dom, flags=re.S)
     names = re.findall(r'class="rx-name"[^>]*value="([^"]*)"', dom_ns)
     days = re.findall(r'class="rx-days-in"[^>]*value="([^"]*)"', dom_ns)
+
+    def seg(start_id, end_mark):
+        """取某块渲染后的纯文本（从 id="X" 到下一个 end_mark 之间）。"""
+        i = dom_ns.find('id="%s"' % start_id)
+        j = dom_ns.find(end_mark, i) if i >= 0 else -1
+        if i < 0 or j <= i:
+            return ""
+        return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", dom_ns[i:j])).strip()
+
+    who_txt = seg("rxWho", 'id="rxAudit"')
+    aud_txt = seg("rxAudit", 'class="rx-howto"')
     shutil.rmtree(tmpdir, ignore_errors=True)
     return [
         {"name": "Python 生成的 #rx= 链接，真页面解得开（两边编码口径一致）[%s]" % how,
@@ -992,6 +1188,14 @@ def cross_check_link():
         {"name": "解出来的天数也对（120片 ÷ 每天4片 = 30天；6贴 ÷ 每天1贴 = 6天）",
          "pass": days == ["30", "6"], "got": days if days else "(没有天数)",
          },
+        {"name": "链接里的 patient 到了页面（英文键名对得上，不是「底方上没写姓名」）",
+         # 键名写成中文时 patient.name 取不到 → 会打印「底方上没写姓名」，
+         # 所以「没写姓名」不许出现、「58岁」必须出现，这一条才真的在钉键名。
+         "pass": ("58岁" in who_txt) and ("女" in who_txt) and ("没写姓名" not in who_txt),
+         "got": who_txt[:90] or "(空)"},
+        {"name": "链接里的 sheets 渲染成了对账条（逐张 + 金额）",
+         "pass": ("第 1 张" in aud_txt) and ("12.52" in aud_txt) and ("51.98" in aud_txt),
+         "got": aud_txt[:110] or "(空)"},
     ]
 
 
@@ -1167,6 +1371,58 @@ def main():
             "pass": kw in ag_txt,
             "got": "有" if kw in ag_txt else "(缺)",
         })
+
+    # ---- 源码级：2026-10-13 事故后，说明里必须多交代三件事（见 #rx-agent-guide「三条硬规矩」）----
+    #   事故：助手把底方上一味药换成了同类药、又漏掉一味真的 —— 总数没变，自检看着是过的。
+    for kw in ("patient", "逐字", "别自己删", "每张"):
+        data["cases"].append({
+            "name": "助手说明里写清了新规矩：%s" % kw,
+            "pass": kw in ag_txt,
+            "got": "有" if kw in ag_txt else "(缺)",
+        })
+    data["cases"].append({
+        "name": "说明里点明「总数对得上 ≠ 认对了」（这次真正的教训）",
+        "pass": ("总数对得上" in ag_txt) and ("≠" in ag_txt),
+        "got": "已写明" if "总数对得上" in ag_txt else "(没写)",
+    })
+    data["cases"].append({
+        "name": "说明里交代了「谁的底方」要照抄、抄错会记到别人名下",
+        "pass": ("照抄" in ag_txt) and ("记到别人名下" in ag_txt),
+        "got": "已写明" if "记到别人名下" in ag_txt else "(没写)",
+    })
+
+    # ---- 源码级：第二轮（2026-10-13）「对账依据必须交上来」----
+    #   上面那三条硬规矩管住了"怎么读"；这一轮管的是"读得对不对**得有人能核**"。
+    #   事故里助手认错一味 + 漏一味、总数还是 8 —— 因为压根没人对过账。
+    for kw in ("sheets", "amount", "sum", "按张"):
+        data["cases"].append({
+            "name": "助手说明里写清了「对账依据」：%s" % kw,
+            "pass": kw in ag_txt,
+            "got": "有" if kw in ag_txt else "(缺)",
+        })
+    data["cases"].append({
+        "name": "说明里点明 sheets 是**必交**（交不上来页面会明说没人替你核过）",
+        "pass": ("必交" in ag_txt) and ("没人替你核过" in ag_txt),
+        "got": "已写明" if "必交" in ag_txt else "(没写)",
+    })
+    data["cases"].append({
+        # 工具第一版就栽在这：patient 写成中文键（姓名/性别），页面 patient.name 取不到，
+        # 弹窗顶上照样打印"底方上没写姓名" —— 数据传了，键名不对，等于没传。
+        "name": "说明里提醒 patient 用英文键、别照抄中文抬头行",
+        "pass": ("键名" in ag_txt) and ("英文" in ag_txt),
+        "got": "已写明" if "键名" in ag_txt else "(没写)",
+    })
+    data["cases"].append({
+        "name": "页面里有「对账」块与渲染函数（#rxAudit / rxAudit()）",
+        "pass": ('id="rxAudit"' in src) and ("function rxAudit(" in src),
+        "got": "有" if 'id="rxAudit"' in src else "(缺)",
+    })
+    data["cases"].append({
+        # 缺依据时**沉默会被读成"没问题"** —— 那正是这次栽的地方，必须有话说
+        "name": "缺对账依据时不许沉默（源码里挂着「没交对账依据」这条提示）",
+        "pass": ("没交「对账依据」" in src) and ("没人替你对过" in src),
+        "got": "有" if "没人替你对过" in src else "(缺)",
+    })
 
     # ---- 源码级：拍底方这块**不做 OCR、不引外部依赖**（识别由助手代劳，2026-10-12 定）----
     # ★ 2026-10-12 用户要求「全换成中性药名」：真底方上的药名属于「已经输入过的信息」，
