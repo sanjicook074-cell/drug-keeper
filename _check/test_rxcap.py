@@ -1509,7 +1509,9 @@ def main():
             rd = fh.read()
 
     # (a) 截图：README 引用的必须存在；docs/ 里有的必须被引用（不许有没人看的孤儿图）
-    ref = set(re.findall(r"docs/(screenshot-[a-z-]+\.png)", rd))
+    # 文件名允许带数字：手机版那三张叫 m / mtab2 / mmore，
+    # 原来这里只写 [a-z-]，mtab2 直接被漏掉，报成"没人引用的孤儿图"。
+    ref = set(re.findall(r"docs/(screenshot-[a-z0-9-]+\.png)", rd))
     docs_dir = os.path.join(proj, "docs")
     have = set()
     if os.path.isdir(docs_dir):

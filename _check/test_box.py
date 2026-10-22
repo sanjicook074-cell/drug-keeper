@@ -197,14 +197,22 @@ PROBE = r"""
   //   结果顶栏 5 个按钮一起变成 position:fixed 并跑到 translate(-999px,-999px)，
   //   **页面上直接看不见、控制台一声不响** —— 只有截图能发现。这条断言把那个坑焊死。
   (function(){
-    var btns = qa('.top-actions .btn');
+    // ★ 2026-10-23 起多了第 8 个按钮 #btnMore（手机版把六个次要动作收进「⋯」），
+    //   它在桌面上必须是 display:none —— 所以这里只数**可见**的那几个，
+    //   再单独验一句「手机上那片零件在桌面上确实藏着」。
+    var all = qa('.top-actions .btn');
+    var btns = all.filter(function(b){ return getComputedStyle(b).display !== 'none'; });
     var bad = btns.filter(function(b){
       var cs = getComputedStyle(b), r = b.getBoundingClientRect();
       return cs.position === 'fixed' || r.width <= 0 || r.left < 0;
     });
     ck('顶栏 7 个按钮都在原位（没被拖拽浮层的样式撞飞）',
        btns.length === 7 && bad.length === 0,
-       btns.length + ' 个，异常 ' + bad.length + ' 个');
+       btns.length + ' 个可见，异常 ' + bad.length + ' 个');
+    var more = q('#btnMore');
+    var moreDisp = more ? getComputedStyle(more).display : '(不存在)';
+    ck('桌面版没有多余的「⋯」：手机专用零件在桌面上是隐藏的',
+       moreDisp === 'none', moreDisp);
   })();
   ck('默认 3 格', slots().length === 3, slots().length);
   ck('默认格名是 早 / 中 / 晚', slotNames().join('/') === '早/中/晚', slotNames().join('/'));

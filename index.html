@@ -593,6 +593,122 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
   .refill{max-height:none;border:none;background:#fff;font-size:12pt;padding:0}
   .wrap{padding:0}
 }
+
+/* ================= 手机版布局（≤640px） =================
+   桌面那套在手机上摆不下：顶栏 7 个按钮挤成两行、两栏并排变成长条、
+   7 格药盒每格不到 50px。这一块整体重排，**桌面版一行都没动** ——
+   全部关在媒体查询里，宽度 ≥641px 时不生效。
+
+   重排的思路是按手机上的使用顺序来的：
+     顶栏   → 品牌 + 「⋯」；另外六个动作收进 ⋯ 菜单，不占地方
+     统计   → 2×2（原来按 132px 自适应，手机上会变成一列四行，太长）
+     人员   → 一行横滑，不折行（人多时折行会把下面的药挤走）
+     主体   → 单栏；靠底部两个页签在「药品 / 就诊准备」之间切
+     添加   → 右下角悬浮按钮（手机上最高频的动作，不该藏在菜单里）
+   三个新零件 #btnMore / #mtab / #fabAdd / #dlgMore 默认都是 display:none，
+   只有这里让它们出现 —— 所以桌面版和全部自检脚本都不受影响。 */
+#btnMore,#mtab,#fabAdd{display:none}
+
+@media(max-width:640px){
+  body{font-size:14.5px;-webkit-tap-highlight-color:transparent}
+  .wrap{padding:12px 12px calc(92px + env(safe-area-inset-bottom))}
+
+  /* ---- 顶栏 ---- */
+  .top{flex-wrap:nowrap;align-items:center;gap:10px;margin-bottom:12px}
+  .brand{min-width:0;gap:9px}
+  .logo{width:34px;height:34px;border-radius:9px;font-size:16px;box-shadow:0 1px 5px rgba(37,99,235,.26)}
+  h1{font-size:16.5px;white-space:nowrap}
+  .sub{display:none}
+  .top-actions{flex-wrap:nowrap;margin-left:auto;gap:8px}
+  #btnSettings,#btnImport,#btnExport,#btnBulk,#btnFam,#btnRx{display:none}
+  #btnAdd{display:none}                 /* 换成右下角悬浮按钮 */
+  #btnMore{display:grid;place-items:center;width:40px;height:40px;padding:0;
+    border:1px solid var(--line);border-radius:12px;background:#fff;
+    font-size:20px;line-height:1;color:#374151;letter-spacing:1px}
+  #btnMore:active{background:#f3f4f6}
+
+  /* ---- 统计：2×2 ---- */
+  .stats{grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px}
+  .stat{padding:11px 13px;border-radius:12px}
+  .stat .n{font-size:21px}
+  .stat .l{font-size:11.5px;margin-top:2px}
+
+  /* ---- 人员：一行横滑 ---- */
+  .people{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;margin-bottom:12px;padding-bottom:2px;
+    scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .people::-webkit-scrollbar{display:none}
+  .ptab,.padd{flex:none;padding:8px 14px;max-width:60vw}
+
+  /* ---- 单栏 + 页签切换 ---- */
+  .cols{display:block}
+  .panel{border-radius:12px}
+  .panel-h{padding:11px 13px}
+  .panel-b{padding:12px 13px}
+  .mlist{padding:12px 13px}
+  .boxwrap{padding:11px 13px 13px}
+  .col-side{display:none}
+  body.mtab2 .col-main{display:none}
+  body.mtab2 .col-side{display:block}
+  body.mtab2 #fabAdd{display:none}      /* 就诊准备那一页不放「加药」按钮 */
+
+  /* 点药卡片时整块可点，不需要等 300ms */
+  .med,.chip,.up-item,.stg-item,.ptab,.padd{touch-action:manipulation}
+
+  /* 触屏上的点击目标：桌面的 16px 小叉手指点不准，放到 22px（格子还是放得下） */
+  .chip .x{width:22px;height:22px;font-size:15px;border-radius:6px}
+  .btn.sm{padding:7px 11px;font-size:13px}
+
+  /* 「就诊准备」那一页用不着统计，省下的地方留给「要开的药」和底部四个按钮 */
+  body.mtab2 .stats{display:none}
+
+  /* ---- 弹窗：更贴边、内容长了能滚 ---- */
+  dialog{width:calc(100vw - 22px);max-height:calc(100vh - 40px);overflow:auto;border-radius:14px}
+  .dlg-h{padding:15px 16px 0}
+  .dlg-h h3{font-size:15.5px}
+  .dlg-b{padding:13px 16px}
+  .dlg-f{padding:0 16px 16px}
+  .dlg-f .btn{flex:1}                   /* 底部两个按钮在手机上均分整行，好点 */
+  .grid2{grid-template-columns:1fr;gap:11px}
+  .kinds{grid-template-columns:1fr}
+  .use-list{max-height:52vh}
+
+  /* ---- 底部页签 ---- */
+  #mtab{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:120;
+    background:rgba(255,255,255,.97);border-top:1px solid var(--line);
+    padding:5px 8px calc(5px + env(safe-area-inset-bottom));
+    box-shadow:0 -1px 12px rgba(16,24,40,.05)}
+  #mtab button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:3px;height:46px;border:none;background:transparent;border-radius:11px;
+    color:var(--muted);font-size:12px;cursor:pointer}
+  #mtab button .ind{width:16px;height:3px;border-radius:2px;background:transparent}
+  #mtab button.on{color:var(--brand);font-weight:650}
+  #mtab button.on .ind{background:var(--brand)}
+
+  /* ---- 右下角悬浮「添加」 ---- */
+  #fabAdd{display:grid;place-items:center;position:fixed;z-index:130;
+    right:15px;bottom:calc(74px + env(safe-area-inset-bottom));
+    width:54px;height:54px;border:none;border-radius:50%;
+    background:var(--brand);color:#fff;font-size:26px;line-height:1;
+    box-shadow:0 7px 20px rgba(37,99,235,.4)}
+  #fabAdd:active{transform:scale(.94)}
+
+  /* toast 抬到页签上面 */
+  #toast{bottom:calc(84px + env(safe-area-inset-bottom));max-width:86vw}
+}
+
+/* ---- ⋯ 菜单（只有手机能打开，桌面没有入口） ---- */
+#dlgMore{width:min(420px,calc(100vw - 22px))}
+.morelist{display:flex;flex-direction:column;gap:7px}
+.moreitem{display:flex;flex-direction:column;gap:1px;text-align:left;width:100%;
+  padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:#fff;
+  color:var(--text);cursor:pointer}
+.moreitem:active{background:#f6f8fb;border-color:#cbd5e1}
+.moreitem .mt{font-size:14px;font-weight:620}
+.moreitem .ms{font-size:11.5px;color:var(--muted)}
+/* 用 showModal 打开时浏览器会把焦点丢给第一个按钮，默认那个黑框看着像没加载完。
+   默认不画，只有键盘 Tab 走到时才画（:focus-visible）。 */
+#dlgMore .moreitem:focus{outline:none}
+#dlgMore .moreitem:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 </style>
 </head>
 <body>
@@ -614,6 +730,8 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
       <button class="btn ghost" id="btnFam" title="把全家每个人药箱里「已用完 / 偏少」的药摊在一页，买药开药一趟办完">全家偏少</button>
       <button class="btn ghost" id="btnRx" title="底方照片先发给 AI（DeepSeek、Kimi 等），让它把药名和用量打成文字，再粘进来解析">底方录入</button>
       <button class="btn primary" id="btnAdd">＋ 添加药品</button>
+      <!-- 手机上顶栏放不下六个次要按钮，统一收进这个「⋯」里（桌面版不显示） -->
+      <button class="btn ghost" id="btnMore" aria-label="更多操作" title="更多">⋯</button>
     </div>
   </header>
 
@@ -671,6 +789,48 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
     <span>by 人间小土鸡</span>
   </footer>
 </div>
+
+<!-- ★ 手机版专用零件（三样都默认 display:none，只在 ≤640px 显示）
+     桌面版没有这些入口，所以不会和顶栏那排按钮重复。 -->
+<nav id="mtab" aria-label="页面切换">
+  <button type="button" data-tab="1" class="on" aria-current="page">
+    <span class="ind"></span><span>药品</span></button>
+  <button type="button" data-tab="2">
+    <span class="ind"></span><span>就诊准备</span></button>
+</nav>
+<button type="button" id="fabAdd" aria-label="添加药品">＋</button>
+
+<dialog id="dlgMore">
+  <div class="dlg-h">
+    <h3>更多</h3>
+    <p>手机上放不下的都收在这里。点哪项就跳到哪项。</p>
+  </div>
+  <div class="dlg-b">
+    <div class="morelist">
+      <button type="button" class="moreitem" data-act="btnRx">
+        <span class="mt">底方录入</span>
+        <span class="ms">把 AI（DeepSeek、Kimi 等）打好的药名粘进来解析</span></button>
+      <button type="button" class="moreitem" data-act="btnFam">
+        <span class="mt">全家偏少</span>
+        <span class="ms">全家人缺的药摊在一页，能一键复制药名</span></button>
+      <button type="button" class="moreitem" data-act="btnBulk">
+        <span class="mt">批量调存量</span>
+        <span class="ms">按「够吃 N 天」统一加减这个药箱的药</span></button>
+      <button type="button" class="moreitem" data-act="btnExport">
+        <span class="mt">导出备份</span>
+        <span class="ms">存成 json 文件｜换手机、卸载重装前请先导一次</span></button>
+      <button type="button" class="moreitem" data-act="btnImport">
+        <span class="mt">导入</span>
+        <span class="ms">从备份 json 恢复，会整包替换现在这台手机上的数据</span></button>
+      <button type="button" class="moreitem" data-act="btnSettings">
+        <span class="mt">设置</span>
+        <span class="ms">提醒天数、家里都有谁</span></button>
+    </div>
+  </div>
+  <div class="dlg-f">
+    <button type="button" class="btn ghost" id="btnMoreClose">关闭</button>
+  </div>
+</dialog>
 
 <!-- 药品编辑弹窗 -->
 <dialog id="dlgMed">
@@ -2006,7 +2166,30 @@ function dragUp(e){
 document.addEventListener('pointerdown', dragDown);
 document.addEventListener('pointermove', dragMove);
 document.addEventListener('pointerup', dragUp);
-document.addEventListener('pointercancel', dragUp);
+
+/* ---- 手机：手指拖药时得先挡住页面的滚动 ----
+   Pointer Events 在触屏上有个死结：手指一移动，浏览器先判断「这是滑动页面」，
+   一旦判定成滚动就发 pointercancel、同时停发 pointermove —— 拖到一半就断，
+   看着像「拖不动」。pointerdown 之后我们无从提前声明意图（touch-action 只能静态设，
+   而药卡片整块都是拖拽源，整块设 none 就没法用手指滚列表了）。
+   所以改成在 touchmove 里按需挡：位移没到 6px（和 dragMove 同一个阈值）就放行让页面滚，
+   到了才 preventDefault。**必须 passive:false**，否则 preventDefault 是空调用。 */
+document.addEventListener('touchmove', function(e){
+  if(!drag) return;
+  if(drag.started){ e.preventDefault(); return; }     // 已经在拖 → 全程挡住
+  const t = e.touches && e.touches[0];
+  if(t && Math.abs(t.clientX - drag.sx) + Math.abs(t.clientY - drag.sy) >= 6) e.preventDefault();
+}, {passive: false});
+
+// pointercancel = 手势还是被判成了滚动/被系统打断 → 这一拖作废。
+// 不能接到 dragUp 上：那会按「松手」处理，在最后停留的位置凭空落一次。
+document.addEventListener('pointercancel', function(){
+  if(!drag) return;
+  if(drag.ghost) drag.ghost.remove();
+  drag = null;
+  document.body.classList.remove('dragging');
+  markOver(-1); markUnplaced(false); markStage(false);
+});
 
 function cardHTML(m){
   if(isPrn(m)) return prnCardHTML(m);
@@ -4340,6 +4523,34 @@ $('#fileImport').addEventListener('change', function(e){
   e.target.value = '';
 });
 
+/* -------------------- 手机版：底部页签 / ⋯ 菜单 / 悬浮添加 --------------------
+   这三样零件只在 ≤640px 显示（由 CSS 控制）。桌面上它们看不见，
+   所以这里挂着的 handler 不会和顶栏那七个按钮抢点击 —— 菜单项也是直接
+   调对应按钮的 .click()，保证走的是**同一条代码路径**，不另写一份逻辑。 */
+function setTab(n){
+  document.body.classList.toggle('mtab2', n === 2);
+  $$('#mtab button').forEach(function(b){
+    const on = Number(b.getAttribute('data-tab')) === n;
+    b.classList.toggle('on', on);
+    if(on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
+  window.scrollTo(0, 0);
+}
+$$('#mtab button').forEach(function(b){
+  b.addEventListener('click', function(){ setTab(Number(b.getAttribute('data-tab'))); });
+});
+$('#fabAdd').addEventListener('click', function(){ $('#btnAdd').click(); });
+$('#btnMore').addEventListener('click', function(){ $('#dlgMore').showModal(); });
+$('#btnMoreClose').addEventListener('click', function(){ $('#dlgMore').close(); });
+$$('.moreitem').forEach(function(b){
+  b.addEventListener('click', function(){
+    const id = b.getAttribute('data-act');
+    $('#dlgMore').close();
+    const target = document.getElementById(id);
+    if(target) target.click();       // 顶栏那个按钮还在，只是被 CSS 藏了
+  });
+});
+
 /* -------------------- 启动 -------------------- */
 load();
 render();          // 原本这里还有一条「URL 带参数就载入示例」的分支，已随内置示例一起删掉
@@ -4352,6 +4563,68 @@ render();          // 原本这里还有一条「URL 带参数就载入示例」
   if(!preset) return;
   try { history.replaceState(null, '', location.pathname + location.search); } catch(e){}
   openRx(preset.rows, preset.from || '助手', preset.patient, preset.sheets);
+})();
+
+/* -------------------- Android 壳补丁（在浏览器里整段不生效） --------------------
+   只有在 WebView 壳里 `window.AndroidApp` 才存在（见 android/src/.../Bridge.java）。
+   补的是「浏览器能、WebView 不能」的三件事 —— 全是壳里真踩过的坑：
+
+     ① 导出备份 / 下载 .txt：WebView 不认 `blob:` + `a.download`，点了**毫无反应**
+        （不报错、不下载，看着像按钮坏了）→ 改调原生，落到系统「下载」目录。
+
+     ② 复制：`file://` 属于不安全上下文，`navigator.clipboard` 根本不存在；
+        退回的 `document.execCommand('copy')` 在壳里也常常静默失败（返回 false 不抛错）。
+        这条尤其要紧 —— 「复制给医生」「复制药名」就是要拿去粘微信的。
+
+     ③ 返回键：默认按下直接退出 App。壳里改成先关最上层弹窗（等价于按 Esc），
+        没有弹窗才退出；弹窗"开着没开着"由这里同步给原生。
+
+   ★ 浏览器里 `window.AndroidApp` 是 undefined，整个 IIFE 立刻 return，
+     所以网页版的行为一个字节都没变 —— 五套自检仍然按桌面断言跑。 */
+(function(){
+  const A = window.AndroidApp;
+  if(!A) return;
+  document.documentElement.classList.add('in-app');
+
+  // ① 导出：改走原生写文件
+  downloadFile = function(filename, content){
+    A.saveText(filename, String(content));
+  };
+
+  // ② 复制：改走系统剪贴板
+  fallbackCopy = function(txt, cb){
+    A.copy(String(txt));
+    if(cb) cb();
+  };
+
+  // ③ 返回键先关弹窗。走 cancel 事件而不是直接 close() ——
+  //    页面里那套 askXxx 的 Promise 是靠「确认 / cancel」来 resolve 的，
+  //    直接 close() 会让调用处的 await 永远悬着，界面看着像卡死。
+  window.__appBack = function(){
+    const ds = $$('dialog[open]');
+    if(!ds.length) return false;
+    const d = ds[ds.length - 1];
+    const ev = new Event('cancel', { cancelable: true });
+    d.dispatchEvent(ev);
+    if(!ev.defaultPrevented) d.close();
+    return true;
+  };
+
+  // 让原生随时知道「现在有没有弹窗开着」
+  const sync = function(){
+    try { A.setOverlay(!!document.querySelector('dialog[open]')); } catch(e){}
+  };
+  if(window.MutationObserver){
+    new MutationObserver(sync).observe(document.body, {
+      subtree: true, attributes: true, attributeFilter: ['open']
+    });
+  }
+  sync();
+
+  // 打印在 WebView 里是空操作（没有打印服务），别留个点了没反应的按钮。
+  // 想留下纸质件的话，「下载 .txt」照样能用。
+  const pb = $('#btnPrint');
+  if(pb){ pb.style.display = 'none'; }
 })();
 
 })();

@@ -29,6 +29,37 @@
 
 ---
 
+## 手机上：界面重新排过一遍
+
+上面两张是电脑上的样子。手机屏幕窄得多，照搬会挤成一团：顶栏七个按钮换两行、
+两栏并排拉成一条长龙、七格药盒每格不到 50px。所以宽度 ≤640px 时换成**另一套布局**：
+
+| 电脑上 | 手机上 |
+|---|---|
+| 顶栏 7 个按钮平铺 | 只留品牌 +「⋯」，另外六个动词收进「⋯」菜单 |
+| 统计 4 个一行 | 2×2，省下的高度留给药盒 |
+| 两栏并排（药品 / 就诊准备） | 单栏，底部两个页签切换 |
+| 「＋ 添加药品」在顶栏 | 右下角悬浮按钮（最高频的动作不该藏在菜单里） |
+| 弹窗 560px 居中 | 左右各留 11px，内容长了能滚 |
+| 表单一格两列 | 单列，输入框占满宽度 |
+
+<p align="center">
+  <img src="docs/screenshot-m.png" width="31%" alt="手机版：药品页">
+  <img src="docs/screenshot-mtab2.png" width="31%" alt="手机版：就诊准备">
+  <img src="docs/screenshot-mmore.png" width="31%" alt="手机版：⋯ 菜单">
+</p>
+
+**电脑版一行没改** —— 整套手机布局都关在 `@media(max-width:640px)` 里，
+宽度 ≥641px 时一条都不生效。自检里有一条专门盯这件事（桌面顶栏必须还是 7 个按钮、
+那个「⋯」必须是隐藏的），免得哪天手机样式漏出来把电脑版顶歪。
+
+**触屏拖拽**单独修过：手指一移动，浏览器先判断「这是不是要滚页面」，
+一旦判成滚动就会发 `pointercancel`、同时停发 `pointermove` —— 药拖到一半就断，
+看着像"拖不动"。现在改成在 `touchmove` 里按需挡：位移没到 6px 就放行让页面滚，
+到了才 `preventDefault`。所以列表照常能用手指滑，同时药也拖得动。
+
+---
+
 ## 它替你算三件事
 
 | 算的 | 怎么算 |
@@ -514,6 +545,35 @@ python tools/rx_local/rx_local.py 底方1.jpg 底方2.jpg 底方3.jpg --url http
 
 ---
 
+## 装成 Android App
+
+`android/` 里是一个 WebView 壳：把**同一个** `index.html` 装进去，编出一个能直接装的 APK。
+不需要 Android Studio，也不需要 gradle —— 一台有 JDK 的机器加 120MB 的 build-tools 就够。
+
+```bash
+python android/build.py
+# → android/drug-keeper.apk   约 0.1 MB
+```
+
+壳里补了五件事（**只有装了 App 才走**，浏览器里整段不执行）：
+
+| 壳里会发生什么 | 为什么会这样 | 壳里怎么办 |
+|---|---|---|
+| 点「导出备份」毫无反应 | WebView 不认 `blob:` + `a.download`，不报错也不下载 | 调 `AndroidApp.saveText()`，落进系统「下载」目录 |
+| 「复制给医生」粘不出来 | `file://` 是不安全上下文，`navigator.clipboard` 根本不存在；退回的 `execCommand` 在壳里也常静默失败 | 调 `AndroidApp.copy()` 走系统剪贴板 |
+| 点「导入」什么都不弹 | WebView 默认**不实现**文件选择 | `onShowFileChooser` + 系统文件选择器 |
+| 按返回键直接退出 | 壳里没人管返回键 | 先当 Esc 关掉最上层弹窗，没弹窗了才退出 |
+| 「打印」点了没反应 | WebView 没有打印服务 | 干脆把这个按钮藏掉（「下载 .txt」照常能用） |
+
+**这个 App 不要任何权限** —— 连 `INTERNET` 都没有。页面、数据全在本机，
+不联网也就谈不上把用药记录传出去。
+
+> **数据不会自动搬过去**：网页版的 `localStorage` 和 App 里的**不是同一个源**。
+> 换过去得先在网页上「导出备份」，装好 App 之后在「⋯ → 导入」里选那个 json。
+> 反过来同理。以后想换手机也是这条路。
+
+---
+
 ## 数据在哪
 
 **只在你这台机器的浏览器里**（`localStorage`），不上传、不联网、没有服务器。
@@ -531,10 +591,16 @@ index.html                程序本体：单文件，拷走就能跑
 tools/rx_local/rx_local.py  可选的「本地解析」工具：Windows 自带 OCR 把处方照片读成药行（不联网、不上传照片）
 _check/test_rxcap.py      自检脚本 —— 无头 Chrome 跑 308 项断言（口径、入库、文案、批量调存量、中间弹窗、底方解析、#rx= 链接跨实现往返、AI 说明与「页面不认照片 / 没有后台 AI」防回潮、真药名自查、「添加药品」必填口径、底方「是谁的」+ 重复药去重、底方「对账依据」必须可见、**一次原生弹窗都不许有**，以及「README 说的和事实一致」）
 _check/test_prn.py        备用药那一类的自检 —— 91 条（每天吃 / 备用药分得开、备用药不按天扣、不进续方清单、不进批量调存量、表单必填口径两套、改类型时余量不被改写、导入导出 kind 不丢）
-_check/test_box.py        药盒的自检 —— 170 条（默认 3 格、格数 1~7、格名可改、**真把 PointerEvent 打进页面**验拖拽全链路、跨格是搬不是复制、未入清单的筛选与双向拖拽、摆药台连拖三次能摆满三格、药名折行的真实布局高度、备用药拖不进、删药清盒、按人分开、导出导入不丢、脏数据清洗、确认框真的弹/按钮真的能点/Esc 与点遮罩都算取消、以及那条"类名撞车"体检）
+_check/test_box.py        药盒的自检 —— 171 条（默认 3 格、格数 1~7、格名可改、**真把 PointerEvent 打进页面**验拖拽全链路、跨格是搬不是复制、未入清单的筛选与双向拖拽、摆药台连拖三次能摆满三格、药名折行的真实布局高度、备用药拖不进、删药清盒、按人分开、导出导入不丢、脏数据清洗、确认框真的弹/按钮真的能点/Esc 与点遮罩都算取消、以及那条"类名撞车"体检）
 _check/test_fam.py        全家偏少的自检 —— 50 条（筛选阈值、排除备用药与没填用法的、按人分组、已用完排最前、去这个药箱能切人、单人不写"1 个人"、空态、换人后数据不串、一键复制的文字与页面口径一致且真的进了剪贴板）
 _check/test_rx_local.py   上面那个工具的纯函数自检 —— 67 项，不需要图片、不需要 OCR 语言包
-_check/shot.py            重新生成 docs/ 里的截图
+android/                  Android 壳：WebView 里装**同一个** index.html，编成能装的 APK
+android/build.py          编 APK 的脚本（aapt2 → javac → d8 → zipalign → apksigner，不用 gradle）
+android/AndroidManifest.xml  清单：连 INTERNET 权限都没有
+android/src/com/xiaotuji/drugkeeper/MainActivity.java  WebView + 返回键 + 剪贴板 + 写文件
+android/make_icon.py     画 App 图标（PIL 生成，不是手放的图）
+_check/test_app.py        Android 壳补丁的自检 —— 24 条（假造一个 window.AndroidApp，把「导出落盘 / 复制进剪贴板 / 返回键先关弹窗」这三条只有装了 App 才走的路真跑一遍；反面再验「没有 AndroidApp 时补丁整段不生效」）
+_check/shot.py            重新生成 docs/ 里的截图（含 390×844 的手机版三张）
 docs/                     README 用的截图（每张都在上面被引用；没有没人看的图）
 LICENSE                   MIT，署名「人间小土鸡」
 .gitignore                挡住 `.workbuddy/`、`__pycache__`、以及下面那个本机专用的名单
@@ -549,7 +615,8 @@ LICENSE                   MIT，署名「人间小土鸡」
 ```bash
 python _check/test_rxcap.py       # 网页本体：308 项
 python _check/test_prn.py         # 备用药那一类：91 项
-python _check/test_box.py         # 药盒 + 未入清单 + 摆药台 + 拖拽 + 折行 + 弹窗：170 项
+python _check/test_box.py         # 药盒 + 未入清单 + 摆药台 + 拖拽 + 折行 + 弹窗：171 项
+python _check/test_app.py         # Android 壳补丁（导出/复制/返回键）：24 项
 python _check/test_fam.py         # 全家偏少聚合页：50 项
 python _check/test_rx_local.py    # 本地解析工具：67 项（纯函数，跑得快）
 ```

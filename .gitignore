@@ -19,3 +19,16 @@ __pycache__/
 .vscode/
 *.swp
 *~
+
+# Android 壳的构建产物与密钥
+# ★ 这三样都不能进仓库：build/ 是每次重编都变的中间物；.apk 是二进制（走 Release 附件分发，
+#   塞进 git 历史只会让仓库白白变胖，而 diff 毫无意义）；
+#   .jks 是**签名私钥** —— 一旦公开，别人就能签一个"签名相同"的包顶掉手机上已装的 App。
+# ★ `android/assets/` 是 build.py 从根目录 index.html 复制出来的副本，
+#   **唯一真源是根目录那个**；把副本也提交进来，就等于有了两份会互相打架的网页。
+android/build/
+android/assets/
+android/drug-keeper.apk
+# apksigner 会在 apk 旁边再落一个 .idsig（v4 签名的旁路文件），同样是二进制产物
+android/*.idsig
+android/drugkeeper.jks

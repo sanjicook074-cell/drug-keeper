@@ -91,6 +91,14 @@ HOOKS = {
            " ] };"
            " people.push(mom); save(); render(); openFam();",
     "disp": "openDisp();",
+    # ★ 手机版三张（2026-10-23）：390×844 是主流窄屏，宽度落到 ≤640px 媒体查询里，
+    #   拍到的就是手机上真正的样子。三张分别对应三个新零件：
+    #     m     → 药品页（顶栏只剩「⋯」、统计 2×2、悬浮「＋」、底部页签）
+    #     mtab2 → 就诊准备页（同一个悬浮按钮在这页会消失，别挡住"已经开药"）
+    #     mmore → ⋯ 菜单（六个收进来的动作）
+    "m": "",
+    "mtab2": "setTab(2);",
+    "mmore": "$('#dlgMore').showModal();",
     # ★ 批量调存量（2026-10-12 改版）：列出**全部**药品、可勾选、顺序同主页、按档位着色。
     #   这里临时多塞一味「没设用法」的药，为的是把「勾选框禁用 + 没法按天算 + 底部那行说明」拍进来
     #   （只加在这一张里，别的截图和主页不受影响）。
@@ -185,7 +193,9 @@ SIZE = {"rx": "1240,1240", "rxaudit": "1240,1320", "rxuse": "1240,1240",
         "main": "1240,2030", "bulk": "1240,1560", "edit": "1240,1300",
         "prnedit": "1240,1140", "box": "820,372", "fam": "1240,1010",
         "delconfirm": "820,470", "slotname": "820,430", "tip": "820,400",
-        "choicemode": "820,480"}
+        "choicemode": "820,480",
+        # 手机版三张：390×844 = 窄屏真实尺寸，正好落在 ≤640px 断点里面
+        "m": "390,844", "mtab2": "390,844", "mmore": "390,900"}
 
 
 def shoot(profile, url, out_path, size):
@@ -193,6 +203,30 @@ def shoot(profile, url, out_path, size):
            "--hide-scrollbars", "--window-size=" + size, "--virtual-time-budget=5000",
            "--user-data-dir=" + profile, "--screenshot=" + out_path, url]
     subprocess.run(cmd, capture_output=True, timeout=180)
+
+
+# ★ 手机版不能直接把 --window-size 设成 390（2026-10-23 实测踩到）：
+#   Windows 上 Chrome 的窗口有个 ~500px 的**最小宽度**，`--window-size=390,844`
+#   出来的 PNG 确实是 390 宽，但**布局视口仍是 500** —— 媒体查询按 500 判、
+#   图按 390 裁，右边一截整块切掉。第一版就是这么拍的，看着像"移动端没适配"，
+#   其实是截图方式错了（改成 2×2 统计后才发现列宽比 366 大得多）。
+#   解法：外面套一层 iframe 框出 390×844 —— iframe 自己的视口就是 390，
+#   媒体查询跟着它走；拍完再按 390 裁掉外面的留白。
+FRAME_W = 500          # 比这个窄的尺寸一律按手机走 iframe
+
+
+def shoot_mobile(page_path, out_path, w, h, profile):
+    from PIL import Image
+    wrap = page_path + ".frame.html"
+    open(wrap, "w", encoding="utf-8").write(
+        '<!doctype html><meta charset="utf-8">'
+        '<body style="margin:0;background:#fff">'
+        '<iframe src="%s" width="%d" height="%d" style="border:0;display:block"></iframe>'
+        % (os.path.basename(page_path), w, h))
+    shoot(profile, "file:///" + wrap.replace("\\", "/"), out_path, "%d,%d" % (w + 180, h + 40))
+    im = Image.open(out_path)
+    if im.size != (w, h):
+        im.crop((0, 0, w, h)).save(out_path)
 
 
 def main():
@@ -219,8 +253,13 @@ def main():
         url = "file:///" + page.replace("\\", "/")
         out = os.path.join(OUT, "screenshot-%s.png" % name)
         # 底方那几张顶上多两块（「是谁的」+「对账」），1120 高会把底部按钮切掉
-        shoot(os.path.join(tmpdir, "p_" + name), url, out, SIZE.get(name, "1240,1120"))
-        print("%s -> %s" % (name, os.path.relpath(out, ROOT)))
+        size = SIZE.get(name, "1240,1120")
+        w, h = [int(v) for v in size.split(",")]
+        if w < FRAME_W:
+            shoot_mobile(page, out, w, h, os.path.join(tmpdir, "p_" + name))
+        else:
+            shoot(os.path.join(tmpdir, "p_" + name), url, out, size)
+        print("%s -> %s | %s" % (name, os.path.relpath(out, ROOT), size))
 
     shutil.rmtree(tmpdir, ignore_errors=True)
 
