@@ -479,9 +479,10 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
   border:1px solid var(--line-2);border-left:3px solid var(--brand);border-radius:11px;
   background:#f8f9fb;font-size:12.5px;color:#4b5563;line-height:1.8}
 .rx-howto b{color:var(--text)}
+.rx-howto .tip{color:var(--faint)}
 .rx-paste{display:flex;flex-direction:column;gap:7px;margin-bottom:14px}
 .rx-paste .lt{font-size:12.5px;color:#4b5563}
-#rxPaste{font:inherit;font-size:12.5px;line-height:1.7;padding:9px 11px;min-height:64px;
+#rxPaste{font:inherit;font-size:12.5px;line-height:1.7;padding:9px 11px;min-height:92px;
   resize:vertical;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--text)}
 #rxPaste:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
 .rx-list{display:flex;flex-direction:column;gap:9px;max-height:40vh;overflow:auto}
@@ -611,7 +612,7 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
       <button class="btn ghost" id="btnExport">导出备份</button>
       <button class="btn ghost" id="btnBulk" title="按「够吃 N 天」统一加减这个药箱里所有药品的存量">批量调存量</button>
       <button class="btn ghost" id="btnFam" title="把全家每个人药箱里「已用完 / 偏少」的药摊在一页，买药开药一趟办完">全家偏少</button>
-      <button class="btn ghost" id="btnRx" title="底方照片发给助手（AI），它回你一条链接，点开药就填好了；也可以粘文字或手动加">底方录入</button>
+      <button class="btn ghost" id="btnRx" title="底方照片先发给 AI（DeepSeek、Kimi 等），让它把药名和用量打成文字，再粘进来解析">底方录入</button>
       <button class="btn primary" id="btnAdd">＋ 添加药品</button>
     </div>
   </header>
@@ -752,20 +753,23 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
   </form>
 </dialog>
 
-<!-- 底方录入 —— 只走「助手通道」：
+<!-- 底方录入 —— 页面只认「文字」，照片得先过一个 AI：
      2026-10-12 这里原本还有第二条路「浏览器端拍照 + OCR」（按 EXIF 把照片转正 + 在浏览器里认药名），
      2026-10-13 按用户实测结论**整条删掉**：底方是手机随手拍的，歪、糊、反光不由人控制，
      浏览器里那套识别**跑不通**（认不准还得人一格一格就地改，比直接填还慢），留着只会误导人。
      现在只剩两条都很快的路：
-       ① 把照片发给 AI 助手 → 它认好字、算好天数 → 回你一条带 `#rx=` 的链接 → 点开药已填好；
-       ② 手上已有文字版 → 直接粘进下面的框，点「解析成药品」。
-     ★ 页面里藏了一份写给 AI 助手的说明（紧接着的 `#rx-agent-guide`），
-       助手读一眼就知道该怎么配合 —— 别删它。 -->
+       ① 照片发给任意一个 AI（DeepSeek / Kimi / 豆包…），让它把「药名 + 用量」打成文字，
+          用户把那段文字粘进下面的框 → 点「解析成药品」；
+       ② 那条路里的 AI 若愿意直接给一条带 `#rx=` 的链接，点开药就填好了（可选，不是必须）。
+     ★ 2026-10-23 用户点明口径：「用户看到的就是这个界面，不存在什么这个界面后面还安排着一个后台 AI」。
+       所以界面上**不许**再写「发给帮你开这个页面的助手」这类话 —— 页面自己不会认字，
+       认字的是用户自己找的那个 AI。写文案时按「用户手上的照片 + 一个聊天窗口」来描述。
+     ★ 页面里藏了一份写给 AI 的说明（紧接着的 `#rx-agent-guide`，方便愿意配合的 AI 直接出链接）—— 别删它。 -->
 <dialog id="dlgRx">
   <form id="formRx">
     <div class="dlg-h">
       <h3>底方录入</h3>
-      <p id="rxSub">底方照片交给助手（AI）认，它回你一条链接，点开药就填好了；也可以把药名粘进来，或手动加一味。</p>
+      <p id="rxSub">底方照片先发给 AI（DeepSeek、Kimi 等），让它把药名和用量写成文字，再粘进下面的框。</p>
     </div>
     <div class="dlg-b">
 
@@ -773,10 +777,12 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
       <div class="rx-audit" id="rxAudit" hidden></div>
 
       <div class="rx-howto">
-        这个页面<b>不认照片</b>。底方照片请直接<b>发给 AI 助手</b>（帮你开这个页面的那个），
-        它把药认好、够吃多少天也算好，回你一条链接 —— <b>点开那条链接，药就已经填在这儿了</b>，
-        你核对一下就行。<br>
-        手里已经有<b>文字版</b>的话（或者你照着底方敲了几行），也可以直接粘到下面那个框里。
+        这个页面<b>不认照片</b>，页面上也没有藏着一个「后台 AI」—— 认字这一步，得你自己找个 AI 来干：<br>
+        ① 把底方照片发给 <b>DeepSeek、Kimi、豆包</b> 这类 AI，跟它说一句：
+        「把这上面的<b>药品名称和用量</b>，一行一味打成文字」；<br>
+        ② 把它回你的那段文字<b>整段复制</b>，粘进下面那个框；<br>
+        ③ 点<b>「解析成药品」</b>，药名和用量核对一遍，再入库。
+        <span class="tip">（有的 AI 会顺手回你一条 <b>#rx=</b> 开头的链接 —— 点开也一样，药会自己填好。）</span>
       </div>
 
       <div class="rx-paste">
@@ -809,13 +815,18 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
      产出一条 `#rx=` 链接发回来，用户点开药就填好了。改这个页面时别把它删了。
      ============================================================ -->
 <script type="text/plain" id="rx-agent-guide">
-[药品管家 · 底方录入 —— 写给 AI 助手的说明]
+[药品管家 · 底方录入 —— 写给 AI 的说明]
 
-你是谁：你是「药品管家」这个单文件网页的助手。
-用户会把**底方/处方照片**发给你，让你把上面的药录进这个页面。
+你是谁：用户正在跟你聊天，把**底方/处方照片**发给你，让你把上面的药录进「药品管家」这个单文件网页。
+页面后面**没有任何后台 AI**，认字的就是你（DeepSeek / Kimi / 豆包 / 其他助手都算）。
 这个页面**故意不做浏览器端 OCR**（手机拍的处方歪、糊、反光不由人控制，网页里认不准，
 2026-10-13 已把那套整条删掉），认照片这件事整条交给你。
-你只要产出**一条链接**，用户点开，药就已经摆好在弹窗里等着入库。
+
+两条路，任选：
+  · **给文字**（最通用）：把药名和用量**一行一味**打成纯文字，让用户复制粘进「底方录入」的框里。
+    格式随意，但每行至少要有「药名 + 每次几个 + 每天几次」，页面才解析得出「够吃几天」。
+  · **给链接**（更好，但需要你能构造 URL）：按下面这份说明产出一条 `#rx=` 链接，
+    用户点开，药就已经摆好在弹窗里等着入库，连粘都不用。
 
 ⚠️ 先把这一条读完（2026-10-13 加，起因是一次真实事故）：
    有一次，助手把底方上的一味药**换成了另一个同类药**，同时又**漏掉一味真的** ——
@@ -3452,8 +3463,9 @@ function renderRx(){
   const list = $('#rxList');
   const keep = list.scrollTop;
   if(!rxRows.length){
-    list.innerHTML = '<div class="rx-empty">还没有药。把底方照片发给助手，点它回你的那条链接，药就摆在这儿了；'
-      + '也可以把处方文字粘上来点「解析成药品」，或者直接「＋ 手动加一味」。</div>';
+    list.innerHTML = '<div class="rx-empty">还没有药。把底方照片发给 AI（DeepSeek、Kimi 等），'
+      + '让它把药名和用量打成文字，粘到上面的框里点「解析成药品」，药就摆在这儿了；'
+      + '也可以直接「＋ 手动加一味」。</div>';
     list.scrollTop = 0;
     rxSyncFoot();
     return;
@@ -3559,7 +3571,7 @@ function renderUse(){
   const keep = list.scrollTop;
   if(!rxRows.length){
     list.innerHTML = '<div class="use-empty">还没有药。回上一页把底方上的药录进来 —— '
-      + '把照片发给助手拿链接，或者把处方文字粘进去解析。</div>';
+      + '把 AI 写成文字的药名粘进去解析。</div>';
   } else {
     list.innerHTML = rxRows.map(rxUseRowHTML).join('');
   }
@@ -3614,7 +3626,7 @@ function rxUseApplyAll(){
 }
 function openUse(){
   if(!rxRows.length){
-    rxSay('还没有药名可填 —— 先把底方上的药录进来（发照片给助手，或把药名粘进来）。', 'warn');
+    rxSay('还没有药名可填 —— 先把底方上的药录进来（把 AI 写出的药名粘进来，或手动加一味）。', 'warn');
     return;
   }
   const f = $('#useFreq');
@@ -3637,8 +3649,8 @@ function rxReset(){
   const lt = $('#rxPasteLt');
   if(lt) lt.innerHTML = '也可以把底方上的药名<b>一行行原样粘</b>进来 —— 规格、数量、频次都不用你拆：';
   $('#rxPaste').value = '';
-  $('#rxSub').textContent = '底方照片交给助手（AI）认，它回你一条链接，点开药就填好了；'
-    + '也可以把药名粘进来，或手动加一味。吃法和天数在下一个窗口一次填完，程序按「天数 × 每天用量」算出每味开多少。';
+  $('#rxSub').textContent = '底方照片先发给 AI（DeepSeek、Kimi 等），让它把药名和用量写成文字，再粘进下面的框；'
+    + '吃法和天数在下一个窗口一次填完，程序按「天数 × 每天用量」算出每味开多少。';
 }
 
 /* 这份底方是谁的 —— 定位到一个人。三种情况：
@@ -3698,7 +3710,7 @@ function rxWho(t, patient, dup){
       + (t.how === 'matched' ? ' —— 已切到他/她的药箱。' : ''));
   } else {
     L.push('<span class="warn">底方上没写姓名</span> —— 这些药记到当前「' + esc(nm)
-      + '」名下，请自己确认一下是谁的（发底方时让助手把姓名一起带上）。');
+      + '」名下，请自己确认一下是谁的（发给 AI 时让它把姓名一起打上）。');
   }
   if(p.dx) L.push('诊断：' + esc(p.dx));
   if(t.how === 'created') L.push('药箱里原来没有这个人，已新建「' + esc(nm) + '」并切过去。');
@@ -3737,7 +3749,7 @@ function rxAudit(sheets, rows, fromWho, patient){
     if(!fromAgent){ el.innerHTML = ''; el.hidden = true; return; }
     el.className = 'rx-audit miss';
     el.innerHTML = '<div class="hd">这批药是怎么来的</div>'
-      + '助手<b>没交「对账依据」</b> —— <span class="miss">读漏没读漏、读错没读错，没人替你对过</span>。'
+      + '那个 AI <b>没交「对账依据」</b> —— <span class="miss">读漏没读漏、读错没读错，没人替你对过</span>。'
       + '<div class="why">对着照片自己数一下：一共几味药？每张单子上的「金额」，跟上面这些药能不能对上？</div>';
     el.hidden = false;
     return;
@@ -3773,14 +3785,14 @@ function rxAudit(sheets, rows, fromWho, patient){
   const good = !bads.length;
   el.className = 'rx-audit' + (good ? '' : ' bad');
   el.innerHTML = (good
-      ? '<div class="hd">助手交了对账 ✓ <span class="sh">（' + list.length + ' 张底方，共 ' + n + ' 味）</span></div>'
+      ? '<div class="hd">AI 交了对账 ✓ <span class="sh">（' + list.length + ' 张底方，共 ' + n + ' 味）</span></div>'
       : '<div class="hd">对账没通过 ⚠</div>')
     + lines.join('<br>')
     + (good
-        ? '<div class="why">这些是助手自己报的数、自己算的账 —— 页面只能核它自不自洽。'
+        ? '<div class="why">这些是 AI 自己报的数、自己算的账 —— 页面只能核它自不自洽。'
           + '药名还得你对着照片扫一眼（尤其跟下面标了「拿不准」的行对一对）。</div>'
         : '<div class="why"><b>先别入库</b>：金额或行数对不上，说明这一批里必有药读错了'
-          + '（丢一味 / 编一味 / 数量单价读错）。回去核那张单子，或让助手重读一次。</div>');
+          + '（丢一味 / 编一味 / 数量单价读错）。回去核那张单子，或让那个 AI 重读一次。</div>');
   el.hidden = false;
 }
 
@@ -3795,7 +3807,7 @@ async function openRx(rows, fromWho, patient, sheets){
   const who = ((t.person || {}).name) || '';
   const sub = [];
   if(fromWho){
-    sub.push('<b>' + esc(fromWho) + '</b> 已经从你的底方照片上认好了，'
+    sub.push('<b>' + esc(fromWho) + '</b> 按你发给它的底方读好了，'
       + '你核对一下药名和每味「够吃多少天」，没问题就点右下角加入药箱。');
   } else {
     sub.push('药已经摆在这儿了 —— 核对一下药名和「够吃多少天」，没问题就点右下角加入药箱。');

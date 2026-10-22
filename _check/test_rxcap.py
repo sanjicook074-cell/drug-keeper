@@ -930,8 +930,8 @@ PROBE = r"""
      document.querySelectorAll('#rxList .rx-row').length === 1
      && q('#rxList .rx-row:nth-child(1) .rx-days-in').value === '14',
      document.querySelectorAll('#rxList .rx-row').length + ' 行');
-  ck('说明里写清「助手已经认好了，你核对一下」',
-     /已经从你的底方照片上认好/.test(q('#rxSub').textContent), q('#rxSub').textContent.slice(0, 36));
+  ck('说明里写清「这是你发给它的底方读出来的，你核对一下」',
+     /按你发给它的底方读好了/.test(q('#rxSub').textContent), q('#rxSub').textContent.slice(0, 36));
   q('#dlgRx').close();
 
   // 名称空着的行：拦下，不许静默入库
@@ -1066,7 +1066,7 @@ PROBE = r"""
     await openRx(ROWS, '助手', { name:'己' },
            [ { i:1, n:1, amount:20.45, sum:20.45 }, { i:2, n:1, amount:6.58, sum:6.58 } ]);
     ck('交了对账且都对得上 → 显示对账块，且不是报错样式',
-       A().hidden === false && /助手交了对账/.test(txt()) && A().className.indexOf('bad') < 0,
+       A().hidden === false && /AI 交了对账/.test(txt()) && A().className.indexOf('bad') < 0,
        A().className + ' | ' + txt().slice(0, 60));
     ck('逐张写出「第 N 张 · 几味 · 单据 = 算出来」',
        /第 1 张/.test(txt()) && /第 2 张/.test(txt()) && /20\.45/.test(txt()) && /6\.58/.test(txt()),
@@ -1079,7 +1079,7 @@ PROBE = r"""
            [ { i:1, n:1, amount:20.45, sum:38.21 }, { i:2, n:1, amount:6.58, sum:6.58 } ]);
     ck('某张对不上账 → 整块变报错样式', A().className.indexOf('bad') >= 0, A().className);
     ck('没通过的账不许显示成 ✓（不能乱标"交了对账"）',
-       !/助手交了对账/.test(txt()), txt().slice(0, 40));
+       !/AI 交了对账/.test(txt()), txt().slice(0, 40));
     ck('说清是第几张、两个数都摆出来',
        /第 1 张/.test(txt()) && /38\.21/.test(txt()), txt().slice(0, 120));
     ck('并提示「先别入库」', /先别入库/.test(txt()), txt().slice(-60));
@@ -1372,10 +1372,24 @@ def main():
         "pass": "吃错药" in src,
         "got": "已写明" if "吃错药" in src else "(没写)",
     })
+    # 2026-10-23 用户点明口径：「用户看到的就是这个界面，不存在什么这个界面后面还安排着一个后台 AI」。
+    # 所以界面要按「用户手上的照片 + 一个他自己打开的 AI 聊天窗口」来写，并且**点名几个 AI**，
+    # 让人一眼知道该把照片发给谁。
     data["cases"].append({
-        "name": "用户看得懂「把照片发给助手」这条路：界面上写明了「不认照片」+「发给 AI 助手」",
-        "pass": ("不认照片" in src) and ("发给 AI 助手" in src),
-        "got": "已写明" if ("不认照片" in src) else "(没写)",
+        "name": "界面上写明「不认照片」+「没有后台 AI」+ 点名 DeepSeek / Kimi",
+        "pass": ("不认照片" in src) and ("后台 AI" in src)
+                and ("DeepSeek" in src) and ("Kimi" in src),
+        "got": "已写明" if ("不认照片" in src and "后台 AI" in src) else "(没写)",
+    })
+    data["cases"].append({
+        "name": "界面上不再暗示「页面自带一个助手」（这类话一句都不许留）",
+        "pass": ("帮你开这个页面的那个" not in src) and ("发给 AI 助手" not in src),
+        "got": "已清干净" if ("帮你开这个页面的那个" not in src) else "(还在)",
+    })
+    data["cases"].append({
+        "name": "写明要 AI「把药品名称和用量打成文字」——这一步是用户唯一要做的活",
+        "pass": ("药品名称和用量" in src) and ("一行一味" in src),
+        "got": "已写明" if ("药品名称和用量" in src) else "(没写)",
     })
 
     # ---- 源码级：页面里**藏着**一段写给 AI 助手的接口说明（用户 2026-10-13 点名要的）----
