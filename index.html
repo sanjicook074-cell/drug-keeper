@@ -169,148 +169,31 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 .stp:hover:not(:disabled){border-color:#cbd5e1;background:#f9fafb;color:var(--text)}
 .stp:disabled{opacity:.35;cursor:not-allowed}
 
-/* 药盒分三层看：.slots 是盒身（一整块塑料，格子都嵌在它里面）、
-   .slot 是一格（带格子檐）、.well 是格子底（药躺在上面）。
-   ★ 关键就是"格子嵌在盒身里"这一条 —— 早先每格各画一张卡片，
-     看起来像四个并列的标签，怎么调阴影都不像药盒。 */
-.slots{position:relative;display:flex;flex-wrap:wrap;gap:8px;padding:9px;border-radius:16px;
-  background:linear-gradient(168deg,#eaf1fa 0%,#d6e0ee 44%,#c4d1e2 100%);
-  border:1px solid #b9c7d8;
-  box-shadow:inset 0 1px 0 #fff, 0 1px 2px rgba(16,24,40,.05),
-             0 12px 22px -18px rgba(16,24,40,.65)}
-/* 盒身整体的塑料反光：一条很淡的斜向高光，压在所有格子之上但不挡指针 */
-.slots::after{content:'';position:absolute;inset:0;border-radius:16px;pointer-events:none;
-  background:linear-gradient(118deg,rgba(255,255,255,.75) 0%,rgba(255,255,255,0) 26%,
-             rgba(255,255,255,0) 68%,rgba(255,255,255,.35) 100%)}
-
-.slot{position:relative;flex:1 1 96px;min-width:96px;padding:7px 7px 9px;
-  display:flex;flex-direction:column;border-radius:11px;
-  background:transparent;
-  border:1px solid rgba(255,255,255,.55);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.9), 0 1px 2px rgba(16,24,40,.10);
-  transition:transform .16s cubic-bezier(.2,.8,.3,1), box-shadow .16s,
-             border-color .16s, background .16s}
-.slot:hover{transform:translateY(-2px);background:rgba(255,255,255,.34);
-  border-color:rgba(255,255,255,.9);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.95), 0 2px 4px rgba(16,24,40,.1),
-             0 14px 22px -16px rgba(16,24,40,.7)}
-.slot.has{border-color:rgba(255,255,255,.5)}
-/* 落点高亮：拖到上面时整格抬起 + 蓝色描边，比只换边框颜色更容易看见 */
-.slot.over{border-color:var(--brand);background:rgba(239,246,255,.7);transform:translateY(-2px);
-  box-shadow:0 0 0 3px rgba(37,99,235,.18), inset 0 1px 0 rgba(255,255,255,.9),
-             0 14px 22px -16px rgba(37,99,235,.5)}
-.slot-n{font-size:11.5px;font-weight:650;color:#4b5563;margin:0 0 5px 1px;
-  padding-bottom:4px;border-bottom:1px solid rgba(16,24,40,.06);
+.slots{display:flex;flex-wrap:wrap;gap:8px}
+.slot{flex:1 1 92px;min-width:92px;border:1px dashed #d9dee7;border-radius:10px;background:#fff;
+  padding:7px 8px 8px;min-height:84px;display:flex;flex-direction:column;
+  transition:border-color .13s,background .13s,box-shadow .13s}
+.slot.has{border-style:solid;border-color:#dde3ec}
+.slot.over{border-style:solid;border-color:var(--brand);background:#eff6ff;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.slot-n{font-size:11.5px;font-weight:650;color:#4b5563;margin-bottom:5px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:text;
   -webkit-user-select:none;user-select:none}
 .slot-n:hover{color:var(--brand)}
-
-/* 格子底：药躺的坑。内阴影做出深度，底部一条白线是塑料的厚度，
-   顶边一条暗线是檐口的投影 —— 这三样凑齐了才有"凹进去"的感觉。 */
-.well{position:relative;flex:1 1 auto;min-height:72px;padding:6px 5px 8px;border-radius:9px;
-  display:flex;flex-wrap:wrap;align-content:flex-end;justify-content:center;gap:4px 3px;
-  background:
-    radial-gradient(135% 58% at 50% -12%,rgba(16,24,40,.14),rgba(16,24,40,0) 72%),
-    linear-gradient(180deg,#d6dfed 0%,#e3eaf5 52%,#edf2fa 100%);
-  border:1px solid #c6d1e0;
-  box-shadow:inset 0 3px 7px rgba(16,24,40,.22), inset 0 -1px 0 rgba(255,255,255,.95)}
-/* 盖子的反光：hover 时从左扫到右。pointer-events:none，绝不挡落点判定 */
-.glare{position:absolute;inset:0;border-radius:11px;overflow:hidden;pointer-events:none}
-.glare::after{content:'';position:absolute;top:-70%;left:-130%;width:65%;height:240%;
-  background:linear-gradient(105deg,transparent,rgba(255,255,255,.85),transparent);
-  transform:rotate(10deg);transition:left .55s ease}
-.slot:hover .glare::after{left:125%}
-.slot-empty{width:100%;font-size:11px;color:#b9c0cd;text-align:center;padding:14px 0 16px;
+.slot-empty{font-size:11px;color:#c3c9d4;text-align:center;padding:14px 0;
   -webkit-user-select:none;user-select:none}
 
-/* 一味药 = 一组药片 .pillgrp（拖拽、删除都挂在它身上）。
-   隐藏的 .nm/.dose 是给读屏和自检用的 —— 视觉上只有药片，名字在悬停卡片里。 */
-.pillgrp{position:relative;display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:center;
-  gap:4px 3px;padding:3px 4px 4px;border-radius:8px;cursor:grab;
-  transition:background .12s, transform .12s}
-.pillgrp::before{content:'';position:absolute;left:8%;right:8%;bottom:0;height:6px;
-  border-radius:50%;
-  background:radial-gradient(52% 100% at 50% 50%,rgba(16,24,40,.22),rgba(16,24,40,0) 72%)}
-.pillgrp:hover{background:rgba(255,255,255,.6)}
-.pillgrp[data-lv=out]{filter:saturate(.35);opacity:.72}
-.pillgrp .x{position:absolute;top:-6px;right:-6px;width:15px;height:15px;border-radius:50%;
-  border:1px solid #e4e9f1;background:#fff;color:#9aa3b1;font-size:11px;line-height:1;padding:0;
-  display:grid;place-items:center;cursor:pointer;opacity:0;transform:scale(.75);
-  box-shadow:0 1px 3px rgba(16,24,40,.16);transition:opacity .12s,transform .12s,color .12s,border-color .12s}
-.pillgrp:hover .x,.pillgrp:focus-within .x{opacity:1;transform:scale(1)}
-/* 触屏没有 hover：× 一直露着，否则手机上根本没法把药从格子里拿出来 */
-@media(hover:none){
-  .pillgrp .x{opacity:1;transform:scale(1)}
-}
-.pillgrp .x:hover{color:var(--out);border-color:#fecaca}
-.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
-  clip:rect(0 0 0 0);white-space:nowrap;border:0}
-
-/* 药片本体：底色渐变 + 左上一块高光（糖衣那种反光）+ 底部接触阴影，每片歪一点（--r）。
-   --h/--s 是按药名哈希出来的固定色，和悬停卡片左侧的色块一一对应。 */
-.pill{position:relative;overflow:hidden;width:24px;height:14px;border-radius:7px;flex:none;
-  background:
-    radial-gradient(56% 44% at 31% 24%,rgba(255,255,255,.95),rgba(255,255,255,0) 70%),
-    linear-gradient(180deg,hsl(var(--h) var(--s) 80%),hsl(var(--h) var(--s) 50%));
-  box-shadow:inset 0 0 0 1px hsl(var(--h) var(--s) 40% / .3),
-             inset 0 -2px 2px rgba(16,24,40,.16),
-             0 2px 3px rgba(16,24,40,.3);
-  transform:rotate(var(--r,0deg))}
-/* 压片接缝：真药片中间那道浅浅的压痕，有它才像"片"而不像"色块" */
-.pill::after{content:'';position:absolute;left:50%;top:16%;bottom:16%;width:1px;
-  background:rgba(255,255,255,.6)}
-.pill.vial::after,.pill.sachet::after{display:none}
-.pill.vial{width:11px;height:22px;border-radius:5px}
-.pill.sachet{width:16px;height:18px;border-radius:3px}
-.pill-more{font-size:10px;font-weight:700;color:#7a838f;padding-left:1px;align-self:flex-end}
-/* 落进格子的那一下：从上方掉下来、压一下回弹。只给"刚放进去"的那组，不是每次重绘都跳 */
-@keyframes pillLand{
-  0%{transform:translateY(-15px) scale(.82);opacity:0}
-  68%{transform:translateY(1px) scale(1.05);opacity:1}
-  100%{transform:translateY(0) scale(1)}
-}
-@keyframes pillSettle{
-  0%{transform:rotate(var(--r,0deg)) translateY(-10px);opacity:0}
-  70%{transform:rotate(var(--r,0deg)) translateY(1px);opacity:1}
-  100%{transform:rotate(var(--r,0deg)) translateY(0)}
-}
-.pillgrp.pop{animation:pillLand .34s cubic-bezier(.2,.8,.3,1)}
-.pillgrp.pop .pill{animation:pillSettle .38s cubic-bezier(.2,.8,.3,1)}
-@media(prefers-reduced-motion:reduce){
-  .pillgrp.pop,.pillgrp.pop .pill{animation:none}
-  .slot,.slot:hover,.slot.over{transform:none}
-  .glare::after{transition:none}
-}
-
-/* 悬停卡片：鼠标停在格子上时浮在它上方，说清这格是哪几味药。
-   它是"报信息"的，不承载点击，所以 pointer-events:none —— 也就不会跟拖拽抢落点。 */
-#pillTip{position:fixed;left:0;top:0;z-index:9000;pointer-events:none;
-  opacity:0;transform:translateY(7px) scale(.97);transform-origin:50% 100%;
-  transition:opacity .14s ease,transform .16s cubic-bezier(.2,.8,.3,1);
-  width:max-content;max-width:min(300px,88vw);padding:9px 11px;border-radius:12px;
-  background:rgba(255,255,255,.98);border:1px solid #e3e9f2;
-  box-shadow:0 14px 30px -10px rgba(16,24,40,.3), 0 2px 6px rgba(16,24,40,.08);
-  font-size:12px;color:#1b1f27}
-#pillTip.on{opacity:1;transform:translateY(0) scale(1)}
-#pillTip .tt-h{display:flex;align-items:baseline;gap:6px;font-size:11.5px;color:#6b7280;
-  font-weight:600;margin-bottom:5px}
-#pillTip .tt-h b{font-size:12.5px;color:#111827;font-weight:680}
-#pillTip .tt-row{display:flex;gap:8px;padding:6px 0;border-top:1px solid #f1f4f8}
-#pillTip .tt-row:nth-child(2){border-top:none;padding-top:2px}
-#pillTip .sw{flex:none;width:17px;height:10px;border-radius:6px;margin-top:3px;
-  background:linear-gradient(180deg,hsl(var(--h) var(--s) 76%),hsl(var(--h) var(--s) 56%));
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 1px 1.5px rgba(16,24,40,.2)}
-#pillTip .sw.vial{width:9px;height:15px;border-radius:4px;margin-top:1px}
-#pillTip .sw.sachet{width:12px;height:12px;border-radius:3px;margin-top:2px}
-#pillTip .tt-nm{font-size:12.5px;font-weight:650;color:#111827;line-height:1.35}
-#pillTip .tt-sp{font-size:11px;font-weight:500;color:var(--faint);margin-left:5px}
-#pillTip .tt-meta{font-size:11.5px;color:#59616f;margin-top:2px;line-height:1.5}
-#pillTip .tt-meta b{color:#111827;font-weight:650}
-#pillTip .tt-note{font-size:11px;color:#8a93a1;margin-top:3px;line-height:1.5}
-#pillTip .tt-meta .sep{color:#cbd2dc;margin:0 3px}
-#pillTip .tt-f{font-size:10.5px;color:#9aa3b1;margin-top:6px;padding-top:5px;
-  border-top:1px dashed #eef1f6;white-space:nowrap}
-body.dragging #pillTip{opacity:0}
+.chip{display:flex;align-items:center;gap:4px;font-size:11.5px;
+  background:#f4f7fb;border:1px solid #e3e9f2;border-radius:7px;padding:3px 4px 3px 6px;
+  margin-bottom:4px;cursor:grab}
+.chip:last-child{margin-bottom:0}
+.chip:hover{border-color:#c9d6e8;background:#eef3fa}
+.chip[data-lv=out]{background:#fef2f2;border-color:#fecaca}
+.chip .nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#242a35}
+.chip .dose{flex:none;font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.chip .x{flex:none;width:16px;height:16px;border:none;background:transparent;color:#aab2c0;
+  cursor:pointer;border-radius:4px;font-size:13px;line-height:1;padding:0;display:grid;place-items:center}
+.chip .x:hover{background:#e8edf5;color:var(--out)}
 .box-foot{margin-top:8px;font-size:11.5px;color:var(--faint)}
 
 /* 拖动时跟着指针跑的那一小块 —— 用 fixed 定位 + transform 跟手，绝不挡住 elementFromPoint。
@@ -322,7 +205,7 @@ body.dragging #pillTip{opacity:0}
   font-size:12.5px;color:#1b1f27;box-shadow:0 8px 22px rgba(16,24,40,.2);
   transform:translate(-999px,-999px);white-space:nowrap}
 body.dragging{-webkit-user-select:none;user-select:none;cursor:grabbing}
-body.dragging .med:hover,body.dragging .pillgrp:hover{box-shadow:none}
+body.dragging .med:hover,body.dragging .chip:hover{box-shadow:none}
 
 /* 轻提示：拖备用药、重复放同一格这类「不该打断操作」的话走这里，不弹 alert */
 #toast{position:fixed;left:50%;bottom:36px;z-index:99999;max-width:min(560px,84vw);
@@ -798,10 +681,6 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 </dialog>
 
 <div id="toast" role="status" aria-live="polite"></div>
-
-<!-- 药盒的悬停卡片。全局只放一个：每格各放一个的话会多出几十个隐藏节点，
-     而且内容每次悬停都要重算，一个够用了。 -->
-<div id="pillTip" role="tooltip" aria-hidden="true"></div>
 
 <!-- ============================================================
      下面这段是**写给 AI 助手看的接口说明**（人不用管它，页面上也不会显示）。
@@ -1534,69 +1413,11 @@ function chipDose(m){
   return (d > 0) ? (fmtNum(d) + esc(m.unit || '片')) : '';
 }
 
-/* ---------- 一格里的"药"长什么样 ----------
-   视觉上只有药片，没有文字条：装药那一刻人是照形状和颜色认药的，
-   名字交给悬停卡片（见下面「悬停卡片」一节）。但名字和剂量仍然以 .sr 写进 DOM，
-   读屏能念、自检也能断言 —— 只是看不见。 */
-/* 刚放进去的那一组药：重绘一次就清空，用来只播一次"掉进格子"的动画。
-   不放这个的话，每次 renderBox（改名、加减格、别处改药）都会全场跳一遍。 */
-let pendingPop = null;
-/* 当前卡片挂在哪一格；-1 = 没显示。 */
-let tipSlot = -1;
-/* 被点住（钉住）的那一格；-1 = 没钉。触屏没有 hover，靠它看内容。 */
-let tipPin = -1;
-
-const PILL_MAX = 6;        // 一格最多画 6 片，再多写「+N」，否则格子会被挤变形
-
-// 单位 → 形状：片剂画药片，针剂/滴剂画小瓶，袋装画小方包
-function unitShape(m){
-  const u = String(m.unit || '片').toLowerCase();
-  if(/ml|毫升|支|瓶|滴|喷/.test(u)) return 'vial';
-  if(/袋|包|贴|帖/.test(u)) return 'sachet';
-  return 'pill';
-}
-
-// 每味药的固定颜色：**只按药名**哈希。为什么不带 id：id 是新建记录时随机生成的，
-// 换个设备、或者重新导入一份同样的备份，同一味药就换了颜色 ——
-// 而"橙色那片是哪个药"恰恰是靠颜色记的。六分之一画成白色片（真药里白的本来就多）。
-function pillHue(m){
-  const s = String(m.name || '') || String(m.id || '');
-  let h = 0;
-  for(let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 100000;
-  return (h % 6 === 0) ? { h: 214, s: 8 } : { h: (h * 37) % 360, s: 68 };
-}
-
-// 该画几片 = 每次用量。0.5 片这种画 1 片（画半片反而认不出是什么药），
-// 准确剂量写在卡片里。超过 PILL_MAX 的部分折成「+N」。
-function pillNum(m){
-  const d = num(m.perDose);
-  if(!(d > 0)) return 1;
-  return Math.min(Math.max(Math.round(d), 1), PILL_MAX);
-}
-
-function pillsHTML(m){
-  const hue = pillHue(m);
-  const sh = unitShape(m);
-  const n = pillNum(m);
-  const want = num(m.perDose) > 0 ? Math.round(num(m.perDose)) : 1;
-  let out = '';
-  for(let k = 0; k < n; k++){
-    // --r：每片歪一点，像倒在格子里而不是排队；角度由长度和序号定，重绘不会乱跳
-    const r = ((((String(m.id || '').length + k * 7) % 11) - 5) * 1.6).toFixed(1);
-    out += '<i class="pill' + (sh === 'pill' ? '' : ' ' + sh) + '" style="--h:' + hue.h
-      + ';--s:' + hue.s + '%;--r:' + r + 'deg"></i>';
-  }
-  if(want > PILL_MAX) out += '<span class="pill-more">+' + (want - PILL_MAX) + '</span>';
-  return out;
-}
-
-function chipHTML(m, slotIdx, pop){
-  return '<div class="pillgrp' + (pop ? ' pop' : '') + '" data-med="' + m.id + '"'
-    +   ' data-from="' + slotIdx + '" data-lv="' + level(m) + '"'
-    +   ' title="' + esc(m.name) + '（拖到别的格 = 搬过去）">'
-    +   pillsHTML(m)
-    +   '<span class="sr nm">' + esc(m.name) + '</span>'
-    +   (chipDose(m) ? '<span class="sr dose">' + chipDose(m) + '</span>' : '')
+function chipHTML(m, slotIdx){
+  return '<div class="chip" data-med="' + m.id + '" data-from="' + slotIdx + '"'
+    +   ' data-lv="' + level(m) + '" title="' + esc(m.name) + '（拖到别的格 = 搬过去）">'
+    +   '<span class="nm">' + esc(m.name) + '</span>'
+    +   (chipDose(m) ? '<span class="dose">' + chipDose(m) + '</span>' : '')
     +   '<button class="x" data-del="' + slotIdx + '" data-id="' + m.id + '"'
     +     ' aria-label="从这一格拿出来" title="从这一格拿出来">×</button>'
     + '</div>';
@@ -1605,23 +1426,18 @@ function chipHTML(m, slotIdx, pop){
 function slotHTML(s, i){
   // 查不到的 id 直接跳过（药被删了 / 存档被手改过），不显示成空壳
   const items = (s.ids || []).map(findMed).filter(Boolean);
-  const popId = (pendingPop && pendingPop.slot === i) ? pendingPop.id : null;
   return '<div class="slot' + (items.length ? ' has' : '') + '" data-slot="' + i + '">'
-    +   '<span class="glare"></span>'
     +   '<div class="slot-n" data-slotname="' + i + '" title="双击改名（如 早饭前 / 睡前）">'
     +     esc(s.name || '') + '</div>'
-    +   '<div class="well">'
-    +     (items.length
-        ? items.map(function(m){ return chipHTML(m, i, popId === m.id); }).join('')
+    +   (items.length
+        ? items.map(function(m){ return chipHTML(m, i); }).join('')
         : '<div class="slot-empty">拖药进来</div>')
-    +   '</div>'
     + '</div>';
 }
 
 function renderBox(){
   const el = $('#box');
   if(!el) return;
-  hideTip(); tipPin = -1;    // 数据变了，原来那张卡片里的内容可能已经不对了
   const p = curPerson();
   if(!p){ el.innerHTML = ''; return; }
   const box = curBox();
@@ -1631,7 +1447,7 @@ function renderBox(){
   el.innerHTML = ''
   + '<div class="box-h">'
   +   '<span class="box-t">药盒</span>'
-  +   '<span class="box-tip">把下面「每天吃的药」拖进格子 · 鼠标停在格子上看是哪几味 · 双击格名可改</span>'
+  +   '<span class="box-tip">把下面「每天吃的药」拖进格子 · 双击格名可改</span>'
   +   '<span class="box-ctl">'
   +     '<button class="stp" data-box="dec" title="少一格"' + (n <= BOX_MIN ? ' disabled' : '') + '>−</button>'
   +     '<span class="n">' + n + ' 格</span>'
@@ -1640,7 +1456,6 @@ function renderBox(){
   + '</div>'
   + '<div class="slots">' + box.slots.map(slotHTML).join('') + '</div>'
   + (used ? '' : '<div class="box-foot">还空着 —— 从下面把药拖进来，一格一格摆好，装药时照着拿就行。</div>');
-  pendingPop = null;          // 入场动画只放一次，下一次重绘不再跳
 
   el.onclick = function(e){
     const x = e.target.closest('button[data-del]');
@@ -1649,101 +1464,13 @@ function renderBox(){
     if(ctl){
       const d = ctl.getAttribute('data-box') === 'inc' ? 1 : -1;
       setSlotCount(curBox().slots.length + d);
-      return;
-    }
-    // 点格子空白处 = 把卡片钉住（触屏没有 hover，靠这个看内容）；再点一下收起来。
-    // 点在格名上不算 —— 那格要留给双击改名。
-    const sl = e.target.closest('.slot');
-    if(sl && !e.target.closest('.slot-n') && !e.target.closest('.x')){
-      const i = Number(sl.getAttribute('data-slot'));
-      if(tipPin === i){ tipPin = -1; hideTip(); }
-      else { tipPin = i; showTip(i); }
     }
   };
   el.ondblclick = function(e){
     const nm = e.target.closest('[data-slotname]');
     if(nm) renameSlot(Number(nm.getAttribute('data-slotname')));
   };
-  // 鼠标进出格子 → 卡片跟着走。用 mouseover/mouseout 委托，避免每格挂一对监听；
-  // relatedTarget 还在同一格里就不算离开（药片之间挪动会一直触发 out）。
-  el.onmouseover = function(e){
-    if(tipPin >= 0 || drag) return;
-    const sl = e.target.closest ? e.target.closest('[data-slot]') : null;
-    if(!sl) return;
-    const i = Number(sl.getAttribute('data-slot'));
-    if(i !== tipSlot) showTip(i);
-  };
-  el.onmouseout = function(e){
-    if(tipPin >= 0 || drag) return;
-    const sl = e.target.closest ? e.target.closest('[data-slot]') : null;
-    if(!sl) return;
-    if(e.relatedTarget && sl.contains(e.relatedTarget)) return;
-    hideTip();
-  };
 }
-
-/* -------------------- 药盒：悬停卡片 --------------------
-   为什么非得有它：格子里现在只剩药片了，颜色能对上但说不出名字。
-   「这格是哪几味、各吃几片」就靠这张卡片，鼠标停在格子上时浮在它上方。
-   卡片是纯报信息的，pointer-events:none —— 不参与点击，也就不会挡住拖拽的落点判定。 */
-function tipHTML(s, items){
-  const rows = items.map(function(m){
-    const hue = pillHue(m), sh = unitShape(m);
-    return '<div class="tt-row">'
-      + '<span class="sw' + (sh === 'pill' ? '' : ' ' + sh) + '" style="--h:' + hue.h
-      +   ';--s:' + hue.s + '%"></span>'
-      + '<div>'
-      +   '<div class="tt-nm">' + esc(m.name)
-      +     (m.spec ? '<span class="tt-sp">' + esc(m.spec) + '</span>' : '') + '</div>'
-      +   '<div class="tt-meta">每次 <b>' + (doseText(m) || '—') + '</b><span class="sep">｜</span>'
-      +     freqText(m) + '<span class="sep">｜</span>余量 <b>' + fmtNum(stockNow(m)) + '</b> '
-      +     esc(m.unit || '片') + '</div>'
-      +   (m.note ? '<div class="tt-note">' + esc(m.note) + '</div>' : '')
-      + '</div></div>';
-  }).join('');
-  return '<div class="tt-h"><b>' + esc(s.name || '') + '</b>' + items.length + ' 味药</div>'
-    + rows
-    + '<div class="tt-f">拖药片可挪格 · 悬浮点 × 拿出来</div>';
-}
-
-function showTip(i){
-  const el = $('#pillTip');
-  const box = curBox();
-  const s = box && box.slots[i];
-  const slotEl = $('#box .slot[data-slot="' + i + '"]');
-  if(!el || !s || !slotEl) return;
-  const items = (s.ids || []).map(findMed).filter(Boolean);
-  if(!items.length){ hideTip(); return; }
-
-  el.innerHTML = tipHTML(s, items);
-  el.classList.add('on');
-  el.setAttribute('aria-hidden', 'false');
-  tipSlot = i;
-
-  // 先写内容再量：卡片宽度取决于文字，量完才知道往左还是往右偏。
-  // 上面放不下就翻到格子下方 —— 第一排格子贴着页面顶部时最容易撞。
-  const r = slotEl.getBoundingClientRect();
-  const w = el.offsetWidth, h = el.offsetHeight;
-  let left = r.left + r.width / 2 - w / 2;
-  left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
-  let top = r.top - h - 9;
-  if(top < 8) top = r.bottom + 9;
-  el.style.left = Math.round(left) + 'px';
-  el.style.top = Math.round(top) + 'px';
-}
-
-function hideTip(){
-  const el = $('#pillTip');
-  tipSlot = -1;
-  if(!el) return;
-  el.classList.remove('on');
-  el.setAttribute('aria-hidden', 'true');
-}
-
-// 页面一滚/一改尺寸，卡片和格子就对不上了 —— 直接收起来，别让它飘在错的位置。
-// 钉住的那张也一起收（位置已经不对了），重新点一下就有。
-window.addEventListener('scroll', hideTip, true);
-window.addEventListener('resize', function(){ tipPin = -1; hideTip(); });
 
 function renameSlot(i){
   const box = curBox();
@@ -1805,7 +1532,6 @@ function addToSlot(to, id, from){
   }
   tgt.ids = tgt.ids || [];
   tgt.ids.push(id);
-  pendingPop = { slot: to, id: id };   // 只有刚放进去的这一组播"掉进格子"的动画
   save(); renderBox();
 }
 
