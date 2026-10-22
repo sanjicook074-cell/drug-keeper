@@ -1064,6 +1064,8 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
   </div>
   <div class="dlg-f">
     <button type="button" class="btn ghost" id="btnFamClose">关闭</button>
+    <!-- 2026-10-23 用户要求：把缺少的药名一键复制出去，粘到微信里 -->
+    <button type="button" class="btn primary" id="btnFamCopy">复制药名</button>
   </div>
 </dialog>
 
@@ -2931,13 +2933,17 @@ function renderFam(){
     : '把 ' + n + ' 个人药箱里「已用完」和「够吃 ' + settings.alertDays + ' 天以内」的药摊在一页，'
       + '这一趟该买哪些，看这里。';
 
+  const copyBtn = $('#btnFamCopy');
+
   if(!r.total){
     list.innerHTML = '<div class="fam-none">'
       + (n ? '全家 ' + n + ' 个人的药都还够吃，这些天没有偏少的。' : '还没有添加人。')
       + '</div>';
     note.textContent = '';
+    copyBtn.disabled = true;      // 没东西可复制就别让人点了空手
     return;
   }
+  copyBtn.disabled = false;
 
   list.innerHTML = r.groups.map(function(g){
     return '<div class="fam-grp">'
@@ -2952,7 +2958,43 @@ function renderFam(){
   }).join('');
 
   note.textContent = '备用药不按天吃，没有「偏少」这回事，所以不列在这里；'
-    + '没填用法的药也算不出天数，同样漏掉 —— 要一起看的话，先在各自的药箱里把用法补上。';
+    + '没填用法的药也算不出天数，同样漏掉 —— 要一起看的话，先在各自的药箱里把用法补上。'
+    + '点「复制药名」可把这页压成一段文字，直接粘到微信里。';
+}
+
+/* 一键复制：把这一页的药名压成一段纯文字（用户 2026-10-23 要求「复制出来粘到微信里」）。
+   口径必须跟页面完全一致 —— 照样走 familyLow()，不在这里另筛一遍，否则页面上和复制出去的两份会不一样。
+   格式照「就诊准备」那段的路子：第一行标题带日期和总数，之后按人分段、段内编号。
+   括号里的「已用完 / 还剩 N 天」是给收消息的人看紧迫度的，不影响搜药名。 */
+function famCopyText(){
+  const r = familyLow();
+  if(!r.total) return '';
+  const multi = people.length > 1;         // 只有一个人时不写「【我】」，跟页面副标题一个道理
+  const L = ['全家偏少的药（' + todayStr() + '）：共 ' + r.total + ' 味'];
+  r.groups.forEach(function(g){
+    if(multi) L.push('【' + g.p.name + '】');
+    g.rows.forEach(function(x, i){
+      const tail = (x.lv === 'out') ? '已用完' : ('还剩 ' + fmtDays(x.dl) + ' 天');
+      L.push((i + 1) + '. ' + x.m.name + '（' + tail + '）');
+    });
+  });
+  return L.join('\n');
+}
+
+function copyFam(){
+  const txt = famCopyText();
+  if(!txt) return;
+  const btn = $('#btnFamCopy');
+  // 恢复用的是固定文案，不是「点之前那一下的文案」—— 连点两次时后者会记成「已复制 ✓」，再也回不去
+  const done = function(){
+    btn.textContent = '已复制 ✓';
+    setTimeout(function(){ btn.textContent = '复制药名'; }, 1400);
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done, function(){ fallbackCopy(txt, done); });
+  } else {
+    fallbackCopy(txt, done);
+  }
 }
 
 function openFam(){
@@ -4081,6 +4123,7 @@ $('#btnBulk').addEventListener('click', openBulk);
 // 全家偏少：只读聚合页。点「去这个药箱」= 切到那个人，顺手把弹窗关掉
 $('#btnFam').addEventListener('click', openFam);
 $('#btnFamClose').addEventListener('click', function(){ $('#dlgFam').close(); });
+$('#btnFamCopy').addEventListener('click', copyFam);
 $('#famList').addEventListener('click', function(e){
   const b = e.target.closest('[data-goto]');
   if(!b) return;

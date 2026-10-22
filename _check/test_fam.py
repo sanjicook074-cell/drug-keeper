@@ -205,13 +205,81 @@ PROBE = r"""
      groups()[0].querySelector('.fam-c').textContent);
   ck('补足的那味不见了', allNames().indexOf('甲三日片') < 0, allNames().join('、'));
 
+  /* ---------------- 12. 一键复制药名（粘到微信里）----------------
+     用户 2026-10-23：「下面还应该有一个一键复制 就能把缺少的药名复制出来 用户可以粘贴到微信里」
+     钉三件事：① 复制出去的内容跟页面口径一致（同一份 familyLow()，不多不少）；
+               ② 是给人读的纯文字（标题带日期、按人分段、段内编号），不是给机器吃的 JSON；
+               ③ 真的交给剪贴板了，而且按钮有反馈；没东西可复制时按钮禁用。 */
+  fixture(); openFam();
+  var btn = q('#btnFamCopy');
+  ck('聚合页底部有「复制药名」按钮', !!btn && /复制药名/.test(btn.textContent),
+     btn ? btn.textContent : '(没有)');
+  ck('有偏少时可点', !!btn && btn.disabled === false, btn ? btn.disabled : null);
+
+  var T = famCopyText();
+  var lines = T.split('\n');
+  ck('首行带日期和总味数', /^全家偏少的药（\d{4}-\d{2}-\d{2}）：共 5 味$/.test(lines[0]), lines[0]);
+  ck('多个人时按人分段（【甲】【乙】）',
+     lines.indexOf('【甲】') >= 0 && lines.indexOf('【乙】') >= 0, lines.join(' | '));
+  var iJia = lines.indexOf('【甲】');
+  ck('段内编号从 1 起', /^1\. /.test(lines[iJia + 1]), lines[iJia + 1]);
+  ck('药名后面带紧迫度（已用完 / 还剩 N 天）',
+     /^1\. 甲空瓶片（已用完）$/.test(lines[iJia + 1]) &&
+     /^2\. 甲三日片（还剩 3 天）$/.test(lines[iJia + 2]),
+     lines[iJia + 1] + ' / ' + lines[iJia + 2]);
+  // 口径一致：把「1. 」「（已用完）」这些包装剥掉，剩下的药名得和页面上那一列一模一样
+  var txtNames = lines.filter(function(s){ return /^\d+\. /.test(s); }).map(function(s){
+    return s.replace(/^\d+\. /, '').replace(/（[^）]*）$/, '');
+  });
+  ck('复制出去的和页面上列的是同一批药名（不多不少）',
+     txtNames.slice().sort().join('、') === allNames().slice().sort().join('、'),
+     txtNames.join('、') + ' vs ' + allNames().join('、'));
+  ck('没把「充足 / 备用药 / 没填用法」的混进去',
+     txtNames.indexOf('甲六十片') < 0 && txtNames.indexOf('甲备用药') < 0 &&
+     txtNames.indexOf('甲没用法片') < 0, txtNames.join('、'));
+
+  // 点一下：把 navigator.clipboard 换掉，看交给它的是不是同一段文字
+  var copied = null, stubbed = false;
+  try{
+    Object.defineProperty(navigator, 'clipboard', { configurable: true,
+      value: { writeText: function(t){ copied = t; return Promise.resolve(); } } });
+    stubbed = true;
+  } catch(e){}
+  q('#btnFamCopy').click();
+  ck('点了真的把文字交给剪贴板', stubbed && copied === T,
+     stubbed ? (copied ? String(copied).split('\n')[0] : '(什么都没收到)') : '替换不了剪贴板');
+
+  // 一个人时不写「【我】」（跟副标题那条同一个道理）
+  people.length = 0;
+  people.push(who('只有我', [ mk('孤单三日片', { stock: 2 }) ]));
+  currentId = people[0].id;
+  syncMeds(); save(); render(); openFam();
+  var T1 = famCopyText();
+  ck('只有一个人时不写「【…】」分段', T1.indexOf('【') < 0, T1.replace(/\n/g, ' | '));
+  ck('一个人时也带编号', /^1\. 孤单三日片（还剩 2 天）$/.test(T1.split('\n')[1]),
+     T1.split('\n')[1]);
+
+  // 全家都不偏少 → 没有可复制的
+  people.length = 0;
+  people.push(who('甲', [ mk('都够吃片', { stock: 90 }) ]));
+  currentId = people[0].id;
+  syncMeds(); save(); render(); openFam();
+  ck('全家都不偏少时没有可复制的内容', famCopyText() === '', JSON.stringify(famCopyText()));
+  ck('这时候「复制药名」是禁用的', q('#btnFamCopy').disabled === true,
+     q('#btnFamCopy').disabled);
+
   function finish(){
     var pre = document.createElement('pre');
     pre.id = '__T';
     pre.textContent = JSON.stringify(R);
     document.body.appendChild(pre);
   }
-  finish();
+  // 「已复制 ✓」是 Promise 回调里改的（微任务之后），同步序列化抓不到 → 放到定时器里收尾
+  setTimeout(function(){
+    ck('复制成功后按钮短暂变成「已复制 ✓」', q('#btnFamCopy').textContent === '已复制 ✓',
+       q('#btnFamCopy').textContent);
+    finish();
+  }, 80);
 })();
 """
 
