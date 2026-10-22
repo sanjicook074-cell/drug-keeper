@@ -34,10 +34,24 @@ CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 PROBE = r"""
 /* ===== 注入的测试代码（必须插在主 IIFE 内部，否则 meds / 各函数都看不见）===== */
 (function(){
-  var R = { alerts: [], cases: [] };
+  var R = { alerts: [], cases: [], natives: [] };
   window.__T = R;
-  window.alert = function(m){ R.alerts.push(String(m)); };
-  window.confirm = function(){ return true; };
+  // 原生弹窗一律记成违规（2026-10-23 起页面里不该再出现）
+  window.alert = function(m){ R.natives.push('alert: ' + String(m)); };
+  window.confirm = function(m){ R.natives.push('confirm: ' + String(m)); return true; };
+  window.prompt = function(m){ R.natives.push('prompt: ' + String(m)); return ''; };
+  // ★ 页面里的提示/确认框已经换成 askAlert / askConfirm（返回 Promise）。
+  //   这套测的是"备用药"业务规则，弹窗本身有专门断言（test_box.py 第 20 节）——
+  //   这里只把文案记下来，不真弹，免得每条断言都要替用户点一次按钮。
+  askAlert = function(o){
+    R.alerts.push(typeof o === 'string' ? o : ((o.title || '') + ' ' + (o.sub || '')));
+    return Promise.resolve();
+  };
+  askConfirm = function(o){
+    R.confirms = R.confirms || [];
+    R.confirms.push(typeof o === 'string' ? o : ((o.title || '') + ' ' + (o.sub || '')));
+    return Promise.resolve(true);
+  };
   function q(s){ return document.querySelector(s); }
   function qa(s){ return Array.prototype.slice.call(document.querySelectorAll(s)); }
   function ck(name, cond, got){ R.cases.push({ name: name, pass: !!cond, got: got }); }
@@ -466,7 +480,7 @@ def main():
 
     fails = [c for c in data["cases"] if not c["pass"]]
     for c in data["cases"]:
-        print(("  OK  " if c["pass"] else "  FAIL") + "  " + c["name"] + "   → " + str(c["got"]))
+        print(("  OK  " if c["pass"] else "  FAIL") + "  " + c["name"] + "   → " + str(c.get("got")))
     print("\n" + "-" * 60)
     print("通过 %d / %d" % (len(data["cases"]) - len(fails), len(data["cases"])))
     shutil.rmtree(tmpdir, ignore_errors=True)

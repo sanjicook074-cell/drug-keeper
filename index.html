@@ -393,6 +393,40 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 .dose-tip{font-size:11.5px;color:var(--faint)}
 #dosePreview{font-size:11.5px;color:var(--brand)}
 .dlg-f{display:flex;justify-content:flex-end;gap:9px;padding:0 22px 20px}
+
+/* ---------- 通用弹窗（确认 / 提示 / 输入） ---------- */
+/* 替代浏览器原生的 confirm / alert / prompt。用户 2026-10-23 要求：
+   「点删除之后 应该是弹窗来确认 而不是由页面默认方式来实现
+     所有的类似的确认弹窗 都应该是独立的弹窗而不是默认」。
+   ⚠️ 原生弹窗是操作系统画的，样式改不动、手机上是顶部一条小框，
+      而且会阻塞整个页面。下面这套是页面内的 <dialog>，能跟主题走。 */
+#dlgAsk{width:min(430px,92vw)}
+/* 说明文字要能换行：原来的 confirm 文案里带着 \n（"××里还放着 3 种药。\n减到 2 格…"），
+   靠 textContent 写进去后，pre-line 才认这些换行。 */
+#askSub{white-space:pre-line;line-height:1.68;text-wrap:pretty}
+/* 三选一（导入那份"合并 / 覆盖 / 取消"）按钮文字长，430px 里一行排不下就让它换行，
+   别硬挤成三个窄条 —— 挤窄了「覆盖现有数据」会折成两行，看着像坏掉。 */
+#askFoot{flex-wrap:wrap}
+#askBody{padding-top:14px}
+#askBody:empty{display:none}
+.ask-in{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:#4b5563}
+.ask-in input{font:inherit;padding:9px 12px;border:1px solid var(--line);border-radius:9px;
+  background:#fff;color:var(--text);width:100%}
+.ask-in input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+/* 危险操作的说明块：删除这类不可逆动作，把要害单独标出来，别让它混在灰字里 */
+.ask-warn{margin-top:11px;padding:9px 11px;border-radius:9px;font-size:12px;line-height:1.6;
+  color:#9a3412;background:#fff7ed;border:1px solid #fed7aa}
+/* 遮罩比别的弹窗再深一档：删除这种要人停一下的框，背景越淡越容易被顺手点掉 */
+#dlgAsk::backdrop{background:rgba(15,23,42,.5)}
+/* 弹窗里的「删除」是这一屏唯一该做的事 —— 用实心红。
+   和工具栏上那些"次要危险操作"（.btn.danger，描边红）区分开：
+   描边红混在一排按钮里不够刺眼，手一抖就点到旁边的「取消」了。 */
+#askFoot .btn.danger{background:var(--out);border-color:var(--out);color:#fff;font-weight:600}
+#askFoot .btn.danger:hover{background:#b91c1c;border-color:#b91c1c}
+#askFoot .btn.danger:focus-visible{outline:2px solid rgba(220,38,38,.45);outline-offset:2px}
+/* 弹窗一打开就把焦点放在主按钮上（键盘回车 / 空格直接生效），
+   但 Chrome 默认那个黑色 focus ring 在这套配色里很扎眼 —— 换成品牌色描边。 */
+#askFoot .btn:focus-visible{outline:2px solid rgba(37,99,235,.45);outline-offset:2px}
 .sec-title{grid-column:1/-1;font-size:12px;font-weight:650;color:var(--muted);
   margin:6px 0 -4px;padding-top:10px;border-top:1px solid var(--line-2)}
 .sec-title:first-child{padding-top:0;border-top:none;margin-top:0}
@@ -1057,6 +1091,23 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
   </form>
 </dialog>
 
+<!-- 通用弹窗：确认 / 提示 / 输入三合一（替代浏览器原生 confirm / alert / prompt）
+     ★ 用户 2026-10-23：「点删除之后 应该是弹窗来确认 而不是由页面默认方式来实现
+       所有的类似的确认弹窗 都应该是独立的弹窗而不是默认」。
+     按钮区是动态生成的：提示框一个「知道了」、确认框「取消 / 确定」、
+     危险操作把确定按钮染红、导入那种三选一就给三个按钮。
+     ⚠️ 不用写死按钮 —— 写死的话每加一种组合就得改 HTML，而且顺序容易和预期相反。 -->
+<dialog id="dlgAsk">
+  <form id="formAsk" novalidate>
+    <div class="dlg-h">
+      <h3 id="askTitle"></h3>
+      <p id="askSub"></p>
+    </div>
+    <div class="dlg-b" id="askBody"></div>
+    <div class="dlg-f" id="askFoot"></div>
+  </form>
+</dialog>
+
 <script>
 (function(){
 'use strict';
@@ -1698,11 +1749,16 @@ function renderBox(){
   };
 }
 
-function renameSlot(i){
+async function renameSlot(i){
   const box = curBox();
   const s = box.slots[i];
   if(!s) return;
-  const v = prompt('这一格叫什么？\n（写「早饭前」「睡前」这种，装药时一眼就知道该放什么）', s.name || '');
+  const v = await askText({
+    title: '给这一格起个名字',
+    sub: '写「早饭前」「睡前」这种，装药时一眼就知道该放什么。',
+    input: { value: s.name || '', placeholder: '例如 早饭前', maxlength: 12 },
+    okText: '改名'
+  });
   if(v === null) return;                       // 按了取消：什么都不改
   const nm = String(v).trim().slice(0, 12);
   if(!nm) return;                              // 清空 = 不改，不留无名格
@@ -1711,7 +1767,7 @@ function renameSlot(i){
 }
 
 // 格数增减。减少时如果被砍掉的格里还放着药，先问一句 —— 药不会丢，但摆放会丢。
-function setSlotCount(n){
+async function setSlotCount(n){
   const box = curBox();
   const cur = box.slots.length;
   // ★ 不能写 `Math.round(num(n)) || cur`：num(0) 就是 0，会被 `||` 当成"没传"
@@ -1730,7 +1786,14 @@ function setSlotCount(n){
     const lost = cut.reduce(function(a, s){ return a + (s.ids || []).length; }, 0);
     if(lost){
       const names = cut.map(function(s){ return s.name; }).filter(Boolean).join('、');
-      if(!confirm('「' + names + '」里还放着 ' + lost + ' 种药。\n减到 ' + n + ' 格会把它们从盒子里拿掉（药本身和库存都不动）。继续？')) return;
+      const ok = await askConfirm({
+        title: '减到 ' + n + ' 格？',
+        sub: '「' + names + '」里还放着 ' + lost + ' 种药。',
+        warn: '减格会把这几格里的药从盒子里拿掉，摆好的位置就没了。药本身和库存都不动，之后还能重新摆。',
+        okText: '减到 ' + n + ' 格',
+        danger: true
+      });
+      if(!ok) return;
     }
     box.slots = box.slots.slice(0, n);
   }
@@ -2220,7 +2283,7 @@ function syncDosePreview(){
         每次用量、每周期几次填 0 等于没填用法（卡片算不出「剩几天」），
         单次上限填 0 是老口径的「不限」而这一格现在必填 —— 都得照样拦。
    一次把所有问题列全再弹，别让人改一格试一次。 */
-function submitMed(e){
+async function submitMed(e){
   e.preventDefault();
   const f = $('#formMed');
   const kind = (f.kind && f.kind.value === 'prn') ? 'prn' : 'daily';
@@ -2247,9 +2310,12 @@ function submitMed(e){
   if(!f.stockDate.value) miss.push('余量日期');
   if(!prn && !(rxMax > 0)) miss.push('一次最多能开多少（要大于 0）');
   if(miss.length){
-    alert('还差这几项：\n· ' + miss.join('\n· ') + '\n\n（' + (prn
-      ? '备用药只要 名称 / 单位 / 余量 / 余量日期，规格和备注选填'
-      : '只有「规格」和「备注」可以留空') + '）');
+    await askAlert({
+      title: '还有几项没填',
+      sub: '· ' + miss.join('\n· ') + '\n\n（' + (prn
+        ? '备用药只要 名称 / 单位 / 余量 / 余量日期，规格和备注选填'
+        : '只有「规格」和「备注」可以留空') + '）'
+    });
     return;
   }
 
@@ -2300,10 +2366,29 @@ function submitMed(e){
   $('#dlgMed').close();
 }
 
-function delMed(id){
+async function delMed(id){
   const m = meds.filter(function(x){ return x.id === id; })[0];
   if(!m) return;
-  if(!confirm('确定删除「' + m.name + '」？\n（这条记录会从清单里消失）')) return;
+  // ★ 删除是**连带**的：药盒里摆着的那几份、摆药台上放着的那份也会一起清掉。
+  //   原来只说"会从清单里消失"，用户根本想不到盒子里摆好的位置也跟着没了。
+  const inSlots = curBox().slots.filter(function(s){ return (s.ids || []).indexOf(id) >= 0; });
+  const onStage = curStage().indexOf(id) >= 0;
+  const extra = [];
+  if(inSlots.length){
+    extra.push('药盒' + inSlots.map(function(s){ return '「' + s.name + '」'; }).join('') + '里也摆着它');
+  }
+  if(onStage) extra.push('摆药台上也还放着它');
+  const ok = await askConfirm({
+    title: '删除「' + m.name + '」吗？',
+    sub: '从药品清单里删掉。'
+       + (extra.length ? extra.join('，') + '，一并清掉。' : ''),
+    warn: '删掉之后库存和「够吃几天」的推算都没了，不能撤销。要恢复只能靠之前导出的备份。',
+    okText: '删除',
+    danger: true
+  });
+  if(!ok) return;
+  // ★ 等用户点按钮这段时间页面可能已经被切到别人身上了 —— 不能在别人的药箱里动刀
+  if(!meds.some(function(x){ return x.id === id; })) return;
   setMeds(meds.filter(function(x){ return x.id !== id; }));   // 整体替换必须走 setMeds
   boxForget(id);                                              // 药盒里留着的那几份也一起拿走
   save(); render();
@@ -2325,11 +2410,22 @@ function switchPerson(id){
   save(); render();
 }
 
-function addPerson(){
-  const name = (prompt('新成员的名字（如 妈妈 / 爸爸 / 孩子）', '') || '').trim();
+async function addPerson(){
+  const name = String(await askText({
+    title: '添加一位成员',
+    sub: '每位成员有自己的药品清单和药盒，互不干扰。',
+    input: { label: '名字', placeholder: '例如 妈妈 / 爸爸 / 孩子', maxlength: 16 },
+    okText: '添加'
+  }) || '').trim();
   if(!name) return;
   if(people.some(function(p){ return p.name === name; })){
-    if(!confirm('已经有一个叫「' + name + '」的人了，还要再建一个吗？')) return;
+    const ok = await askConfirm({
+      title: '已经有「' + name + '」了',
+      sub: '再建一个同名成员，两份清单会分开存，别到时候找错药箱。',
+      okText: '还是要新建',
+      cancelText: '算了'
+    });
+    if(!ok) return;
   }
   const p = { id: uid(), name: name, note: '', meds: [] };
   people.push(p);
@@ -2366,15 +2462,24 @@ function renamePerson(id, name){
   // 注意：这里不重渲设置里的成员列表，否则输入框会失焦
 }
 
-function delPerson(id){
-  if(people.length <= 1){ alert('至少要留一个人。'); return; }
+async function delPerson(id){
+  if(people.length <= 1){
+    await askAlert({ title: '不能删', sub: '至少要留一位成员。想换个名字的话，直接改名字就行。' });
+    return;
+  }
   const p = people.filter(function(x){ return x.id === id; })[0];
   if(!p) return;
   const n = p.meds.length;
-  const msg = n
-    ? '删除「' + p.name + '」？\n\nTA 名下的 ' + n + ' 种药会一起删掉，无法恢复。'
-    : '删除「' + p.name + '」？';
-  if(!confirm(msg)) return;
+  const ok = await askConfirm({
+    title: '删除「' + p.name + '」吗？',
+    sub: n
+      ? 'TA 名下还有 ' + n + ' 种药，会一起删掉。'
+      : 'TA 名下没有药，只是把这个人和 TA 的药盒一起去掉。',
+    warn: n ? '药品、库存和药盒摆放全都没了，不能撤销。' : '',
+    okText: '删除',
+    danger: true
+  });
+  if(!ok) return;
   people = people.filter(function(x){ return x.id !== id; });
   if(currentId === id) currentId = people[0].id;
   syncMeds();
@@ -2428,17 +2533,172 @@ function openNumDialog(o){
 // 「现在推算 X → 改完 Y」那行实时对照已于 2026-10-12 按用户要求整行删除（连函数一起），
 // 见上面 openNumDialog 处的注释。别再恢复。
 
-function submitNum(e){
+async function submitNum(e){
   e.preventDefault();
   if(!numCtx) return;
   const v = Number($('#numVal').value);
-  if(!isFinite(v) || String($('#numVal').value).trim() === ''){ alert('请输入一个数字'); return; }
+  if(!isFinite(v) || String($('#numVal').value).trim() === ''){
+    await askAlert({ title: '还没填数', sub: '这一格要填一个数字。' });
+    $('#numVal').focus();
+    return;
+  }
   if(numCtx.mode === 'add' ? v <= 0 : v < 0){
-    alert(numCtx.mode === 'add' ? '请输入一个大于 0 的数量' : '请输入 0 或正数');
+    await askAlert({
+      title: '这个数不对',
+      sub: numCtx.mode === 'add' ? '又买了多少 —— 要填一个大于 0 的数量。' : '余量不能是负数，最少填 0。'
+    });
+    $('#numVal').focus();
     return;
   }
   numCtx.onOk(round2(v));
   $('#dlgNum').close();
+}
+
+/* -------------------- 通用弹窗：确认 / 提示 / 输入 -------------------- */
+// ★ 2026-10-23 用户要求：「点删除之后 应该是弹窗来确认 而不是由页面默认方式来实现
+//   所有的类似的确认弹窗 都应该是独立的弹窗而不是默认」。
+//   所以页面里不再有 confirm() / alert() / prompt() —— 全部走这一套 <dialog>。
+//   ⚠️ 返回值是 Promise：调用处必须 await，所在函数也必须是 async。
+//      写成"返回 Promise 但调用方不同步"的话，条件永远是 truthy，确认框就等于没拦。
+const ASK_INPUT = '\u0000ask-input';      // 按钮哨兵值：表示"取输入框里现在的字"
+let askCtx = null;
+
+function askOpen(o){
+  return new Promise(function(resolve){
+    // 上一个还开着就先当"取消"结掉，否则它那个 await 会永远悬着（比如连点两次删除）
+    if(askCtx){
+      const prev = askCtx;
+      askCtx = null;
+      prev.resolve(prev.cancel);
+    }
+    const btns = (o.buttons && o.buttons.length)
+      ? o.buttons
+      : [{ text: '知道了', kind: 'primary', value: true }];
+    // 回车按哪个：优先 primary / danger，都没有就按最后一个
+    let primary = null;
+    btns.forEach(function(b){ if(!primary && (b.kind === 'primary' || b.kind === 'danger')) primary = b; });
+    if(!primary) primary = btns[btns.length - 1];
+
+    askCtx = {
+      resolve: resolve,
+      cancel: (o.cancelValue === undefined ? null : o.cancelValue),
+      primary: primary.value
+    };
+
+    $('#askTitle').textContent = o.title || '';
+    $('#askSub').textContent = o.sub || '';
+    $('#askSub').hidden = !o.sub;
+
+    const body = $('#askBody');
+    body.innerHTML = '';
+    if(o.input){
+      const lab = document.createElement('label');
+      lab.className = 'ask-in';
+      const sp = document.createElement('span');
+      sp.textContent = o.input.label || '';
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.id = 'askInput';
+      inp.autocomplete = 'off';
+      inp.value = (o.input.value == null) ? '' : String(o.input.value);
+      inp.placeholder = o.input.placeholder || '';
+      inp.maxLength = o.input.maxlength || 24;
+      lab.appendChild(sp);
+      lab.appendChild(inp);
+      body.appendChild(lab);
+    }
+    if(o.warn){
+      const w = document.createElement('div');
+      w.className = 'ask-warn';
+      w.textContent = o.warn;
+      body.appendChild(w);
+    }
+
+    const foot = $('#askFoot');
+    foot.innerHTML = '';
+    btns.forEach(function(b){
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'btn ' + (b.kind || 'ghost');
+      el.textContent = b.text;
+      el.onclick = function(){ askSettle(b.value); };
+      foot.appendChild(el);
+    });
+
+    const d = $('#dlgAsk');
+    if(!d.open) d.showModal();
+    const inp = $('#askInput');
+    if(inp){ inp.focus(); inp.select(); }
+    else {
+      const p = foot.querySelector('.btn.primary, .btn.danger');
+      if(p) p.focus();
+    }
+  });
+}
+
+function askSettle(v){
+  const c = askCtx;
+  askCtx = null;
+  const d = $('#dlgAsk');
+  if(d.open) d.close();                   // close 是异步派发的，所以下面的 resolve 不能挂在 close 事件上
+  if(!c) return;
+  if(v === ASK_INPUT){
+    const inp = $('#askInput');
+    c.resolve(inp ? String(inp.value).trim() : '');
+    return;
+  }
+  c.resolve(v);
+}
+
+// 确认框 → Promise<boolean>（Esc / 点遮罩 / 取消 一律 false）
+function askConfirm(o){
+  return askOpen({
+    title: o.title || '确认',
+    sub: o.sub || '',
+    warn: o.warn,
+    cancelValue: false,
+    buttons: [
+      { text: o.cancelText || '取消', kind: 'ghost', value: false },
+      { text: o.okText || '确定', kind: o.danger ? 'danger' : 'primary', value: true }
+    ]
+  }).then(function(v){ return v === true; });
+}
+
+// 提示框 → Promise<void>（只有一个按钮；原来的 alert 全是这类）
+function askAlert(o){
+  if(typeof o === 'string') o = { sub: o };
+  return askOpen({
+    title: o.title || '提示',
+    sub: o.sub || '',
+    warn: o.warn,
+    cancelValue: true,
+    buttons: [{ text: o.okText || '知道了', kind: 'primary', value: true }]
+  }).then(function(){});
+}
+
+// 输入框 → Promise<string|null>（取消 = null；点了确定但没字 = ''）
+function askText(o){
+  return askOpen({
+    title: o.title || '输入',
+    sub: o.sub || '',
+    input: o.input,
+    cancelValue: null,
+    buttons: [
+      { text: '取消', kind: 'ghost', value: null },
+      { text: o.okText || '确定', kind: 'primary', value: ASK_INPUT }
+    ]
+  }).then(function(v){ return v === null ? null : v; });
+}
+
+// 多选一 → Promise<value|null>（导入那份"合并 / 覆盖"就是三态，一个 confirm 表达不了）
+function askChoice(o){
+  return askOpen({
+    title: o.title || '请选择',
+    sub: o.sub || '',
+    warn: o.warn,
+    cancelValue: null,
+    buttons: o.choices
+  });
 }
 
 // 「又买了药」：在今天推算出的余量基础上，加上新买的数量
@@ -2492,9 +2752,15 @@ function dispPlan(){
   });
 }
 
-function openDisp(){
+async function openDisp(){
   const plan = dispPlan();
-  if(!plan.length){ alert('现在没有需要补的药。'); return; }
+  if(!plan.length){
+    await askAlert({
+      title: '暂时不用补药',
+      sub: '没有偏少的药，都还够吃。等哪味低于「提醒天数」时再来。'
+    });
+    return;
+  }
 
   $('#dispSub').textContent = '一次挂号只能开一次药：每个药按「一次最多能开多少」入库（开满），'
     + '没设上限的就补满到够吃 ' + settings.targetDays + ' 天。确认即更新药库。';
@@ -2539,7 +2805,7 @@ function openDisp(){
   $('#dlgDisp').showModal();
 }
 
-function submitDisp(e){
+async function submitDisp(e){
   e.preventDefault();
   const plan = dispPlan();          // 必须改数据之前先算好
   if(!plan.length){ $('#dlgDisp').close(); return; }
@@ -2552,10 +2818,12 @@ function submitDisp(e){
   $('#dlgDisp').close();
 
   const left = dispItems();
-  alert('已把 ' + plan.length + ' 种药加进库存。'
-    + (left.length
-        ? '\n\n还有 ' + left.length + ' 种没到位（受单次上限限制），可以再点一次「已经开药」。'
-        : '\n\n现在都在偏少线以上了。'));
+  await askAlert({
+    title: '已入库 ' + plan.length + ' 种药',
+    sub: left.length
+      ? '还有 ' + left.length + ' 种没到位（受「一次最多能开多少」限制），可以再点一次「已经开药」。'
+      : '现在都在偏少线以上了。'
+  });
 }
 
 /* -------------------- 批量调整存量（把整个药箱的药统一加/减 N 天） -------------------- */
@@ -2693,8 +2961,11 @@ function openFam(){
   if(!d.open) d.showModal();
 }
 
-function openBulk(){
-  if(!meds.length){ alert('这个药箱还是空的，先添加药品。'); return; }
+async function openBulk(){
+  if(!meds.length){
+    await askAlert({ title: '药箱是空的', sub: '先添加药品，才能按天数统一加减存量。' });
+    return;
+  }
   $('#bulkDays').value = 7;
   bulkResetPicks();
   $('#dlgBulk').showModal();
@@ -2807,14 +3078,16 @@ function bulkRefreshFoot(){
     + '。<br>确认后基准日一并滚到今天 —— 和「又买了药」「已经开药」同一套算法。';
 }
 
-function applyBulk(sign){
+async function applyBulk(sign){
   const days = bulkDays();
   // ★ 只动勾选的（2026-10-12）：没勾的一律不碰
   const rows = bulkRows(days, sign).filter(function(r){
     return !r.skip && bulkPicked[r.m.id];
   });
   if(!rows.length){
-    alert(meds.some(bulkPickable) ? '还没勾选任何药。' : '没有能按天换算的药 —— 这个药箱里的药都没设用法。');
+    await askAlert(meds.some(bulkPickable)
+      ? { title: '还没勾选任何药', sub: '左边每一行前面有个勾选框，先勾上要动的药。' }
+      : { title: '没有能按天换算的药', sub: '这个药箱里的药都没设用法 —— 全是备用药，或者每天吃的也没填用法。算不出「N 天是多少量」。' });
     return;
   }
   rows.forEach(function(r){
@@ -2827,9 +3100,12 @@ function applyBulk(sign){
   const word = sign > 0 ? '增加' : '减少';
   const floored = rows.filter(function(r){ return r.floored; }).length;
   const unchanged = rows.filter(function(r){ return r.noop; }).length;
-  alert('已把 ' + rows.length + ' 种药的存量' + word + ' ' + days + ' 天的量。'
-    + (floored ? '\n\n其中 ' + floored + ' 种原本就不够 ' + days + ' 天，已减到 0。' : '')
-    + (unchanged ? '\n\n有 ' + unchanged + ' 种换算后不足 0.01，实际没变。' : ''));
+  await askAlert({
+    title: '存量已调整',
+    sub: '已把 ' + rows.length + ' 种药的存量' + word + ' ' + days + ' 天的量。'
+      + (floored ? '\n\n其中 ' + floored + ' 种原本就不够 ' + days + ' 天，已减到 0。' : '')
+      + (unchanged ? '\n\n有 ' + unchanged + ' 种换算后不足 0.01，实际没变。' : '')
+  });
 }
 
 /* -------------------- 底方录入（2026-10-12 首版；2026-10-13 砍掉浏览器端 OCR，只留助手通道） --------------------
@@ -3328,7 +3604,7 @@ function rxReset(){
    created：没有这个人，用户同意新建 → 建好切过去
    kept   ：没有这个人但用户不建（或底方根本没写姓名）→ 留在当前人身上，页面会提醒
    ★ 不写姓名时**不乱猜**：宁可让用户自己看一眼，也别把别人的药记到这个人名下。 */
-function rxResolveTarget(patient){
+async function rxResolveTarget(patient){
   const want = rxNormName(patient && patient.name);
   if(!want) return { person: curPerson(), how: 'unknown' };
   const hit = people.filter(function(p){ return rxNormName(p.name) === want; })[0];
@@ -3338,9 +3614,17 @@ function rxResolveTarget(patient){
   }
   const nm = String(patient.name || '').trim();
   const nowName = ((curPerson() || {}).name) || '';
-  if(window.confirm('药箱里还没有叫「' + nm + '」的人。\n\n'
-      + '要新建一个「' + nm + '」，把这份底方记到他/她名下吗？\n'
-      + '（点「取消」就记到当前「' + nowName + '」名下）')){
+  // ★ 这是"给这份底方选归属"，不是普通确认 —— 两个选项都是有效动作，
+  //   所以按钮文字必须写清各自动作结果（原来用 confirm 的"确定/取消"表达，太容易点反）。
+  const pick = await askChoice({
+    title: '这份底方是谁的？',
+    sub: '药箱里还没有叫「' + nm + '」的人。',
+    choices: [
+      { text: '记到「' + nowName + '」名下', kind: 'ghost', value: 'keep' },
+      { text: '新建「' + nm + '」', kind: 'primary', value: 'create' }
+    ]
+  });
+  if(pick === 'create'){
     const np = addPersonNamed(nm);
     if(np) return { person: np, how: 'created' };
   }
@@ -3458,9 +3742,9 @@ function rxAudit(sheets, rows, fromWho, patient){
   el.hidden = false;
 }
 
-function openRx(rows, fromWho, patient, sheets){
+async function openRx(rows, fromWho, patient, sheets){
   rxReset();
-  const t = rxResolveTarget(patient);
+  const t = await rxResolveTarget(patient);       // 会先问"这份底方是谁的"（含新建），await 之后再铺数据
   const list = (rows || []).map(function(x){ return rxNewRow(x); });
   const dup = rxMarkExisting(list, t.person);     // ← 去重：已有的取消勾选
   rxRows = list;
@@ -3481,12 +3765,21 @@ function openRx(rows, fromWho, patient, sheets){
 }
 
 /* ---- 提交 ---- */
-function submitRx(e){
+async function submitRx(e){
   e.preventDefault();
   const picked = rxRows.filter(function(r){ return r.picked; });
-  if(!picked.length){ alert('还没勾选任何药。'); return; }
+  if(!picked.length){
+    await askAlert({ title: '还没勾选任何药', sub: '每味药前面有个勾选框，勾上要入库的那几味。' });
+    return;
+  }
   const bad = picked.filter(function(r){ return !(r.name || '').trim(); });
-  if(bad.length){ alert('有 ' + bad.length + ' 味还没填药品名称 —— 补上，或把那一行的勾去掉。'); return; }
+  if(bad.length){
+    await askAlert({
+      title: '有 ' + bad.length + ' 味还没填药品名称',
+      sub: '把药名补上，或者把那一行的勾去掉 —— 没名字的药进了药箱也没法照着买。'
+    });
+    return;
+  }
 
   picked.forEach(function(r){
     meds.push({
@@ -3506,8 +3799,11 @@ function submitRx(e){
   save(); render();
   $('#dlgRx').close();
   const who = curPerson();
-  alert('已把 ' + picked.length + ' 味药加入' + (who ? '「' + who.name + '」' : '') + '药箱。\n\n'
-    + '「余量」记的是你这次开的量，基准日是今天；卡片上的「剩 N 天」按你确认的天数走，之后每天自动往下扣。');
+  await askAlert({
+    title: '已加入 ' + picked.length + ' 味药',
+    sub: (who ? '记到「' + who.name + '」的药箱里。' : '')
+      + '\n\n「余量」记的是这次开回来的量，基准日是今天；卡片上的「剩 N 天」按你确认的天数走，之后每天自动往下扣。'
+  });
   rxReset();
 }
 
@@ -3581,7 +3877,10 @@ function fallbackCopy(txt, cb){
   ta.style.left = '-9999px';
   document.body.appendChild(ta);
   ta.select();
-  try { document.execCommand('copy'); cb(); } catch(e){ alert('复制失败，请手动选中文本复制'); }
+  try { document.execCommand('copy'); cb(); }
+  catch(e){
+    askAlert({ title: '复制没成功', sub: '浏览器挡住了自动复制。可以自己选中文本，按 Ctrl+C 复制。' });
+  }
   document.body.removeChild(ta);
 }
 function downloadFile(filename, content, mime){
@@ -3607,7 +3906,7 @@ function exportJSON(){
 }
 function importJSON(file){
   const reader = new FileReader();
-  reader.onload = function(){
+  reader.onload = async function(){
     try {
       const obj = JSON.parse(String(reader.result));
 
@@ -3616,14 +3915,20 @@ function importJSON(file){
         const m = migrate(obj);
         if(!m) throw new Error('备份内容无法解析');
         const total = m.people.reduce(function(s, p){ return s + p.meds.length; }, 0);
-        if(!confirm('这是一份完整备份：' + m.people.length + ' 个人、共 ' + total + ' 种药。\n\n'
-          + '确定 = 全部替换（当前数据会被覆盖）\n取消 = 放弃导入')) return;
+        const ok = await askConfirm({
+          title: '用这份备份替换全部数据？',
+          sub: '这是一份完整备份：' + m.people.length + ' 个人、共 ' + total + ' 种药。',
+          warn: '恢复是「整包替换」—— 现在这台机器上的所有人、所有药、所有药盒摆放都会被这份备份覆盖，不能撤销。',
+          okText: '全部替换',
+          danger: true
+        });
+        if(!ok) return;
         people = m.people;
         currentId = m.currentId;
         syncMeds();
         if(obj.settings){ settings = Object.assign({}, DEFAULT_SETTINGS, settings, obj.settings); saveSettings(); }
         save(); render();
-        alert('已恢复：' + m.people.length + ' 个人、共 ' + total + ' 种药');
+        await askAlert({ title: '已恢复', sub: m.people.length + ' 个人、共 ' + total + ' 种药。' });
         return;
       }
 
@@ -3646,10 +3951,25 @@ function importJSON(file){
         };
       });
       if(!clean.length) throw new Error('没有可导入的药品');
-      const mode = meds.length
-        ? confirm('导入 ' + clean.length + ' 种药。\n\n确定 = 合并到现有数据（同名同规格的会更新）\n取消 = 覆盖现有数据')
-        : true;
-      if(mode && meds.length){
+      // ★ 原来是 confirm 的「确定 = 合并 / 取消 = 覆盖」—— 这等于把"取消"当成"覆盖"，
+      //   手一抖点掉确定框就是整箱药被换掉。现在改成三个按钮，各有各的字，
+      //   Esc / 点遮罩 = 取消（什么都不做）。
+      let mode = 'replace';
+      if(meds.length){
+        const who = (curPerson() || {}).name || '当前人';
+        mode = await askChoice({
+          title: '这 ' + clean.length + ' 种药怎么放？',
+          sub: '「' + who + '」的药箱里已经有 ' + meds.length + ' 种药了。',
+          warn: '选「覆盖」会先清空这个人现有的药品和药盒摆放，再整批换成本文件里的。',
+          choices: [
+            { text: '取消', kind: 'ghost', value: null },
+            { text: '覆盖现有数据', kind: 'danger', value: 'replace' },
+            { text: '合并（同名同规格更新）', kind: 'primary', value: 'merge' }
+          ]
+        });
+        if(!mode) return;
+      }
+      if(mode === 'merge' && meds.length){
         clean.forEach(function(nm){
           const i = meds.findIndex(function(x){ return x.name === nm.name && (x.spec || '') === (nm.spec || ''); });
           if(i >= 0) meds[i] = Object.assign({}, meds[i], nm, { id: meds[i].id });
@@ -3660,9 +3980,15 @@ function importJSON(file){
       }
       if(obj && obj.settings){ settings = Object.assign({}, DEFAULT_SETTINGS, settings, obj.settings); saveSettings(); }
       save(); render();
-      alert('导入完成：' + clean.length + ' 种药 → 归入「' + (curPerson() ? curPerson().name : '当前人') + '」');
+      await askAlert({
+        title: '导入完成',
+        sub: clean.length + ' 种药已归入「' + (curPerson() ? curPerson().name : '当前人') + '」（' + (mode === 'merge' ? '合并' : '覆盖') + '）。'
+      });
     } catch(err){
-      alert('导入失败：' + (err && err.message ? err.message : '文件无法解析'));
+      await askAlert({
+        title: '导入失败',
+        sub: (err && err.message ? err.message : '文件无法解析') + '\n\n确认选的是药品管家导出的 .json 备份文件。'
+      });
     }
   };
   reader.readAsText(file, 'utf-8');
@@ -3794,15 +4120,23 @@ $('#formBulk').addEventListener('submit', function(e){ e.preventDefault(); });
 
 /* ---- 底方录入（只剩「手打/粘贴」和「助手给的链接」两条入口） ---- */
 $('#btnRx').addEventListener('click', function(){ openRx(); });
-$('#btnRxParse').addEventListener('click', function(){
+$('#btnRxParse').addEventListener('click', async function(){
   const got = rxParseText($('#rxPaste').value);
   if(!got.length){
-    alert('没认出药品行。一行一味，把底方上那行字原样粘进来就行（要含中文药名）。');
+    await askAlert({
+      title: '没认出药品行',
+      sub: '一行一味，把底方上那行字原样粘进来就行（要含中文药名）。'
+    });
     return;
   }
   const added = rxAddRows(got);
   $('#rxPaste').value = '';
-  if(!added) alert('这些药已经在下面的列表里了。');
+  if(!added){
+    await askAlert({
+      title: '这些药已经在清单里了',
+      sub: '粘进来的药名下面都有了，没有新增。要改用法的话直接在列表里改。'
+    });
+  }
 });
 $('#btnRxAddOne').addEventListener('click', function(){
   rxRows.push(rxNewRow({ name: '', unit: '片', perDose: 1, cycleDays: 1, timesPerCycle: 1, total: 0 }));
@@ -3929,6 +4263,21 @@ $('#dlgUse').addEventListener('close', function(){ if($('#dlgRx').open) renderRx
 // 单个数字弹窗（又买了药 / 校准余量）—— 输入时不再有实时对照行要同步（2026-10-12 已删）
 $('#btnNumCancel').addEventListener('click', function(){ $('#dlgNum').close(); });
 $('#formNum').addEventListener('submit', submitNum);
+
+// 通用弹窗的三条收尾路径。★ 只挂 cancel 和处理遮罩的 click，不挂 close ——
+// close 事件是异步派发的，而 askSettle 自己就会 close，挂上去会自己 resolve 自己两次。
+$('#dlgAsk').addEventListener('cancel', function(e){
+  e.preventDefault();                       // 自己关，保证 Promise 一定被 resolve（否则 await 永远悬着）
+  askSettle(askCtx ? askCtx.cancel : null);
+});
+$('#dlgAsk').addEventListener('click', function(e){
+  // 点遮罩 = 取消。dialog 自己有 padding:0、里面是 form 撑满，所以靶子是 dialog 本身时就是点在框外
+  if(e.target === this) askSettle(askCtx ? askCtx.cancel : null);
+});
+$('#formAsk').addEventListener('submit', function(e){
+  e.preventDefault();                       // 回车：按主按钮（输入框那种就是"确定"）
+  if(askCtx) askSettle(askCtx.primary);
+});
 $('#btnImport').addEventListener('click', function(){ $('#fileImport').click(); });
 $('#fileImport').addEventListener('change', function(e){
   const f = e.target.files && e.target.files[0];

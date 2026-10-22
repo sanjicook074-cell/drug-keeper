@@ -35,19 +35,70 @@ CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
 PROBE = r"""
 /* ===== 注入的测试代码（必须插在主 IIFE 内部，否则 meds / 各函数都看不见）===== */
-(function(){
-  var R = { alerts: [], cases: [], prompts: [] };
+/* ★ async：2026-10-23 起页面里的确认/提示/输入框全换成自定义 <dialog>，
+   askConfirm/askText 都返回 Promise，调用处必须 await —— 同步 IIFE 拿不到结果。 */
+(async function(){
+  var R = { alerts: [], cases: [], prompts: [], natives: [] };
   window.__T = R;
-  window.alert = function(m){ R.alerts.push(String(m)); };
-  window.confirm = function(){ return true; };
-  R.promptValue = null;
-  window.prompt = function(m, dflt){
-    R.prompts.push(String(m));
-    return R.promptValue === null ? dflt : R.promptValue;
-  };
+  // ★ 2026-10-23：页面里的确认/提示/输入框全部换成页面内 <dialog>（用户要求"不要用页面默认方式"）。
+  //   这三个桩不再用来"模拟用户回答"，而是**记录违规** —— 页面里只要还有一处走原生弹窗，
+  //   R.natives 就非空，最后那条断言会红。返回 true 只是让残留代码不至于卡住流程。
+  window.alert = function(m){ R.natives.push('alert: ' + String(m)); };
+  window.confirm = function(m){ R.natives.push('confirm: ' + String(m)); return true; };
+  window.prompt = function(m){ R.natives.push('prompt: ' + String(m)); return ''; };
+  try {
   function q(s){ return document.querySelector(s); }
   function qa(s){ return Array.prototype.slice.call(document.querySelectorAll(s)); }
   function ck(name, cond, got){ R.cases.push({ name: name, pass: !!cond, got: got }); }
+
+  /* ---- 通用弹窗的"出手"工具 ----
+     askConfirm / askText 返回 Promise，而且弹窗在调用那一刻就同步打开了
+     （Promise executor 是同步跑的），所以可以"先点按钮、再等结果"：
+         await ans(setSlotCount(3), '减到')
+         await ansText(renameSlot(0), '早饭前')
+     btn 传按钮文字的一部分；'esc' 模拟按 Esc；不传 = 点主按钮。
+     ★ 不桩掉 askConfirm 是有意的：这些断言要顺带证明"弹窗真的弹出来了、
+       按钮真的能点、点取消真的什么都没发生"，桩掉就只剩函数调用了。 */
+  function tapAsk(btn){
+    var d = q('#dlgAsk');
+    if(!d || !d.open) return false;
+    if(btn === 'esc'){
+      d.dispatchEvent(new Event('cancel', { cancelable: true }));
+      return true;
+    }
+    var btns = Array.prototype.slice.call(d.querySelectorAll('#askFoot .btn'));
+    var pick = null, i;
+    if(btn){
+      for(i = 0; i < btns.length; i++){
+        if(btns[i].textContent.indexOf(btn) >= 0){ pick = btns[i]; break; }
+      }
+    } else {
+      pick = d.querySelector('#askFoot .btn.primary') || d.querySelector('#askFoot .btn.danger');
+      if(!pick && btns.length) pick = btns[btns.length - 1];
+    }
+    if(!pick) return false;
+    pick.click();
+    return true;
+  }
+  async function ans(p, btn){
+    await null;                                   // 让 async 函数先跑到 await 处（弹窗已在此时打开）
+    var d = q('#dlgAsk');
+    if(d && d.open && !tapAsk(btn)){
+      throw new Error('弹窗开着，但按钮「' + (btn || '(主按钮)') + '」没找到');
+    }
+    return await p;
+  }
+  // 输入框版：先填字，再点按钮
+  async function ansText(p, val, btn){
+    await null;
+    var d = q('#dlgAsk');
+    if(d && d.open){
+      var inp = q('#askInput');
+      if(inp) inp.value = val;
+      if(!tapAsk(btn)) throw new Error('输入弹窗里找不到按钮「' + (btn || '(主按钮)') + '」');
+    }
+    return await p;
+  }
   function agoD(n){ var d = new Date(); d.setDate(d.getDate() - n); return fmtDate(d); }
   function byName(n){
     for(var i = 0; i < meds.length; i++) if(meds[i].name === n) return meds[i];
@@ -237,20 +288,25 @@ PROBE = r"""
   ck('加格不会动已经摆好的药', nameIn(0, '早饭前片'), '');
   q('#box button[data-box="dec"]').click();
   ck('点 − 回到 3 格', slots().length === 3, slots().length);
-  setSlotCount(99);
+  await setSlotCount(99);
   ck('格数上限 7（填 99 也只到 7）', slots().length === 7, slots().length);
   ck('到上限后「＋」按钮是禁用的', q('#box button[data-box="inc"]').disabled === true, '');
-  setSlotCount(0);
+  await setSlotCount(0);
   ck('格数下限 1（填 0 也留 1 格）', slots().length === 1, slots().length);
   ck('到下限后「−」按钮是禁用的', q('#box button[data-box="dec"]').disabled === true, '');
 
   // 减格时那一格里的药会被拿掉 —— 但药本身和库存不动
   fixture();
-  setSlotCount(4);
+  await setSlotCount(4);
   dragToListCard('早饭前片', 3);
   ck('第 4 格里有药', nameIn(3, '早饭前片'), slotIds(3).length);
   var stockBefore = byName('早饭前片').stockBase;
-  setSlotCount(3);
+  // 砍掉的格里还放着药 → 必须弹窗确认（原来走原生 confirm，现在是页面内 <dialog>）
+  var pCut = setSlotCount(3);
+  ck('减到 3 格之前先弹了确认框（页面内 dialog，不是原生 confirm）',
+     !!(q('#dlgAsk') && q('#dlgAsk').open), '');
+  ck('确认框把要砍掉的格名说出来了', /睡前/.test(q('#askSub').textContent), q('#askSub').textContent);
+  await ans(pCut, '减到');
   ck('减到 3 格：被砍掉的第 4 格连同里面的药一起没了', slots().length === 3, slots().length);
   ck('减格只是从盒子里拿掉，药还在清单里、库存也没变',
      !!byName('早饭前片') && byName('早饭前片').stockBase === stockBefore,
@@ -258,20 +314,25 @@ PROBE = r"""
 
   /* ---------------- 9. 格名能改 ---------------- */
   fixture();
-  R.promptValue = '早饭前';
-  renameSlot(0);
+  // 改格名原来是原生 prompt，现在是页面内的输入弹窗 —— 顺带查它真的弹了、预填了原名字
+  var pRename = renameSlot(0);
+  ck('改格名弹的是页面内输入框（不是原生 prompt）',
+     !!(q('#dlgAsk') && q('#dlgAsk').open && q('#askInput')), '');
+  ck('输入框预填了这一格现在的名字（回车不改 = 原名）',
+     q('#askInput').value === curBox().slots[0].name,
+     q('#askInput').value + ' / ' + curBox().slots[0].name);
+  tapAsk('取消');
+  await pRename;
+  await ansText(renameSlot(0), '早饭前');
   ck('改格名：第 1 格叫「早饭前」', slotNames()[0] === '早饭前', slotNames()[0]);
   ck('格名写进了数据（不是只在 DOM 上）', curBox().slots[0].name === '早饭前',
      curBox().slots[0].name);
-  R.promptValue = '';
-  renameSlot(0);
+  await ansText(renameSlot(0), '');
   ck('格名改成空 → 保持原来的名字，不留无名格', curBox().slots[0].name === '早饭前',
      curBox().slots[0].name);
-  R.promptValue = null;
-  renameSlot(0);   // prompt 返回默认值（原来的名字）→ 不变
-  ck('按取消（返回 null）不改名', curBox().slots[0].name === '早饭前', curBox().slots[0].name);
-  R.promptValue = '这一格的名字特别特别特别长哦';
-  renameSlot(0);
+  await ansText(renameSlot(0), '不该生效', '取消');
+  ck('按取消不改名', curBox().slots[0].name === '早饭前', curBox().slots[0].name);
+  await ansText(renameSlot(0), '这一格的名字特别特别特别长哦');
   ck('格名最长 12 个字（不然会把格子撑坏）', curBox().slots[0].name.length === 12,
      curBox().slots[0].name.length);
 
@@ -280,7 +341,26 @@ PROBE = r"""
   dragToListCard('早饭前片', 0);
   dragToListCard('早饭前片', 1);
   var deadId = byName('早饭前片').id;
-  delMed(deadId);
+  // 删药先弹确认框：查它弹了、写清了连带影响、点「取消」绝不删
+  var pDel = delMed(deadId);
+  (function(){
+    var d = q('#dlgAsk');
+    R.dlg = { open: !!(d && d.open),
+              title: d ? q('#askTitle').textContent : '',
+              sub: d ? q('#askSub').textContent : '',
+              hasDanger: !!(d && d.querySelector('#askFoot .btn.danger')) };
+  })();
+  await ans(pDel, '取消');
+  ck('删药先弹页面内确认框（不是原生 confirm）', R.dlg.open === true, R.dlg.open);
+  ck('确认框标题带药名', /早饭前片/.test(R.dlg.title), R.dlg.title);
+  ck('确认框说明了「药盒里也摆着它」这个连带影响', /药盒/.test(R.dlg.sub), R.dlg.sub);
+  ck('删除按钮是危险色（不是普通主按钮）', R.dlg.hasDanger === true, R.dlg.hasDanger);
+  ck('★ 点「取消」之后药还在（没删）', !!byName('早饭前片'), byName('早饭前片') ? '在' : '没了');
+  ck('点「取消」之后盒子里那两份也还在',
+     slotIds(0).indexOf(deadId) >= 0 && slotIds(1).indexOf(deadId) >= 0, '');
+
+  await ans(delMed(deadId), '删除');
+  ck('点「删除」之后清单里没它了', !byName('早饭前片'), byName('早饭前片') ? '还在' : '没了');
   ck('删掉这味药之后，盒子里一处都不剩',
      curBox().slots.every(function(s){ return s.ids.indexOf(deadId) < 0; }),
      JSON.stringify(curBox().slots.map(function(s){ return s.ids; })));
@@ -827,15 +907,66 @@ PROBE = r"""
     ck('收走台面不动已经摆好的那一格', nameIn(0, '晚饭后胶囊'), slotIds(0).length);
   })();
 
+  /* ---------------- 20. 通用弹窗本身 ---------------- */
+  // 用户 2026-10-23 原话：「点删除之后 应该是弹窗来确认 而不是由页面默认方式来实现
+  //   所有的类似的确认弹窗 都应该是独立的弹窗而不是默认」。
+  // 下面几条盯的就是"弹窗这件事本身"，而不只是"删没删掉"。
   fixture();
 
-  function finish(){
-    var pre = document.createElement('pre');
-    pre.id = '__T';
-    pre.textContent = JSON.stringify(R);
-    document.body.appendChild(pre);
+  // 20.1 Esc = 取消（不能拦着不让关，也不能关了就当同意）
+  var pdlgEsc = delMed(byName('早饭前片').id);
+  ck('删药弹窗开着（准备测 Esc）', q('#dlgAsk').open === true, '');
+  q('#dlgAsk').dispatchEvent(new Event('cancel', { cancelable: true }));
+  await pdlgEsc;
+  ck('★ Esc 关窗 = 取消，药还在', !!byName('早饭前片'), byName('早饭前片') ? '在' : '被删了');
+  ck('Esc 之后弹窗真的关掉了', q('#dlgAsk').open === false, q('#dlgAsk').open);
+
+  // 20.2 点遮罩 = 取消
+  var pdlgMask = delMed(byName('早饭前片').id);
+  q('#dlgAsk').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await pdlgMask;
+  ck('★ 点遮罩 = 取消，药还在', !!byName('早饭前片'), byName('早饭前片') ? '在' : '被删了');
+
+  // 20.3 提示框只有一个按钮，写「知道了」
+  var pdlgTip = askAlert({ title: '测试提示', sub: '内容' });
+  var tipBtns = qa('#askFoot .btn');
+  ck('提示框只有一个按钮', tipBtns.length === 1, tipBtns.length);
+  ck('提示框按钮写「知道了」（不是 OK / 确定）',
+     tipBtns[0] && tipBtns[0].textContent === '知道了', tipBtns[0] ? tipBtns[0].textContent : '');
+  tapAsk('知道了');
+  await pdlgTip;
+  ck('点完「知道了」提示框关掉了', q('#dlgAsk').open === false, '');
+
+  // 20.4 回车 = 主按钮（输入框那种场景：手不用离开键盘）
+  var pdlgEnter = askConfirm({ title: '回车测试', sub: '', okText: '好' });
+  q('#formAsk').requestSubmit();
+  ck('回车走的是主按钮（拿回 true）', (await pdlgEnter) === true, '');
+
+  // 20.5 连点两次：后开的把前一个当取消结掉，前一个的 await 不会永远悬着
+  var pdlgTwice = delMed(byName('早饭前片').id);
+  var pdlgTwice2 = askAlert({ title: '第二个', sub: '' });
+  tapAsk('知道了');
+  await pdlgTwice2;
+  var twiceAlive = !!byName('早饭前片');
+  await pdlgTwice;
+  ck('★ 连开两个弹窗时前一个当"取消"结掉 —— 第二次点删除不会把第一次的意图糊上去',
+     twiceAlive, twiceAlive ? '在' : '被删了');
+
+  // 20.6 全程零原生弹窗
+  ck('★ 整个测试过程一次都没走浏览器原生 alert / confirm / prompt',
+     R.natives.length === 0, R.natives.slice(0, 3).join(' | ') || '(一次都没有)');
+
+  fixture();
+  } catch(err){
+    // 断言里抛异常（比如去点一个已经不存在的元素）时，别让整个脚本静默死掉 ——
+    // 否则 python 那边只会打印"没拿到测试输出"，什么线索都没有。
+    R.cases.push({ name: '★ 测试脚本抛异常中断（后面的断言都没跑）', pass: false,
+                   got: String((err && err.message) || err) });
   }
-  finish();
+  var pre = document.createElement('pre');
+  pre.id = '__T';
+  pre.textContent = JSON.stringify(R);
+  document.body.appendChild(pre);
 })();
 """
 
@@ -868,7 +999,7 @@ def main():
 
     fails = [c for c in data["cases"] if not c["pass"]]
     for c in data["cases"]:
-        print(("  OK  " if c["pass"] else "  FAIL") + "  " + c["name"] + "   → " + str(c["got"]))
+        print(("  OK  " if c["pass"] else "  FAIL") + "  " + c["name"] + "   → " + str(c.get("got")))
     print("\n" + "-" * 60)
     print("通过 %d / %d" % (len(data["cases"]) - len(fails), len(data["cases"])))
     shutil.rmtree(tmpdir, ignore_errors=True)

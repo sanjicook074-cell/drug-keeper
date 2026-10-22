@@ -24,18 +24,33 @@ CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
 PROBE = r"""
 /* ===== 注入的测试代码（必须插在主 IIFE 内部，否则 meds/各函数都看不见）===== */
-(function(){
-  var R = { alerts: [], cases: [], prompts: [], confirms: [] };
+(async function(){
+  var R = { alerts: [], cases: [], prompts: [], confirms: [], natives: [] };
   window.__T = R;
-  window.alert = function(m){ R.alerts.push(String(m)); };
-  // ★ 记录原生 prompt 有没有被调用过：2026-10-11 用户要求「又买了药 / 校准余量」
-  //   不许再用浏览器自带的小框，必须走中间弹窗。这里把它换成只记账、不弹的桩。
-  window.prompt = function(m){ R.prompts.push(String(m)); return null; };
-  // ★ confirm 也换成桩（2026-10-13）：底方带了个"药箱里没有的人"时，页面会问一句要不要新建。
-  //   不换掉的话无头 Chrome 会弹真对话框 —— 既可能挂住 --dump-dom，也测不了"到底问没问"。
-  //   默认回 true（同意新建）；用例要测"用户点了取消"就临时把 R.confirmAnswer 置 false。
+  // ★ 2026-10-23 起页面里不再有原生 alert / confirm / prompt（用户要求"独立弹窗"）。
+  //   这三个桩改成**记违规**：谁还在用原生弹窗，R.natives 就非空，最后那条断言会红。
+  window.alert = function(m){ R.natives.push('alert: ' + String(m)); };
+  window.prompt = function(m){ R.natives.push('prompt: ' + String(m)); return null; };
+  window.confirm = function(m){ R.natives.push('confirm: ' + String(m)); return true; };
+  // 页面里的弹窗换成 askAlert / askConfirm / askText / askChoice（都返回 Promise）。
+  // 这套测的是底方/开药业务，弹窗本身另有专门断言（test_box.py 第 20 节）——
+  // 这里只记账不真弹，免得每条断言都要替用户点一次按钮。
+  function _txt(o){
+    return typeof o === 'string' ? o : ((o.title || '') + ' ' + (o.sub || ''));
+  }
+  askAlert = function(o){ R.alerts.push(_txt(o)); return Promise.resolve(); };
+  askConfirm = function(o){
+    R.confirms.push(_txt(o));
+    return Promise.resolve(R.confirmAnswer !== false);
+  };
+  askText = function(o){ R.prompts.push(_txt(o)); return Promise.resolve(R.promptValue == null ? '' : R.promptValue); };
+  // 「这份底方是谁的」现在是三选一弹窗（不是 confirm）：create / keep / null
+  R.choiceAnswer = 'create';
+  askChoice = function(o){
+    R.confirms.push(_txt(o) + ' [选项: ' + (o.choices || []).map(function(c){ return c.text; }).join(' / ') + ']');
+    return Promise.resolve(R.choiceAnswer);
+  };
   R.confirmAnswer = true;
-  window.confirm = function(m){ R.confirms.push(String(m)); return R.confirmAnswer; };
   function q(s){ return document.querySelector(s); }
   function ck(name, cond, got){ R.cases.push({ name: name, pass: !!cond, got: got }); }
   function card(name){
@@ -354,7 +369,7 @@ PROBE = r"""
   ck('全选 → 按钮恢复',
      q('#btnBulkPlus').disabled === false && /勾选的 5 种/.test(q('#btnBulkPlus').textContent), '');
   ck('全选不会把「没设用法」那味的禁用框勾上',
-     (function(){
+     await (async function(){
        var c = document.querySelector('#bulkList input.bulk-ck[data-id="'
          + byName('维生素E软胶囊').id + '"]');
        return c.disabled === true && c.checked === false;
@@ -838,7 +853,7 @@ PROBE = r"""
      bulk.map(function(x){ return x.name; }).join(' / '));
 
   // 10d. 弹窗里走一遍：粘 → 解析 → 逐味确认天数 → 一次入库
-  openRx();
+  await openRx();
   ck('刚打开时列表是空的、给了引导', /还没有药/.test(q('#rxList').textContent),
      q('#rxList').textContent.slice(0, 30));
   q('#rxPaste').value = '维生素B6片(Ⅰ)[华康][10mg*30] 1瓶 19.88 10mg 每日一次 口服\n'
@@ -910,7 +925,7 @@ PROBE = r"""
     atob(enc.replace(/-/g, '+').replace(/_/g, '/')))));
   ck('这段编码解得回原来那味药',
      back.rows.length === 1 && back.rows[0].name === '维生素B12注射液', back.rows[0].name);
-  openRx(back.rows, '助手');
+  await openRx(back.rows, '助手');
   ck('预填的弹窗里药已经摆好、天数也算好了',
      document.querySelectorAll('#rxList .rx-row').length === 1
      && q('#rxList .rx-row:nth-child(1) .rx-days-in').value === '14',
@@ -920,7 +935,7 @@ PROBE = r"""
   q('#dlgRx').close();
 
   // 名称空着的行：拦下，不许静默入库
-  openRx([{ name:'', unit:'片', perDose:1, cycleDays:1, timesPerCycle:1, total:10 }]);
+  await openRx([{ name:'', unit:'片', perDose:1, cycleDays:1, timesPerCycle:1, total:10 }]);
   var n0 = meds.length;
   submitRx({ preventDefault: function(){} });
   ck('名称空着的那味被拦下（没入库）', meds.length === n0, meds.length - n0);
@@ -933,7 +948,7 @@ PROBE = r"""
   //   药味总数没变，所以"8 种全部录入"那句自检**看上去是过的**（总数对上 ≠ 认对）。
   //   页面这边能管住两件事：① 抄下底方抬头（patient）来**定位药箱**；
   //                       ② 跟这个人的药箱比一遍，**重复的取消勾选、只加新出现的**。
-  (function(){
+  await (async function(){
     R.confirms = [];
     var backTo = currentId;
 
@@ -944,7 +959,7 @@ PROBE = r"""
     ] };
     people.push(yi); save(); render();
 
-    openRx([ { name:'维生素C片', spec:'100mg', unit:'片', perDose:1, cycleDays:1,
+    await openRx([ { name:'维生素C片', spec:'100mg', unit:'片', perDose:1, cycleDays:1,
                timesPerCycle:1, total:30 },
              { name:'蒙脱石散', spec:'3g*10', unit:'袋', perDose:3, cycleDays:1,
                timesPerCycle:3, total:30 } ],
@@ -982,7 +997,7 @@ PROBE = r"""
     ck('新的那味进来了', !!byName('蒙脱石散'), !!byName('蒙脱石散'));
 
     // 同一张底方再发一次（复诊/重发）→ 这回两味都已有，一味都不该勾
-    openRx([ { name:'维生素C片', spec:'100mg', unit:'片', perDose:1, cycleDays:1, timesPerCycle:1, total:30 },
+    await openRx([ { name:'维生素C片', spec:'100mg', unit:'片', perDose:1, cycleDays:1, timesPerCycle:1, total:30 },
              { name:'蒙脱石散', spec:'3g*10', unit:'袋', perDose:3, cycleDays:1, timesPerCycle:3, total:30 } ],
            '助手', { name:'乙' });
     ck('同一张底方重发 → 两味都不勾（没有新的可加）',
@@ -993,7 +1008,7 @@ PROBE = r"""
 
     // 底方没写姓名 → **不乱猜、不切人**，但必须提醒去确认
     var keepId = currentId;
-    openRx([ { name:'开塞露', unit:'支', perDose:1, cycleDays:1, timesPerCycle:1, total:1 } ]);
+    await openRx([ { name:'开塞露', unit:'支', perDose:1, cycleDays:1, timesPerCycle:1, total:1 } ]);
     ck('底方没写姓名 → 不动当前的人', currentId === keepId, currentId === keepId);
     ck('并且提醒「底方上没写姓名、自己确认是谁的」',
        /没写姓名/.test(q('#rxWho').textContent), q('#rxWho').textContent.slice(0, 50));
@@ -1001,7 +1016,7 @@ PROBE = r"""
 
     // 底方上的人药箱里没有 → 问一句再新建（不悄悄替他建）
     var nPeople = people.length;
-    openRx([ { name:'开塞露', unit:'支', perDose:1, cycleDays:1, timesPerCycle:1, total:1 } ],
+    await openRx([ { name:'开塞露', unit:'支', perDose:1, cycleDays:1, timesPerCycle:1, total:1 } ],
            '助手', { name:'丙' });
     ck('药箱没这个人 → 弹框问过（把名字带上了）',
        R.confirms.length >= 1 && /丙/.test(R.confirms[R.confirms.length - 1]),
@@ -1011,15 +1026,16 @@ PROBE = r"""
        ((curPerson() || {}).name) + ' / ' + people.length);
     q('#dlgRx').close();
 
-    // 用户点了「取消」→ 不建人，但要说清"仍记在当前人名下"
-    R.confirmAnswer = false;
+    // 用户选了「记到当前人名下」→ 不建人，但要说清"仍记在当前人名下"
+    // （这个弹窗是二选一：原来用 confirm 的"确定/取消"表达，现在两个按钮各写各的动作）
+    R.choiceAnswer = 'keep';
     nPeople = people.length;
-    openRx([ { name:'开塞露', unit:'支', perDose:1, cycleDays:1, timesPerCycle:1, total:1 } ],
+    await openRx([ { name:'开塞露', unit:'支', perDose:1, cycleDays:1, timesPerCycle:1, total:1 } ],
            '助手', { name:'戊' });
-    ck('点「取消」→ 不新建人', people.length === nPeople, people.length - nPeople);
-    ck('点「取消」→ 明说仍记在当前人名下，别让人以为记对了',
+    ck('选「记到当前人名下」→ 不新建人', people.length === nPeople, people.length - nPeople);
+    ck('选「记到当前人名下」→ 明说仍记在当前人名下，别让人以为记对了',
        /没有新建人/.test(q('#rxWho').textContent), q('#rxWho').textContent.slice(0, 80));
-    R.confirmAnswer = true;
+    R.choiceAnswer = 'create';
     q('#dlgRx').close();
 
     // 编码往返：patient 要跟着一起进去
@@ -1039,7 +1055,7 @@ PROBE = r"""
   //   现在要求它把「每张几味 / 单据金额 / 自己算的合计」交上来（sheets），页面逐张核并显示。
   //   ★ 核心不是"页面能验真"（它没照片，验不了），而是**"有没有人核过"从此看得见**：
   //     缺依据不能沉默（沉默会被读成"没问题"），对不上要标红并说"先别入库"。
-  (function(){
+  await (async function(){
     var backTo2 = currentId;
     var A = function(){ return q('#rxAudit'); };
     var txt = function(){ return A().textContent.replace(/\s+/g, ' '); };
@@ -1047,7 +1063,7 @@ PROBE = r"""
                  { name:'测试乙胶囊', unit:'粒', perDose:1, cycleDays:1, timesPerCycle:1, total:20 } ];
 
     // ① 交了 sheets、逐张都对得上 → 显示 ✓，不是报错样式
-    openRx(ROWS, '助手', { name:'己' },
+    await openRx(ROWS, '助手', { name:'己' },
            [ { i:1, n:1, amount:20.45, sum:20.45 }, { i:2, n:1, amount:6.58, sum:6.58 } ]);
     ck('交了对账且都对得上 → 显示对账块，且不是报错样式',
        A().hidden === false && /助手交了对账/.test(txt()) && A().className.indexOf('bad') < 0,
@@ -1059,7 +1075,7 @@ PROBE = r"""
        /自不自洽/.test(txt()), txt().slice(-70));
 
     // ② 某张 sum ≠ amount → 标红 + 明说"先别入库"
-    openRx(ROWS, '助手', { name:'己' },
+    await openRx(ROWS, '助手', { name:'己' },
            [ { i:1, n:1, amount:20.45, sum:38.21 }, { i:2, n:1, amount:6.58, sum:6.58 } ]);
     ck('某张对不上账 → 整块变报错样式', A().className.indexOf('bad') >= 0, A().className);
     ck('没通过的账不许显示成 ✓（不能乱标"交了对账"）',
@@ -1069,27 +1085,27 @@ PROBE = r"""
     ck('并提示「先别入库」', /先别入库/.test(txt()), txt().slice(-60));
 
     // ③ 各张味数之和 ≠ 清单条数 → 报行数对不上（丢一味/编一味会在这里露出来）
-    openRx(ROWS, '助手', { name:'己' }, [ { i:1, n:5, amount:20.45, sum:20.45 } ]);
+    await openRx(ROWS, '助手', { name:'己' }, [ { i:1, n:5, amount:20.45, sum:20.45 } ]);
     ck('各张味数之和 ≠ 清单条数 → 报行数对不上',
        /行数对不上/.test(txt()) && A().className.indexOf('bad') >= 0, txt().slice(0, 120));
 
     // ④ 没交 sheets → **不能沉默**（沉默会被读成"没问题"，那正是这次栽的地方）
-    openRx(ROWS, '助手', { name:'己' });
+    await openRx(ROWS, '助手', { name:'己' });
     ck('没交对账依据 → 明说"没人替你对过"，并给下一步（自己数一遍）',
        A().hidden === false && /没交/.test(txt()) && /替你对过/.test(txt()) && /数一下/.test(txt()),
        txt().slice(0, 110));
 
     // ⑤ 金额没读到（null）→ 算"对不了账"，绝不冒充通过
-    openRx(ROWS, '助手', { name:'己' }, [ { i:1, n:2, amount:null, sum:null } ]);
+    await openRx(ROWS, '助手', { name:'己' }, [ { i:1, n:2, amount:null, sum:null } ]);
     ck('金额读到 null → 说"对不了账"、标红，不冒充通过',
        /对不了账/.test(txt()) && A().className.indexOf('bad') >= 0, txt().slice(0, 90));
 
     // ⑥ 手动录 / 粘文字进来的 → 没有"助手读数"这回事，不显示这一块
-    openRx();
+    await openRx();
     ck('手动录（没有药行）→ 不显示对账块', A().hidden === true, A().hidden);
     q('#dlgRx').close();
     // 有药行、但**不是助手给的**（用户自己粘的文字）→ 也不该冒出来质问"没人替你核过"
-    openRx([ { name:'测试丙片', unit:'片', perDose:1, cycleDays:1, timesPerCycle:1, total:5 } ]);
+    await openRx([ { name:'测试丙片', unit:'片', perDose:1, cycleDays:1, timesPerCycle:1, total:5 } ]);
     ck('自己粘文字进来的（不是助手给的）→ 不显示对账块',
        A().hidden === true, A().hidden + ' | ' + txt().slice(0, 50));
     q('#dlgRx').close();
@@ -1098,6 +1114,14 @@ PROBE = r"""
   })();
 
   function rxFinish(){
+    // ★ 用户 2026-10-23：「点删除之后 应该是弹窗来确认 而不是由页面默认方式来实现」。
+    //   页面里已经一处原生 alert/confirm/prompt 都没有了（都走 askXxx → 页面内 <dialog>），
+    //   这条钉住它：只要谁哪天又写一句 confirm()，这里就红。
+    R.cases.push({
+      name: '★ 全程没有走浏览器原生 alert / confirm / prompt',
+      pass: R.natives.length === 0,
+      got: R.natives.slice(0, 3).join(' | ') || '(一次都没有)'
+    });
     R.meds = meds.map(function(x){ return x.name + '|qty=' + dispQty(x) + '|cap=' + rxCap(x); });
     var pre = document.createElement('pre');
     pre.id = '__T';
