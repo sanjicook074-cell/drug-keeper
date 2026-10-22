@@ -68,6 +68,24 @@ HOOKS = {
            " st.textContent = '.top,.people,.stats,#warn,.panel-h,#list,.col-side,.foot-sig{display:none !important}'"
            " + '.cols{grid-template-columns:1fr}';"
            " document.head.appendChild(st);",
+    # ★ 悬停卡片（2026-10-22 新增）：停在「晚饭后」那格（两味药）上，卡片浮起来。
+    #   上面留 170px 空白是**故意**的：格子贴着页面顶时卡片会翻到下方，
+    #   那样拍出来的图看不出"浮在格子上方"这个关键行为。
+    #   ★★ 卡片必须在内联样式上强制成可见：`--virtual-time-budget` 下，
+    #     computed opacity 明明已经是 1（dump-dom 能看到 .on、opacity:1、transition:0s），
+    #     但**光栅化用的还是 opacity:0 那一帧** —— 截出来就是一张没有卡片的白图。
+    #     试过加 --allow-file-access-from-files、把 budget 加到 9000、关 transition，全没用；
+    #     只有写内联 `style.opacity=1` 才拍得到。所以：先用真的 mouseover 让它自己算位置，
+    #     再补一层内联样式（和真实渲染视觉一致，只是绕过合成层）。
+    "boxhover": "var st = document.createElement('style');"
+                " st.textContent = '.top,.people,.stats,#warn,.panel-h,#list,.col-side,.foot-sig{display:none !important}'"
+                " + '.cols{grid-template-columns:1fr;padding-top:170px}';"
+                " document.head.appendChild(st);"
+                " var s2 = document.querySelector('#box .slot[data-slot=\"2\"]');"
+                " if(s2) s2.dispatchEvent(new MouseEvent('mouseover', { bubbles:true }));"
+                " var tipEl = document.querySelector('#pillTip');"
+                " if(tipEl){ tipEl.style.transition='none'; tipEl.style.opacity='1';"
+                "   tipEl.style.transform='none'; }",
     "disp": "openDisp();",
     # ★ 批量调存量（2026-10-12 改版）：列出**全部**药品、可勾选、顺序同主页、按档位着色。
     #   这里临时多塞一味「没设用法」的药，为的是把「勾选框禁用 + 没法按天算 + 底部那行说明」拍进来
@@ -134,7 +152,7 @@ HOOKS = {
 # main / bulk / edit 三张也要加高，否则「备用药」那一栏会被裁在画面外。
 SIZE = {"rx": "1240,1240", "rxaudit": "1240,1320", "rxuse": "1240,1240",
         "main": "1240,1960", "bulk": "1240,1560", "edit": "1240,1300",
-        "prnedit": "1240,1140", "box": "820,205"}
+        "prnedit": "1240,1140", "box": "820,230", "boxhover": "820,470"}
 
 
 def shoot(profile, url, out_path, size):

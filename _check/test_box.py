@@ -120,19 +120,20 @@ PROBE = r"""
     pe('pointerup', b.x, b.y);
     return 'ok';
   }
-  // 从第 i 格的某个药，拖到第 j 格
+  // 从第 i 格的某个药，拖到第 j 格（抓的是药片本身，和真人操作一致）
   function dragChip(i, nm, j){
     var s = slots()[i];
     if(!s) return 'no-slot';
     var m = byName(nm);
-    var chip = s.querySelector('.chip[data-med="' + (m ? m.id : '') + '"]');
-    if(!chip) return 'no-chip';
+    var grp = s.querySelector('.pillgrp[data-med="' + (m ? m.id : '') + '"]');
+    if(!grp) return 'no-chip';
     var t = slots()[j];
     if(!t) return 'no-target';
     t.scrollIntoView({ block: 'center' });
-    var a = center(chip.querySelector('.nm'));
+    var handle = grp.querySelector('.pill') || grp;
+    var a = center(handle);
     var b = center(t);
-    pe('pointerdown', a.x, a.y, chip.querySelector('.nm'));
+    pe('pointerdown', a.x, a.y, handle);
     pe('pointermove', Math.round((a.x + b.x) / 2), Math.round((a.y + b.y) / 2));
     pe('pointermove', b.x, b.y);
     pe('pointerup', b.x, b.y);
@@ -221,7 +222,7 @@ PROBE = r"""
   (function(){
     var s = slots()[2];
     var m = byName('晚饭后胶囊');
-    var x = s.querySelector('.chip[data-med="' + m.id + '"] .x');
+    var x = s.querySelector('.pillgrp[data-med="' + m.id + '"] .x');
     if(x) x.click();
   })();
   ck('点 × 之后这一格没它了', !nameIn(2, '晚饭后胶囊'), slotIds(2).length);
@@ -361,6 +362,122 @@ PROBE = r"""
      /拖药进来/.test(slots()[0].textContent), slots()[0].textContent.trim());
   ck('渲染后没把野 id 清掉（只跳过，不动数据 —— 万一是导入瞬间的时序问题还能救回来）',
      curBox().slots[0].ids.length === 1, curBox().slots[0].ids.length);
+
+  /* ---------------- 14. 拟物：药片画法 + 悬停卡片 ----------------
+     这一段只测"机器判得了"的部分：结构、粒数、形状、颜色变量、卡片出现/收起/钉住、
+     动画只播一次。至于"像不像真药盒"，只能靠截图看（_check/shot.py → docs/screenshot-box.png）。 */
+  fixture();
+  dragToListCard('早饭前片', 0);      // 每次 1 片
+  dragToListCard('晚饭后胶囊', 0);    // 每次 2 粒
+  ck('每格都有凹槽 .well（药是盛在坑里的，不是贴在框上）',
+     slots().every(function(s){ return !!s.querySelector('.well'); }), '');
+  ck('每格都有塑料盖反光层 .glare',
+     slots().every(function(s){ return !!s.querySelector('.glare'); }), '');
+  (function(){
+    var g1 = slots()[0].querySelector('.pillgrp[data-med="' + byName('早饭前片').id + '"]');
+    var g2 = slots()[0].querySelector('.pillgrp[data-med="' + byName('晚饭后胶囊').id + '"]');
+    ck('每次 1 片 → 画 1 片', g1.querySelectorAll('.pill').length === 1,
+       g1.querySelectorAll('.pill').length);
+    ck('每次 2 粒 → 画 2 片（按用量画，不是固定画一个）',
+       g2.querySelectorAll('.pill').length === 2, g2.querySelectorAll('.pill').length);
+    ck('药片带颜色变量 --h/--s（卡片左边的色块用同一组值对上）',
+       /--h:\d+/.test(g1.querySelector('.pill').getAttribute('style')),
+       g1.querySelector('.pill').getAttribute('style'));
+    ck('药片名字和剂量仍然留在 DOM 里（.sr 隐藏，读屏和自检都靠它）',
+       /早饭前片/.test(slots()[0].textContent) && /1\s*片/.test(slots()[0].textContent),
+       slots()[0].textContent.replace(/\s+/g, ' ').trim().slice(0, 40));
+  })();
+
+  // 单位决定形状：片/粒画圆片，支/瓶/ml 画小瓶
+  (function(){
+    var p2 = curPerson();
+    p2.meds.push({ id: uid(), name:'打针支', perDose:1, unit:'支', cycleDays:14, timesPerCycle:1,
+      stockBase:4, stockDate:todayStr(), rxMax:2, kind:'daily' });
+    setMeds(p2.meds); save(); render();
+    dragToListCard('打针支', 1);
+    var g = slots()[1].querySelector('.pillgrp[data-med="' + byName('打针支').id + '"]');
+    ck('单位是「支」→ 画成小瓶（.pill.vial），不是药片',
+       !!g.querySelector('.pill.vial'), g.innerHTML.slice(0, 70));
+  })();
+
+  // 超过上限折成 +N
+  (function(){
+    var p3 = curPerson();
+    p3.meds.push({ id: uid(), name:'一次八片', perDose:8, unit:'片', cycleDays:1, timesPerCycle:1,
+      stockBase:200, stockDate:todayStr(), rxMax:30, kind:'daily' });
+    setMeds(p3.meds); save(); render();
+    dragToListCard('一次八片', 2);
+    var g = slots()[2].querySelector('.pillgrp[data-med="' + byName('一次八片').id + '"]');
+    ck('一次 8 片 → 最多画 6 片（再多格子会被挤爆）',
+       g.querySelectorAll('.pill').length === 6, g.querySelectorAll('.pill').length);
+    ck('折掉的 2 片写成「+2」，不假装画完了',
+       !!g.querySelector('.pill-more') && g.querySelector('.pill-more').textContent === '+2',
+       g.querySelector('.pill-more') ? g.querySelector('.pill-more').textContent : '(没有 +N)');
+  })();
+
+  /* 14b. 悬停卡片：出现 / 内容 / 位置 / 不挡拖拽 / 钉住 */
+  (function(){
+    var tip = q('#pillTip');
+    ck('页面上有一个悬停卡片容器 #pillTip', !!tip, '');
+    ck('卡片默认收起', !tip.classList.contains('on'), tip.className);
+
+    var s0 = slots()[0];
+    s0.dispatchEvent(new MouseEvent('mouseover', { bubbles:true }));
+    ck('鼠标停在有药的格子上 → 卡片出现', tip.classList.contains('on'), tip.className);
+    ck('卡片里两味药的名字都有',
+       /早饭前片/.test(tip.textContent) && /晚饭后胶囊/.test(tip.textContent),
+       tip.textContent.replace(/\s+/g, ' ').slice(0, 70));
+    ck('卡片里写着每次用量',
+       /每次\s*1\s*片/.test(tip.textContent.replace(/\s+/g, ' ')),
+       tip.textContent.replace(/\s+/g, ' ').slice(0, 80));
+    ck('卡片抬头是格名 + 味数',
+       /早/.test(tip.textContent) && /2 味药/.test(tip.textContent),
+       tip.textContent.replace(/\s+/g, ' ').slice(0, 30));
+
+    var r = s0.getBoundingClientRect(), tr = tip.getBoundingClientRect();
+    ck('卡片不压在格子上（放得下就在上方，顶部贴边就翻到下方）',
+       tr.bottom <= r.top + 2 || tr.top >= r.bottom - 2,
+       'tip.b=' + Math.round(tr.bottom) + ' slot.t=' + Math.round(r.top) + '/slot.b=' + Math.round(r.bottom));
+    ck('卡片不接收点击（pointer-events:none，否则会抢拖拽的落点判定）',
+       getComputedStyle(tip).pointerEvents === 'none', getComputedStyle(tip).pointerEvents);
+
+    s0.dispatchEvent(new MouseEvent('mouseout', { bubbles:true, relatedTarget: document.body }));
+    ck('鼠标离开 → 卡片收起', !tip.classList.contains('on'), tip.className);
+
+    // 空格子没有可说的内容，不该弹空卡片（临时加一格，前面几格这时都已经有药了）
+    q('#box button[data-box="inc"]').click();
+    var emptySlot = slots()[slots().length - 1];
+    emptySlot.dispatchEvent(new MouseEvent('mouseover', { bubbles:true }));
+    ck('停在空格子上 → 不弹卡片', !tip.classList.contains('on'), tip.className);
+    q('#box button[data-box="dec"]').click();
+  })();
+
+  (function(){
+    var tip = q('#pillTip');
+    var s0 = slots()[0];
+    s0.dispatchEvent(new MouseEvent('mouseover', { bubbles:true }));
+    s0.click();
+    ck('点一下格子 → 钉住卡片（触屏没有 hover，靠这个看内容）',
+       tip.classList.contains('on') && tipPin === 0, 'pin=' + tipPin);
+    s0.dispatchEvent(new MouseEvent('mouseout', { bubbles:true, relatedTarget: document.body }));
+    ck('钉住之后鼠标移开也不收', tip.classList.contains('on'), tip.className);
+    s0.click();
+    ck('再点一下 → 收起', !tip.classList.contains('on') && tipPin === -1, 'pin=' + tipPin);
+  })();
+
+  /* 14c. 入场动画只播一次；药片的歪斜角度每次重绘都稳定 */
+  (function(){
+    fixture();
+    dragToListCard('早饭前片', 0);
+    ck('刚放进去的那一组带入场动画 .pop',
+       !!slots()[0].querySelector('.pillgrp.pop'), '');
+    var st1 = slots()[0].querySelector('.pill').getAttribute('style');
+    render();
+    ck('再次重绘不再重播动画（否则每次改名加减格都全场跳一遍）',
+       !slots()[0].querySelector('.pillgrp.pop'), '');
+    ck('同一味药每次重绘歪的角度一致（--r 由 id 推导，不是随机）',
+       slots()[0].querySelector('.pill').getAttribute('style') === st1, st1);
+  })();
 
   function finish(){
     var pre = document.createElement('pre');
