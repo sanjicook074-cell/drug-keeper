@@ -30,7 +30,14 @@ DEMO_JS = r"""
     { name:'健胃消食片', spec:'0.8g', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
       stockBase:90, stockDate:agoD(10), rxMax:30, note:'空腹服' },
     { name:'维生素B12注射液', spec:'0.5mg/支', perDose:1, unit:'支', cycleDays:14, timesPerCycle:1,
-      stockBase:2, stockDate:agoD(20), rxMax:2, note:'皮下注射，每 2 周 1 次' }
+      stockBase:2, stockDate:agoD(20), rxMax:2, note:'皮下注射，每 2 周 1 次' },
+    /* ★ 2026-10-22 起药分两类，截图里必须有「备用药」那一栏 —— 否则 docs/ 还是旧版的样子，
+       README 就成了"图和事实对不上"。这两味的 timesPerCycle = 0 / kind = 'prn'：
+       不按天数推算、不进续方清单、卡片右上角写的是**余量**不是天数。 */
+    { name:'布洛芬缓释胶囊', spec:'0.3g*20', perDose:1, unit:'粒', cycleDays:1, timesPerCycle:0,
+      stockBase:16, stockDate:agoD(40), kind:'prn', note:'疼的时候吃' },
+    { name:'蒙脱石散', spec:'3g*10', perDose:3, unit:'袋', cycleDays:1, timesPerCycle:0,
+      stockBase:4, stockDate:agoD(90), kind:'prn' }
   ];
   demo.forEach(function(d){ d.id = uid(); });
   setMeds(demo);
@@ -58,6 +65,11 @@ HOOKS = {
     #   所以演示数据里**每一味都补上了 rxMax** —— 老数据缺这格会显示成空白提示要补填，
     #   那是迁移态，不适合当成品图。
     "edit": "openEditor(meds[2].id);",
+    # ★ 「备用药」的编辑弹窗（2026-10-22 新增）—— 和上面那张对照着看，最省口舌：
+    #   同一张表单，选了备用药之后「每几天 / 几次」和「开药限制」整块收起，
+    #   只剩「一次吃多少 / 单位 / 余量 / 余量日期」。拍下来是为了钉住"备用药不用填那些"。
+    #   挑 meds[5] = 布洛芬缓释胶囊（演示数据里第 6 位、kind=prn）。
+    "prnedit": "openEditor(meds[5].id);",
     # ★ 「又买了药」现在是中间弹窗（原来走浏览器原生 prompt，2026-10-11 用户要求改掉）。
     #   2026-10-12 用户要求把那行实时对照删掉，所以这里只填数、不再调 renderNumCalc。
     #   顺手把输入框填成 28，拍的是「标题 + 说明 + 输入框 + 按钮」的干净形态。
@@ -100,7 +112,11 @@ HOOKS = {
 
 # 个别图要比默认画布高一点：底方那两张顶上多挂了「这份底方是谁的」/「助手交了对账」两块，
 # 默认 1120 会把底部「加入药箱」按钮切掉（切掉的成品图不算成品）。
-SIZE = {"rx": "1240,1240", "rxaudit": "1240,1320", "rxuse": "1240,1240"}
+# 2026-10-22 起演示数据多了 2 味备用药（主页多一栏标题 + 2 张卡片），
+# main / bulk / edit 三张也要加高，否则「备用药」那一栏会被裁在画面外。
+SIZE = {"rx": "1240,1240", "rxaudit": "1240,1320", "rxuse": "1240,1240",
+        "main": "1240,1960", "bulk": "1240,1560", "edit": "1240,1300",
+        "prnedit": "1240,1140"}
 
 
 def shoot(profile, url, out_path, size):

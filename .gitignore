@@ -6,6 +6,8 @@
 #   但名单本身绝不能进仓库 —— 写进断言就等于把它们发出去了。别人 clone 下来自动跳过这条。
 _check/_tmp_*
 _check/shot_*
+# 语法检查时从 index.html 抽出来的脚本副本（每次跑都会重写，不是源码）
+_check/_syntax.js
 
 # 系统 / 编辑器 / Python
 Thumbs.db
