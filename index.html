@@ -106,7 +106,7 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 /* ---------- 药品卡片 ---------- */
 .mlist{display:flex;flex-direction:column;gap:10px;padding:14px 16px}
 .med{border:1px solid var(--line);border-left-width:4px;border-radius:10px;
-  padding:13px 14px;background:#fff;transition:box-shadow .15s}
+  padding:13px 14px;background:#fff;transition:box-shadow .15s;cursor:grab}
 .med:hover{box-shadow:0 2px 10px rgba(16,24,40,.08)}
 .med[data-lv=out]{border-left-color:var(--out);background:#fffafa}
 .med[data-lv=soon]{border-left-color:var(--soon);background:#fffdf6}
@@ -151,6 +151,69 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 .sect-h{display:flex;align-items:baseline;gap:8px;font-size:12.5px;font-weight:650;color:#374151}
 .sect-h .cnt{font-size:11.5px;font-weight:600;color:var(--faint)}
 .sect-h.mt{margin-top:4px;padding-top:12px;border-top:1px solid var(--line-2)}
+
+/* ---------- 药盒：模拟分格药盒，把药拖进格子里 ----------
+   为什么要有它：库存告诉你「还剩几天」，但装药那一刻要回答的是另一个问题 ——
+   「今天这一格的药，我该从哪个瓶子里各拿几粒」。药盒就是回答这个的。
+   格数随意（1~7），每格名字能改（「早饭前」「睡前」这种），药可以同时出现在多格
+   （早晚各一次的那种），从下面列表拖 = 复制一份，从格子拖到格子 = 搬过去。 */
+.boxwrap{padding:13px 16px 15px;border-bottom:1px solid var(--line-2);background:#fcfcfd}
+.box-h{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:10px}
+.box-t{font-size:13px;font-weight:650;color:#1f2937}
+.box-tip{font-size:11.5px;color:var(--faint)}
+.box-ctl{margin-left:auto;display:flex;align-items:center;gap:2px;flex:none}
+.box-ctl .n{font-size:12.5px;font-weight:650;color:#374151;min-width:40px;text-align:center;
+  font-variant-numeric:tabular-nums}
+.stp{width:24px;height:24px;line-height:1;border:1px solid var(--line);background:#fff;color:#4b5563;
+  border-radius:7px;cursor:pointer;font-size:14px;display:grid;place-items:center;padding:0}
+.stp:hover:not(:disabled){border-color:#cbd5e1;background:#f9fafb;color:var(--text)}
+.stp:disabled{opacity:.35;cursor:not-allowed}
+
+.slots{display:flex;flex-wrap:wrap;gap:8px}
+.slot{flex:1 1 92px;min-width:92px;border:1px dashed #d9dee7;border-radius:10px;background:#fff;
+  padding:7px 8px 8px;min-height:84px;display:flex;flex-direction:column;
+  transition:border-color .13s,background .13s,box-shadow .13s}
+.slot.has{border-style:solid;border-color:#dde3ec}
+.slot.over{border-style:solid;border-color:var(--brand);background:#eff6ff;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.slot-n{font-size:11.5px;font-weight:650;color:#4b5563;margin-bottom:5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:text;
+  -webkit-user-select:none;user-select:none}
+.slot-n:hover{color:var(--brand)}
+.slot-empty{font-size:11px;color:#c3c9d4;text-align:center;padding:14px 0;
+  -webkit-user-select:none;user-select:none}
+
+.chip{display:flex;align-items:center;gap:4px;font-size:11.5px;
+  background:#f4f7fb;border:1px solid #e3e9f2;border-radius:7px;padding:3px 4px 3px 6px;
+  margin-bottom:4px;cursor:grab}
+.chip:last-child{margin-bottom:0}
+.chip:hover{border-color:#c9d6e8;background:#eef3fa}
+.chip[data-lv=out]{background:#fef2f2;border-color:#fecaca}
+.chip .nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#242a35}
+.chip .dose{flex:none;font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.chip .x{flex:none;width:16px;height:16px;border:none;background:transparent;color:#aab2c0;
+  cursor:pointer;border-radius:4px;font-size:13px;line-height:1;padding:0;display:grid;place-items:center}
+.chip .x:hover{background:#e8edf5;color:var(--out)}
+.box-foot{margin-top:8px;font-size:11.5px;color:var(--faint)}
+
+/* 拖动时跟着指针跑的那一小块 —— 用 fixed 定位 + transform 跟手，绝不挡住 elementFromPoint。
+   ★ 类名必须是 drag-ghost，不能叫 ghost：`.btn.ghost` 早就是这个项目里"次要按钮"的修饰类，
+     撞名之后那 5 个顶栏按钮会一起变成 fixed 并跑到 translate(-999px,-999px) 去 ——
+     页面上直接看不见，而且不报错（2026-10-22 真踩过，靠截图才发现）。 */
+.drag-ghost{position:fixed;left:0;top:0;z-index:9999;pointer-events:none;
+  background:#fff;border:1px solid var(--brand);border-radius:8px;padding:5px 10px;
+  font-size:12.5px;color:#1b1f27;box-shadow:0 8px 22px rgba(16,24,40,.2);
+  transform:translate(-999px,-999px);white-space:nowrap}
+body.dragging{-webkit-user-select:none;user-select:none;cursor:grabbing}
+body.dragging .med:hover,body.dragging .chip:hover{box-shadow:none}
+
+/* 轻提示：拖备用药、重复放同一格这类「不该打断操作」的话走这里，不弹 alert */
+#toast{position:fixed;left:50%;bottom:36px;z-index:99999;max-width:min(560px,84vw);
+  transform:translate(-50%,14px);opacity:0;pointer-events:none;
+  background:#111827;color:#fff;font-size:13px;line-height:1.6;padding:9px 16px;
+  border-radius:9px;box-shadow:0 8px 24px rgba(16,24,40,.28);
+  transition:opacity .18s ease,transform .18s ease}
+#toast.on{opacity:1;transform:translate(-50%,0)}
 
 /* ---------- 空状态 ---------- */
 .empty{text-align:center;padding:44px 20px;color:var(--muted)}
@@ -442,6 +505,7 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
         <h2>我的药品</h2>
         <span class="hint" id="listHint"></span>
       </div>
+      <div id="box"></div>
       <div id="list"></div>
     </section>
 
@@ -615,6 +679,8 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
     </div>
   </form>
 </dialog>
+
+<div id="toast" role="status" aria-live="polite"></div>
 
 <!-- ============================================================
      下面这段是**写给 AI 助手看的接口说明**（人不用管它，页面上也不会显示）。
@@ -929,6 +995,48 @@ function setMeds(arr){
   meds = arr;
 }
 
+/* -------------------- 药盒 --------------------
+   每人一个：{ slots: [ { name:'早', ids:['medid', ...] }, ... ] }
+   ★ 存的是 med.id，不是药名 —— 改药名不会把盒子搞乱。
+   ★ 一个 id 可以出现在多个格里：早晚各吃一次的药，本来就该在两格。
+   ★ 格子里残留的 id 在渲染时按「查不到就跳过」处理，删药时也会顺手剔一遍。 */
+const BOX_MIN = 1, BOX_MAX = 7;
+// 格子的默认名：按常见吃法排的。真按饭前饭后分，双击格名改成「早饭前 / 早饭后」即可。
+const SLOT_DEF = ['早', '中', '晚', '睡前', '加餐', '第6格', '第7格'];
+
+function defaultSlots(n){
+  const out = [];
+  for(let i = 0; i < n; i++) out.push({ name: SLOT_DEF[i] || ('第' + (i + 1) + '格'), ids: [] });
+  return out;
+}
+
+// 把存档里那个 box 洗成干净结构；缺了/坏了就给默认 3 格。
+function normBox(b){
+  const slots = [];
+  if(b && Array.isArray(b.slots)){
+    b.slots.forEach(function(s, i){
+      const nm = (s && s.name != null && String(s.name).trim())
+        ? String(s.name).trim().slice(0, 12)
+        : (SLOT_DEF[i] || ('第' + (i + 1) + '格'));
+      const ids = (s && Array.isArray(s.ids))
+        ? s.ids.filter(function(x){ return typeof x === 'string' && x; })
+        : [];
+      slots.push({ name: nm, ids: ids });
+    });
+  }
+  if(!slots.length) return { slots: defaultSlots(3) };
+  return { slots: slots.slice(0, BOX_MAX) };
+}
+
+function ensureBox(p){
+  if(!p) return { slots: defaultSlots(3) };
+  // ★ 只在缺失时才重建：已经洗过的原样返回，否则每次调用都换一个新对象，
+  //   外面拿着旧引用改就白改了（和 meds 那条不变量一个道理）。
+  if(!p.box || !Array.isArray(p.box.slots) || !p.box.slots.length) p.box = normBox(p.box);
+  return p.box;
+}
+function curBox(){ return ensureBox(curPerson()); }
+
 /* -------------------- 小工具 -------------------- */
 const $  = (s, r) => (r || document).querySelector(s);
 const $$ = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
@@ -983,7 +1091,8 @@ function migrate(obj){
         id: (p && p.id) ? String(p.id) : uid(),
         name: (p && p.name) ? String(p.name) : '未命名',
         note: (p && p.note) ? String(p.note) : '',   // 就诊人的情况（右侧上面那个框，按人分开存）
-        meds: (p && Array.isArray(p.meds)) ? p.meds : []
+        meds: (p && Array.isArray(p.meds)) ? p.meds : [],
+        box: normBox(p && p.box)                      // 药盒：每一格放哪些药（老存档没有就补默认 3 格）
       };
     });
     return { people: list, currentId: obj.currentId || list[0].id };
@@ -1164,7 +1273,7 @@ function freqText(m){
 }
 
 /* -------------------- 渲染 -------------------- */
-function render(){ renderPeople(); renderStats(); renderList(); renderNote(); renderRefill(); }
+function render(){ renderPeople(); renderStats(); renderBox(); renderList(); renderNote(); renderRefill(); }
 
 // 药品的统一排序口径：先按档位（已用完 → 偏少 → 充足 → 未设用法），同档位再按剩余天数少的靠前。
 // ★ 2026-10-12：从 renderList() 里抽出来，因为「批量调存量」弹窗要求**顺序和主页一样**
@@ -1285,6 +1394,248 @@ function medFootHTML(m){
     + '</div>';
 }
 
+/* -------------------- 药盒：渲染 --------------------
+   数据在 person.box（见上面的 normBox）。这里只负责画 + 处理"放进来 / 拿出去 / 改格数"。
+   拖拽本身在下面「拖拽」那一节，两段分开，改样式不会碰到逻辑。 */
+
+function findMed(id){
+  for(let i = 0; i < meds.length; i++) if(meds[i].id === id) return meds[i];
+  return null;
+}
+
+// 剂量写法：1 片 / 0.5 片 / 2 粒。0 的话不写（老存档里可能没有 perDose）
+function doseText(m){
+  const d = num(m.perDose);
+  return (d > 0) ? (fmtNum(d) + ' ' + (m.unit || '片')) : '';
+}
+function chipDose(m){
+  const d = num(m.perDose);
+  return (d > 0) ? (fmtNum(d) + esc(m.unit || '片')) : '';
+}
+
+function chipHTML(m, slotIdx){
+  return '<div class="chip" data-med="' + m.id + '" data-from="' + slotIdx + '"'
+    +   ' data-lv="' + level(m) + '" title="' + esc(m.name) + '（拖到别的格 = 搬过去）">'
+    +   '<span class="nm">' + esc(m.name) + '</span>'
+    +   (chipDose(m) ? '<span class="dose">' + chipDose(m) + '</span>' : '')
+    +   '<button class="x" data-del="' + slotIdx + '" data-id="' + m.id + '"'
+    +     ' aria-label="从这一格拿出来" title="从这一格拿出来">×</button>'
+    + '</div>';
+}
+
+function slotHTML(s, i){
+  // 查不到的 id 直接跳过（药被删了 / 存档被手改过），不显示成空壳
+  const items = (s.ids || []).map(findMed).filter(Boolean);
+  return '<div class="slot' + (items.length ? ' has' : '') + '" data-slot="' + i + '">'
+    +   '<div class="slot-n" data-slotname="' + i + '" title="双击改名（如 早饭前 / 睡前）">'
+    +     esc(s.name || '') + '</div>'
+    +   (items.length
+        ? items.map(function(m){ return chipHTML(m, i); }).join('')
+        : '<div class="slot-empty">拖药进来</div>')
+    + '</div>';
+}
+
+function renderBox(){
+  const el = $('#box');
+  if(!el) return;
+  const p = curPerson();
+  if(!p){ el.innerHTML = ''; return; }
+  const box = curBox();
+  const n = box.slots.length;
+  const used = box.slots.reduce(function(a, s){ return a + (s.ids || []).length; }, 0);
+
+  el.innerHTML = ''
+  + '<div class="box-h">'
+  +   '<span class="box-t">药盒</span>'
+  +   '<span class="box-tip">把下面「每天吃的药」拖进格子 · 双击格名可改</span>'
+  +   '<span class="box-ctl">'
+  +     '<button class="stp" data-box="dec" title="少一格"' + (n <= BOX_MIN ? ' disabled' : '') + '>−</button>'
+  +     '<span class="n">' + n + ' 格</span>'
+  +     '<button class="stp" data-box="inc" title="多一格"' + (n >= BOX_MAX ? ' disabled' : '') + '>＋</button>'
+  +   '</span>'
+  + '</div>'
+  + '<div class="slots">' + box.slots.map(slotHTML).join('') + '</div>'
+  + (used ? '' : '<div class="box-foot">还空着 —— 从下面把药拖进来，一格一格摆好，装药时照着拿就行。</div>');
+
+  el.onclick = function(e){
+    const x = e.target.closest('button[data-del]');
+    if(x){ removeFromSlot(Number(x.getAttribute('data-del')), x.getAttribute('data-id')); return; }
+    const ctl = e.target.closest('button[data-box]');
+    if(ctl){
+      const d = ctl.getAttribute('data-box') === 'inc' ? 1 : -1;
+      setSlotCount(curBox().slots.length + d);
+    }
+  };
+  el.ondblclick = function(e){
+    const nm = e.target.closest('[data-slotname]');
+    if(nm) renameSlot(Number(nm.getAttribute('data-slotname')));
+  };
+}
+
+function renameSlot(i){
+  const box = curBox();
+  const s = box.slots[i];
+  if(!s) return;
+  const v = prompt('这一格叫什么？\n（写「早饭前」「睡前」这种，装药时一眼就知道该放什么）', s.name || '');
+  if(v === null) return;                       // 按了取消：什么都不改
+  const nm = String(v).trim().slice(0, 12);
+  if(!nm) return;                              // 清空 = 不改，不留无名格
+  s.name = nm;
+  save(); renderBox();
+}
+
+// 格数增减。减少时如果被砍掉的格里还放着药，先问一句 —— 药不会丢，但摆放会丢。
+function setSlotCount(n){
+  const box = curBox();
+  const cur = box.slots.length;
+  // ★ 不能写 `Math.round(num(n)) || cur`：num(0) 就是 0，会被 `||` 当成"没传"
+  //   退回原格数，于是「减到 0」变成「什么都没发生」。0 和 1 都得夹到下限。
+  const want = Number(n);
+  if(!isFinite(want)) return;                       // 真没传/传了个字符串才不动
+  n = Math.max(BOX_MIN, Math.min(BOX_MAX, Math.round(want)));
+  if(n === cur) return;
+
+  if(n > cur){
+    for(let i = cur; i < n; i++){
+      box.slots.push({ name: SLOT_DEF[i] || ('第' + (i + 1) + '格'), ids: [] });
+    }
+  } else {
+    const cut = box.slots.slice(n);
+    const lost = cut.reduce(function(a, s){ return a + (s.ids || []).length; }, 0);
+    if(lost){
+      const names = cut.map(function(s){ return s.name; }).filter(Boolean).join('、');
+      if(!confirm('「' + names + '」里还放着 ' + lost + ' 种药。\n减到 ' + n + ' 格会把它们从盒子里拿掉（药本身和库存都不动）。继续？')) return;
+    }
+    box.slots = box.slots.slice(0, n);
+  }
+  save(); renderBox();
+}
+
+// 把药放进第 to 格。from = 源格下标，-1 表示从下面的药品列表拖来的。
+// ★ 从列表拖 = 复制一份（早晚都要吃的药得拖两次）；
+//   从格子拖到格子 = 搬过去（整理摆放时不会凭空多出一份）。
+function addToSlot(to, id, from){
+  const box = curBox();
+  const tgt = box.slots[to];
+  if(!tgt) return;
+  const m = findMed(id);
+  if(!m) return;
+
+  if(from >= 0 && from !== to){
+    const src = box.slots[from];
+    if(src) src.ids = (src.ids || []).filter(function(x){ return x !== id; });
+  }
+  if((tgt.ids || []).indexOf(id) >= 0){
+    if(from >= 0 && from !== to){ save(); renderBox(); }   // 已经是搬走了，不是没变化
+    else toast('「' + m.name + '」已经在这一格里了');
+    return;
+  }
+  tgt.ids = tgt.ids || [];
+  tgt.ids.push(id);
+  save(); renderBox();
+}
+
+function removeFromSlot(i, id){
+  const box = curBox();
+  const s = box.slots[i];
+  if(!s) return;
+  s.ids = (s.ids || []).filter(function(x){ return x !== id; });
+  save(); renderBox();
+}
+
+/* -------------------- 药盒：拖拽 --------------------
+   用 Pointer Events 而不是 HTML5 拖放：
+   HTML5 DnD 在触屏上完全不触发，而且要自己管 dataTransfer，反而更麻烦。
+   这里只用 pointerdown/move/up 三件事 —— 移动超过 6px 才算「拖」，
+   所以点卡片上的按钮、点输入框都不会误触发。 */
+
+let drag = null;
+
+function slotUnder(x, y){
+  const el = document.elementFromPoint(x, y);
+  const s = (el && el.closest) ? el.closest('[data-slot]') : null;
+  return s ? Number(s.getAttribute('data-slot')) : -1;
+}
+
+function markOver(i){
+  $$('#box .slot').forEach(function(el){
+    el.classList.toggle('over', Number(el.getAttribute('data-slot')) === i);
+  });
+}
+
+function toast(msg){
+  const el = $('#toast');
+  if(!el) return;
+  el.textContent = msg;
+  el.classList.add('on');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(function(){ el.classList.remove('on'); }, 2200);
+}
+
+function dragDown(e){
+  if(e.pointerType === 'mouse' && e.button !== 0) return;    // 只认左键
+  const t = e.target;
+  if(!t || !t.closest) return;
+  // 按钮 / 输入框上按下不算拖（那些地方要能正常点）
+  if(t.closest('button, a, input, textarea, select, label, dialog')) return;
+  const src = t.closest('[data-med]');
+  if(!src) return;
+  const id = src.getAttribute('data-med');
+  const m = findMed(id);
+  if(!m) return;
+  if(isPrn(m)){
+    toast('备用药不按天吃，不进药盒 —— 想放的话先在「编辑」里改成每天吃的');
+    return;
+  }
+  const fromAttr = src.getAttribute('data-from');
+  drag = {
+    id: id,
+    from: fromAttr == null ? -1 : Number(fromAttr),
+    sx: e.clientX, sy: e.clientY,
+    started: false, ghost: null
+  };
+}
+
+function dragMove(e){
+  if(!drag) return;
+  if(!drag.started){
+    if(Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy) < 6) return;
+    drag.started = true;
+    const m = findMed(drag.id);
+    const g = document.createElement('div');
+    g.className = 'drag-ghost';
+    g.textContent = (m ? m.name : '') + (m && doseText(m) ? ' · ' + doseText(m) : '');
+    document.body.appendChild(g);
+    drag.ghost = g;
+    document.body.classList.add('dragging');
+  }
+  if(drag.ghost){
+    drag.ghost.style.transform = 'translate(' + (e.clientX + 14) + 'px,' + (e.clientY + 12) + 'px)';
+  }
+  markOver(slotUnder(e.clientX, e.clientY));
+}
+
+function dragUp(e){
+  if(!drag) return;
+  const d = drag;
+  drag = null;
+  document.body.classList.remove('dragging');
+  if(d.ghost) d.ghost.remove();
+  markOver(-1);
+  if(!d.started) return;                    // 只是点了一下，当点击处理
+  const to = slotUnder(e.clientX, e.clientY);
+  if(to < 0){
+    if(e.pointerType === 'mouse') toast('松手要在格子里 —— 拖到某一格上再松');
+    return;
+  }
+  addToSlot(to, d.id, d.from);
+}
+
+document.addEventListener('pointerdown', dragDown);
+document.addEventListener('pointermove', dragMove);
+document.addEventListener('pointerup', dragUp);
+document.addEventListener('pointercancel', dragUp);
+
 function cardHTML(m){
   if(isPrn(m)) return prnCardHTML(m);
   const lv = level(m);
@@ -1302,7 +1653,7 @@ function cardHTML(m){
   // ★ 卡片上不再提示「需补 X / 单次限 X / 得开 N 次」（2026-09-28 用户点名删掉）：
   //   卡片变黄本身就是「该补药了」的信号，补多少是点「已经开药」时才需要看的细节。
   return ''
-  + '<div class="med" data-lv="' + lv + '">'
+  + '<div class="med" data-lv="' + lv + '" data-med="' + m.id + '">'
   +   '<div class="med-top">'
   +     '<div style="min-width:0">'
   +       '<div class="med-name">' + esc(m.name)
@@ -1334,7 +1685,7 @@ function prnCardHTML(m){
   const pd = num(m.perDose);
   const empty = st <= 0;
   return ''
-  + '<div class="med" data-lv="prn">'
+  + '<div class="med" data-lv="prn" data-med="' + m.id + '">'
   +   '<div class="med-top">'
   +     '<div style="min-width:0">'
   +       '<div class="med-name">' + esc(m.name)
@@ -1658,7 +2009,17 @@ function delMed(id){
   if(!m) return;
   if(!confirm('确定删除「' + m.name + '」？\n（这条记录会从清单里消失）')) return;
   setMeds(meds.filter(function(x){ return x.id !== id; }));   // 整体替换必须走 setMeds
+  boxForget(id);                                              // 药盒里留着的那几份也一起拿走
   save(); render();
+}
+
+// 删药时把 id 从所有格子里剔掉 —— 否则格子里会留一个查不到的 id，
+// 看着像少了东西，而且下次同 id 的药插进来会「自己冒出来」。
+function boxForget(id){
+  const box = curBox();
+  box.slots.forEach(function(s){
+    if(s.ids.indexOf(id) >= 0) s.ids = s.ids.filter(function(x){ return x !== id; });
+  });
 }
 
 /* -------------------- 人员 -------------------- */

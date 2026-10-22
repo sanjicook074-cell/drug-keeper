@@ -41,6 +41,17 @@ DEMO_JS = r"""
   ];
   demo.forEach(function(d){ d.id = uid(); });
   setMeds(demo);
+  /* ★ 2026-10-22 起主页顶部有「药盒」（模拟分格药盒）。截图里必须摆满，
+     否则成品图是 3 个空格子，README 里「一眼看出每格放什么」这句话就没有依据。
+     4 格 + 自己起的格名（早饭后 / 午饭前 / 晚饭后 / 睡前）—— 这正是这个功能的用法：
+     格名不是程序定的「早中晚」，而是照着自己的吃法改。
+     葡萄糖酸钙是「每日 2 次」，所以它同时出现在午饭前和晚饭后两格。 */
+  var box = curBox();
+  box.slots = defaultSlots(4);
+  box.slots[0].name = '早饭后'; box.slots[0].ids = [demo[0].id];
+  box.slots[1].name = '午饭前'; box.slots[1].ids = [demo[2].id];
+  box.slots[2].name = '晚饭后'; box.slots[2].ids = [demo[1].id, demo[2].id];
+  box.slots[3].name = '睡前';   box.slots[3].ids = [demo[3].id];
   var who = curPerson();
   if(who) who.note = '药快吃完了，想续方。';
   save(); render();
@@ -50,6 +61,13 @@ DEMO_JS = r"""
 
 HOOKS = {
     "main": "",
+    # ★ 药盒特写（2026-10-22 新增）：把页面其余部分全藏掉，只留「我的药品」面板里的药盒。
+    #   为什么不从主图上裁：裁的坐标是写死的，改一次内边距就得跟着改一次，
+    #   迟早出现"图裁歪了但没人发现"。这里用 CSS 藏，布局自己会算。
+    "box": "var st = document.createElement('style');"
+           " st.textContent = '.top,.people,.stats,#warn,.panel-h,#list,.col-side,.foot-sig{display:none !important}'"
+           " + '.cols{grid-template-columns:1fr}';"
+           " document.head.appendChild(st);",
     "disp": "openDisp();",
     # ★ 批量调存量（2026-10-12 改版）：列出**全部**药品、可勾选、顺序同主页、按档位着色。
     #   这里临时多塞一味「没设用法」的药，为的是把「勾选框禁用 + 没法按天算 + 底部那行说明」拍进来
@@ -116,7 +134,7 @@ HOOKS = {
 # main / bulk / edit 三张也要加高，否则「备用药」那一栏会被裁在画面外。
 SIZE = {"rx": "1240,1240", "rxaudit": "1240,1320", "rxuse": "1240,1240",
         "main": "1240,1960", "bulk": "1240,1560", "edit": "1240,1300",
-        "prnedit": "1240,1140"}
+        "prnedit": "1240,1140", "box": "820,205"}
 
 
 def shoot(profile, url, out_path, size):
