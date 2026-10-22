@@ -232,6 +232,38 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
   padding-top:1px}
 .up-none{font-size:11.5px;color:#9aa3b2;padding:5px 0}
 
+/* ---------- 摆药台：一天三顿的药，从这儿反复往格子里拖 ----------
+   为什么要有它（2026-10-23 用户要求）：
+   「未入清单」里的药拖一次就进盒、随即从清单消失，所以一天三顿的药要放三格时
+   得滚回下面的药品列表再拖两次。摆药台把它变成：先拖上台面（台面留一份），
+   再往几个格子各拖一次（每次都复制、台面不动），摆完点 × 收走。
+   台面是**取药盘不是仓库** —— 它不按天扣、不影响库存，只是拖拽过程中的中转站。
+   跟未入清单的视觉区分：那边是两条虚线夹的"清单"，这边是个有底色的托盘，
+   免得两个区域都长成一条带、看花眼。 */
+.stage{margin-top:10px;padding:9px 11px 10px;border-radius:10px;
+  background:#f7fafd;border:1px solid #e6ecf5}
+.stage.over{background:#eff6ff;border-color:var(--brand)}
+.stage.over .stg-t{color:var(--brand)}
+.stg-h{display:flex;align-items:center;gap:7px;margin-bottom:7px;flex-wrap:wrap}
+.stg-t{font-size:12.5px;font-weight:650;color:#4b5563}
+.stg-n{font-size:11px;font-weight:650;color:#6b7280;background:#e9eef6;border-radius:9px;
+  padding:1px 6px;font-variant-numeric:tabular-nums}
+.stg-tip{font-size:11px;color:var(--faint)}
+.stg-list{display:flex;flex-wrap:wrap;gap:6px}
+.stg-item{display:flex;align-items:flex-start;gap:5px;font-size:11.5px;background:#fff;
+  border:1px solid #dbe6f5;border-radius:7px;padding:3px 4px 3px 9px;cursor:grab;max-width:100%;
+  box-shadow:0 1px 2px rgba(16,24,40,.05);transition:border-color .13s,background .13s}
+.stg-item:hover{border-color:#b9d0ee;background:#fbfdff}
+.stg-item[data-lv=out]{opacity:.55}
+.stg-item .nm{color:#242a35;min-width:0;word-break:break-word;line-height:1.3;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+.stg-item .dose{flex:none;font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums;
+  padding-top:1px}
+.stg-item .x{flex:none;width:16px;height:16px;border:none;background:transparent;color:#aab2c0;
+  cursor:pointer;border-radius:4px;font-size:13px;line-height:1;padding:0;display:grid;place-items:center}
+.stg-item .x:hover{background:#e3ecf9;color:var(--out)}
+.stg-none{font-size:11.5px;color:#9aa3b2;padding:3px 0}
+
 /* ---------- 全家偏少：把每个人药箱里「已用完 / 偏少」的药摊在一页 ----------
    为什么要它：药不是一个人吃的。给自己看剩几天、给爸妈看剩几天，得来回切人；
    买药和开药偏偏是全家一趟办完的事，所以要有这么一页把三家的问题并排列出来。 */
@@ -1109,6 +1141,34 @@ function ensureBox(p){
 }
 function curBox(){ return ensureBox(curPerson()); }
 
+/* 摆药台：拖拽过程中的中转站，存的是药 id 的列表（去重，一味药占一格台面）。
+   为什么不存盘就完事：用户摆到一半去接个孩子、页面被手机回收，回来台面空了会很恼火。
+   反正和药盒一样是按人存的，导出备份一起带走也不费事。 */
+function normStage(arr){
+  const seen = {}, out = [];
+  (Array.isArray(arr) ? arr : []).forEach(function(id){
+    if(typeof id !== 'string' || !id || seen[id]) return;
+    seen[id] = 1;
+    out.push(id);
+  });
+  return out;
+}
+function ensureStage(p){
+  if(!p) return [];
+  const a = p.stage;
+  if(!Array.isArray(a)){ p.stage = normStage(a); return p.stage; }
+  // ★ 跟 ensureBox 一个道理：已经洗干净就原样返回（保住引用），脏了才换新数组。
+  //   之前写成"只在不是数组时才重建"，于是存进去的重复 id / null 永远洗不掉。
+  const clean = normStage(a);
+  let dirty = clean.length !== a.length;
+  if(!dirty){
+    for(let i = 0; i < a.length; i++) if(a[i] !== clean[i]){ dirty = true; break; }
+  }
+  if(dirty) p.stage = clean;
+  return p.stage;
+}
+function curStage(){ return ensureStage(curPerson()); }
+
 /* -------------------- 小工具 -------------------- */
 const $  = (s, r) => (r || document).querySelector(s);
 const $$ = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
@@ -1164,7 +1224,8 @@ function migrate(obj){
         name: (p && p.name) ? String(p.name) : '未命名',
         note: (p && p.note) ? String(p.note) : '',   // 就诊人的情况（右侧上面那个框，按人分开存）
         meds: (p && Array.isArray(p.meds)) ? p.meds : [],
-        box: normBox(p && p.box)                      // 药盒：每一格放哪些药（老存档没有就补默认 3 格）
+        box: normBox(p && p.box),                     // 药盒：每一格放哪些药（老存档没有就补默认 3 格）
+        stage: normStage(p && p.stage)                // 摆药台：拖拽中转站（老存档没有就是空）
       };
     });
     return { people: list, currentId: obj.currentId || list[0].id };
@@ -1518,11 +1579,17 @@ function boxedIds(){
   return set;
 }
 
-// 未入清单 = 每天吃的药 − 已入盒的。备用药不进盒，也就不出现在这里。
+// 未入清单 = 每天吃的药 − 已入盒的 − 已经放上台面的。备用药不进盒，也就不出现在这里。
 // 顺序照药品列表原样，不重排 —— 用户认药是认位置的，一排序反而找不到。
+// ★ 为什么要扣掉台面上那些（2026-10-23）：两处都显示会变成"同一味药出现两次"，
+//   看着像重复了。扣掉之后三个区域正好互补 —— 清单（还没碰）/ 台面（正在摆）/ 格子（摆好了）。
 function unplacedMeds(){
   const inBox = boxedIds();
-  return (meds || []).filter(function(m){ return !isPrn(m) && !inBox[m.id]; });
+  const staged = {};
+  (curStage() || []).forEach(function(id){ staged[id] = 1; });
+  return (meds || []).filter(function(m){
+    return !isPrn(m) && !inBox[m.id] && !staged[m.id];
+  });
 }
 
 function unplacedHTML(){
@@ -1540,7 +1607,7 @@ function unplacedHTML(){
     + '<div class="up-h">'
     +   '<span class="up-t">未入清单</span>'
     +   '<span class="up-n">' + list.length + '</span>'
-    +   '<span class="up-tip">拖进上面任意一格</span>'
+    +   '<span class="up-tip">拖进格子 · 要放好几格就先拖到下面的台面</span>'
     + '</div>'
     + '<div class="up-list">'
     +   list.map(function(m){
@@ -1551,6 +1618,37 @@ function unplacedHTML(){
             + '</div>';
         }).join('')
     + '</div>'
+    + '</div>';
+}
+
+function stageHTML(){
+  const st = curStage();
+  // 药被删了 / 改成备用药了，台面上那一份就别再显示（不清盘，只是不画出来；
+  // 真删了下次 normStage 会顺手洗掉）
+  const items = st.map(findMed).filter(Boolean);
+  const head = '<div class="stg-h">'
+    +   '<span class="stg-t">摆药台</span>'
+    +   (items.length ? '<span class="stg-n">' + items.length + '</span>' : '')
+    +   '<span class="stg-tip">' + (items.length
+          ? '往格子里拖 —— 拖几次都行，摆完点 × 收走'
+          : '把药拖到这儿，就能反复往格子里拖')
+    +   '</span>'
+    + '</div>';
+  return '<div class="stage" data-dropzone="stage">' + head
+    + (items.length
+        ? '<div class="stg-list">'
+          + items.map(function(m){
+              return '<div class="stg-item" data-med="' + m.id + '" data-from="-2"'
+                +      ' data-lv="' + level(m) + '"'
+                +      ' title="' + esc(m.name) + '（拖到上面某一格，拖几次都行）">'
+                +   '<span class="nm">' + esc(m.name) + '</span>'
+                +   (chipDose(m) ? '<span class="dose">' + chipDose(m) + '</span>' : '')
+                +   '<button class="x" data-stgdel="' + m.id + '"'
+                +     ' title="从台面收走（药和库存都不动）">×</button>'
+                + '</div>';
+            }).join('')
+          + '</div>'
+        : '<div class="stg-none">台面空着 —— 上面那两处（未入清单 / 药品卡片）都能往这儿拖</div>')
     + '</div>';
 }
 
@@ -1581,9 +1679,11 @@ function renderBox(){
           ? '还空着 —— 从下面的未入清单把药拖进来，一格一格摆好，装药时照着拿就行。'
           : '还空着 —— 先用上面的「添加药品」把药录进来，再拖进格子。')
       + '</div>')
-  + ((meds || []).length ? unplacedHTML() : '');
+  + ((meds || []).length ? unplacedHTML() + stageHTML() : '');
 
   el.onclick = function(e){
+    const sg = e.target.closest('button[data-stgdel]');
+    if(sg){ removeFromStage(sg.getAttribute('data-stgdel')); return; }
     const x = e.target.closest('button[data-del]');
     if(x){ removeFromSlot(Number(x.getAttribute('data-del')), x.getAttribute('data-id')); return; }
     const ctl = e.target.closest('button[data-box]');
@@ -1634,6 +1734,32 @@ function setSlotCount(n){
     }
     box.slots = box.slots.slice(0, n);
   }
+  save(); renderBox();
+}
+
+// 把药放上台面（摆药台）。台面只是中转站：放上去不影响药盒、不影响库存。
+// 一味药在台面上只占一格，重复放不会出现两份 —— 要复制多少份是往格子拖的时候决定的。
+function addToStage(id){
+  const m = findMed(id);
+  if(!m) return;
+  if(isPrn(m)){
+    toast('备用药不按天吃，不用摆进药盒');
+    return;
+  }
+  const st = curStage();
+  if(st.indexOf(id) >= 0){
+    toast('「' + m.name + '」已经在台面上了 —— 直接从那儿往格子拖');
+    return;
+  }
+  st.push(id);
+  save(); renderBox();
+}
+
+function removeFromStage(id){
+  const st = curStage();
+  const i = st.indexOf(id);
+  if(i < 0) return;
+  st.splice(i, 1);
   save(); renderBox();
 }
 
@@ -1691,6 +1817,13 @@ function unplacedUnder(x, y){
   return !!d;
 }
 
+// 指针是不是落在「摆药台」上（清单 / 药品卡片 / 格子里拖出来的药都能放上去）
+function stageUnder(x, y){
+  const el = document.elementFromPoint(x, y);
+  const d = (el && el.closest) ? el.closest('[data-dropzone="stage"]') : null;
+  return !!d;
+}
+
 function markOver(i){
   $$('#box .slot').forEach(function(el){
     el.classList.toggle('over', Number(el.getAttribute('data-slot')) === i);
@@ -1700,6 +1833,12 @@ function markOver(i){
 // 只有「从格子拖出来」时清单区才亮 —— 从清单拖清单自己没意义，不亮免得误以为是落点
 function markUnplaced(on){
   const el = $('#box .unplaced');
+  if(el) el.classList.toggle('over', !!on);
+}
+
+// 台面高亮：从台面自己往外拖时不亮（放回台面没意义，免得让人以为能"再放回去一份"）
+function markStage(on){
+  const el = $('#box .stage');
   if(el) el.classList.toggle('over', !!on);
 }
 
@@ -1753,7 +1892,8 @@ function dragMove(e){
     drag.ghost.style.transform = 'translate(' + (e.clientX + 14) + 'px,' + (e.clientY + 12) + 'px)';
   }
   markOver(slotUnder(e.clientX, e.clientY));
-  markUnplaced(drag.from >= 0 && unplacedUnder(e.clientX, e.clientY));
+  markUnplaced((drag.from >= 0 || drag.from === -2) && unplacedUnder(e.clientX, e.clientY));
+  markStage(drag.from !== -2 && stageUnder(e.clientX, e.clientY));
 }
 
 function dragUp(e){
@@ -1764,13 +1904,25 @@ function dragUp(e){
   if(d.ghost) d.ghost.remove();
   markOver(-1);
   markUnplaced(false);
+  markStage(false);
   if(!d.started) return;                    // 只是点了一下，当点击处理
   const to = slotUnder(e.clientX, e.clientY);
   if(to >= 0){ addToSlot(to, d.id, d.from); return; }
-  // 拖回未入清单 = 从盒子里拿出来（只有本来就在格子里才成立）
-  if(d.from >= 0 && unplacedUnder(e.clientX, e.clientY)){
-    removeFromSlot(d.from, d.id);
+  // 放到台面 = 加进摆药台。台面是"复制源"，所以从格子拖上来也不动那一格。
+  if(stageUnder(e.clientX, e.clientY)){
+    if(d.from === -2) return;               // 台面拖回台面，本来就在上面，什么都不用做
+    const before = curStage().length;
+    addToStage(d.id);
+    // 从格子拖上来的说一句：原来那格没动，免得以为是搬走了
+    if(curStage().length > before && d.from >= 0){
+      toast('放上台面了 —— 原来那格没动，可以从台面再往别处拖');
+    }
     return;
+  }
+  // 拖回未入清单：从盒子里 = 拿出来；从台面 = 收走
+  if(unplacedUnder(e.clientX, e.clientY)){
+    if(d.from >= 0){ removeFromSlot(d.from, d.id); return; }
+    if(d.from === -2){ removeFromStage(d.id); toast('从台面收走了'); return; }
   }
   if(e.pointerType === 'mouse') toast('松手要在格子里 —— 拖到某一格上再松');
 }

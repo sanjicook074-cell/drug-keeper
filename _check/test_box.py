@@ -609,6 +609,226 @@ PROBE = r"""
        'clamp=' + cs.webkitLineClamp + ' ws=' + cs.whiteSpace);
   })();
 
+  /* ---------------- 16. 摆药台：一天三顿的药，从台面反复往格子里拖 ----------------
+     用户原话：「因为有些药是一天三顿的 未入清单里的药如果只能拖拽一次 会导致使用不便
+              我觉得 应该在未入清单的下面再加一个格子 药品拖入这个格子可以多次复制
+              然后再点叉把这个药清掉」
+     ★ 核心断言只有一条：**同一味药从台面连拖三次，三个格子里都有，台面上还留着**。
+       这一条错了，这个功能就等于没做。其余都是围着它的边界。 */
+  function stgEl(){ return q('#box .stage'); }
+  function stgItems(){ return qa('#box .stg-item'); }
+  function stgNames(){
+    return stgItems().map(function(e){ return e.querySelector('.nm').textContent.trim(); });
+  }
+  function stgItemOf(nm){
+    var m = byName(nm);
+    if(!m) return null;
+    var its = stgItems();
+    for(var i = 0; i < its.length; i++){
+      if(its[i].getAttribute('data-med') === m.id) return its[i];
+    }
+    return null;
+  }
+  function stageIds(){ return curStage().slice(); }
+  // 从药品列表的卡片拖到台面
+  function dragCardToStage(nm){
+    var c = card(nm);
+    if(!c) return 'no-card';
+    var st = stgEl();
+    if(!st) return 'no-stage';
+    st.scrollIntoView({ block: 'center' });
+    var a = center(c.querySelector('.med-name'));
+    var b = center(st);
+    pe('pointerdown', a.x, a.y, c.querySelector('.med-name'));
+    pe('pointermove', Math.round((a.x + b.x) / 2), Math.round((a.y + b.y) / 2));
+    pe('pointermove', b.x, b.y);
+    pe('pointerup', b.x, b.y);
+    return 'ok';
+  }
+  // 从台面拖到第 i 格
+  function dragStageToSlot(nm, i){
+    var it = stgItemOf(nm);
+    if(!it) return 'no-item';
+    var s = slots()[i];
+    if(!s) return 'no-slot';
+    s.scrollIntoView({ block: 'center' });
+    var a = center(it.querySelector('.nm'));
+    var b = center(s);
+    pe('pointerdown', a.x, a.y, it.querySelector('.nm'));
+    pe('pointermove', Math.round((a.x + b.x) / 2), Math.round((a.y + b.y) / 2));
+    pe('pointermove', b.x, b.y);
+    pe('pointerup', b.x, b.y);
+    return 'ok';
+  }
+
+  fixture();
+  ck('药盒下面有摆药台', !!stgEl(), '');
+  ck('摆药台在未入清单下面（DOM 顺序：清单 → 台面）', (function(){
+    var all = qa('#box > *');
+    var iUp = -1, iStg = -1;
+    all.forEach(function(e, k){
+      if(e.classList.contains('unplaced')) iUp = k;
+      if(e.classList.contains('stage')) iStg = k;
+    });
+    return iUp >= 0 && iStg > iUp;
+  })(), '');
+  ck('台面空着时显示占位提示', /台面空着/.test(stgEl().textContent), stgEl().textContent.trim());
+
+  // —— 上台面 ——
+  var stockBefore = byName('一天两次片').stockBase;
+  ck('把「一天两次片」拖上台面：结构返回 ok', dragCardToStage('一天两次片') === 'ok', '');
+  ck('台面上有它了', stgNames().join('、') === '一天两次片', stgNames().join('、'));
+  ck('上台面不动库存', byName('一天两次片').stockBase === stockBefore, byName('一天两次片').stockBase);
+  ck('上台面也没往格子里放东西', slotIds(0).length + slotIds(1).length + slotIds(2).length === 0, '');
+  ck('上台面的药从「未入清单」里退出（三个区域互补，不重复显示）',
+     upNames().indexOf('一天两次片') < 0, upNames().join('、'));
+  ck('未入清单里另外两味还在', upNames().join('、') === '早饭前片、晚饭后胶囊', upNames().join('、'));
+
+  // —— 核心：同一味药，从台面连拖三次到三个格子 ——
+  ck('第 1 次拖到第 1 格：返回 ok', dragStageToSlot('一天两次片', 0) === 'ok', '');
+  ck('第 1 格里有它', nameIn(0, '一天两次片'), slotIds(0).length);
+  ck('★ 拖完第 1 格，台面上还留着（能再拖）', stgNames().join('、') === '一天两次片',
+     stgNames().join('、'));
+  ck('第 2 次拖到第 2 格：返回 ok', dragStageToSlot('一天两次片', 1) === 'ok', '');
+  ck('第 2 格也有它', nameIn(1, '一天两次片'), slotIds(1).length);
+  ck('★ 拖完第 2 格，台面上仍然留着', stgNames().join('、') === '一天两次片', stgNames().join('、'));
+  ck('第 3 次拖到第 3 格：返回 ok', dragStageToSlot('一天两次片', 2) === 'ok', '');
+  ck('★ 一天三顿的场景成立：三格各一份', nameIn(0, '一天两次片') && nameIn(1, '一天两次片')
+     && nameIn(2, '一天两次片'), slotIds(0).length + '|' + slotIds(1).length + '|' + slotIds(2).length);
+  ck('三格都放完了，台面上还是那一份（没有变成三份）',
+     stgNames().join('、') === '一天两次片', stgNames().length + ' 项');
+  ck('台面没有因为拖三次而少一味', stageIds().length === 1, stageIds().length);
+
+  // —— 同一格拖两次不会重复 ——
+  dragStageToSlot('一天两次片', 0);
+  ck('同一格再拖一次不会塞进第二份', slotIds(0).filter(function(x){
+    return x === byName('一天两次片').id; }).length === 1, slotIds(0).length);
+  ck('并且提示「已经在这一格里了」', /已经在这一格里了/.test(q('#toast').textContent),
+     q('#toast').textContent);
+
+  // —— 点 × 收走 ——
+  ck('台面上的药带一个 × 按钮', !!stgItemOf('一天两次片').querySelector('button[data-stgdel]'), '');
+  stgItemOf('一天两次片').querySelector('button[data-stgdel]').click();
+  ck('点 × 把药从台面收走', stgNames().length === 0 && stageIds().length === 0, stgNames().join('、'));
+  ck('收走之后台面回到空态提示', /台面空着/.test(stgEl().textContent), '');
+  ck('★ 收走台面不影响已经摆好的三格', nameIn(0, '一天两次片') && nameIn(1, '一天两次片')
+     && nameIn(2, '一天两次片'), slotIds(0).length + slotIds(1).length + slotIds(2).length);
+
+  // —— 重复上台面不会出现两份 ——
+  dragCardToStage('早饭前片');
+  dragCardToStage('早饭前片');
+  ck('同一味药重复拖上台面，台面上只有一份', stgNames().length === 1, stgNames().join('、'));
+  ck('并提示已经在台面上', /已经在台面上了/.test(q('#toast').textContent), q('#toast').textContent);
+
+  // —— 备用药不许上台面 ——
+  dragCardToStage('疼了才吃片');
+  ck('备用药拖不上台面', stgNames().join('、') === '早饭前片', stgNames().join('、'));
+  ck('并说明理由', /备用药不按天吃/.test(q('#toast').textContent), q('#toast').textContent);
+
+  // —— 从「未入清单」也能拖上台面 ——
+  (function(){
+    var it = upItems()[0];
+    if(!it){ ck('清单里有可拖的项', false, '清单是空的'); return; }
+    var nm = it.querySelector('.nm').textContent.trim();
+    var st = stgEl();
+    st.scrollIntoView({ block: 'center' });
+    var a = center(it.querySelector('.nm'));
+    var b = center(st);
+    pe('pointerdown', a.x, a.y, it.querySelector('.nm'));
+    pe('pointermove', Math.round((a.x + b.x) / 2), Math.round((a.y + b.y) / 2));
+    pe('pointermove', b.x, b.y);
+    pe('pointerup', b.x, b.y);
+    ck('从「未入清单」也能把药拖上台面', stgNames().indexOf(nm) >= 0, nm + ' → ' + stgNames().join('、'));
+    ck('拖上去之后那一刻从清单里消失', upNames().indexOf(nm) < 0, upNames().join('、'));
+  })();
+
+  // —— 存档：台面跟着存、导入导出不丢、按人分开 ——
+  ck('台面内容进了存档（localStorage 里读得到 stage）', (function(){
+    try {
+      var raw = JSON.parse(localStorage.getItem(LS_DATA));
+      var me = raw.people.filter(function(p){ return p.id === currentId; })[0];
+      return !!me && Array.isArray(me.stage) && me.stage.length === stageIds().length;
+    } catch(e){ return false; }
+  })(), stageIds().length + ' 项');
+
+  ck('切到另一个人，台面是空的（按人分开）', (function(){
+    var before = stageIds().slice();
+    var p2 = addPersonNamed('测试乙');
+    var after = stageIds();
+    var ok = after.length === 0;
+    // 切回来确认原来那份还在
+    switchPerson(people.filter(function(p){ return p.stage && p.stage.length; })[0].id);
+    return ok && stageIds().join(',') === before.join(',');
+  })(), stageIds().length + ' 项');
+
+  // —— 脏数据：老存档没有 stage 字段也要能跑 ——
+  ck('老存档（没有 stage 字段）不报错，台面当空的', (function(){
+    var p = curPerson();
+    delete p.stage;
+    ensureStage(p);
+    save(); render();
+    return Array.isArray(p.stage) && p.stage.length === 0 && !!stgEl();
+  })(), '');
+
+  ck('脏数据（重复 id / 非字符串 / 空值）会被洗干净', (function(){
+    var p = curPerson();
+    var realId = meds[0].id;
+    p.stage = [realId, realId, '', null, 123, realId];
+    ensureStage(p);
+    save(); render();
+    return p.stage.length === 1 && p.stage[0] === realId;
+  })(), JSON.stringify(stageIds()));
+
+  // —— 药被删掉之后，台面上那一份不该显示成空壳 ——
+  (function(){
+    var p = curPerson();
+    var m = byName('早饭前片');
+    if(!m){ ck('有可删的药', false, ''); return; }
+    p.stage = [m.id];
+    ensureStage(p); save(); render();
+    setMeds(meds.filter(function(x){ return x.id !== m.id; }));
+    save(); render();
+    ck('药被删了，台面上不再显示那个空壳', stgItems().length === 0, stgItems().length);
+  })();
+
+  // —— 从格子拖上台面：复制，不动原格（不然"再往别处放一份"就没法做了）——
+  (function(){
+    var m = byName('晚饭后胶囊');
+    dragToListCard('晚饭后胶囊', 0);
+    var it = q('#box .slot .chip[data-med="' + m.id + '"]');
+    var st = stgEl();
+    if(!it){ ck('格子里有可拖的药', false, ''); return; }
+    st.scrollIntoView({ block: 'center' });
+    var a = center(it.querySelector('.nm'));
+    var b = center(st);
+    pe('pointerdown', a.x, a.y, it.querySelector('.nm'));
+    pe('pointermove', Math.round((a.x + b.x) / 2), Math.round((a.y + b.y) / 2));
+    pe('pointermove', b.x, b.y);
+    pe('pointerup', b.x, b.y);
+    ck('从格子也能把药放上台面', stgNames().indexOf('晚饭后胶囊') >= 0, stgNames().join('、'));
+    ck('放上台面之后原来那格还在（是复制不是搬走）', nameIn(0, '晚饭后胶囊'), slotIds(0).length);
+    ck('并说明原来那格没动', /原来那格没动/.test(q('#toast').textContent), q('#toast').textContent);
+  })();
+
+  // —— 台面上的药拖回「未入清单」= 收走（和点 × 一样）——
+  (function(){
+    var it = stgItemOf('晚饭后胶囊');
+    var up = q('#box .unplaced');
+    if(!it || !up){ ck('台面与清单都在', false, ''); return; }
+    up.scrollIntoView({ block: 'center' });
+    var a = center(it.querySelector('.nm'));
+    var b = center(up);
+    pe('pointerdown', a.x, a.y, it.querySelector('.nm'));
+    pe('pointermove', Math.round((a.x + b.x) / 2), Math.round((a.y + b.y) / 2));
+    pe('pointermove', b.x, b.y);
+    pe('pointerup', b.x, b.y);
+    ck('把台面上的药拖到未入清单 = 收走', stgNames().indexOf('晚饭后胶囊') < 0, stgNames().join('、'));
+    ck('收走后台面进入空态', /台面空着/.test(stgEl().textContent), '');
+    ck('收走台面不动已经摆好的那一格', nameIn(0, '晚饭后胶囊'), slotIds(0).length);
+  })();
+
+  fixture();
+
   function finish(){
     var pre = document.createElement('pre');
     pre.id = '__T';

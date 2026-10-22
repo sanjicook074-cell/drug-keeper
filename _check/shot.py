@@ -65,10 +65,15 @@ HOOKS = {
     # ★ 药盒特写（2026-10-22 新增）：把页面其余部分全藏掉，只留「我的药品」面板里的药盒。
     #   为什么不从主图上裁：裁的坐标是写死的，改一次内边距就得跟着改一次，
     #   迟早出现"图裁歪了但没人发现"。这里用 CSS 藏，布局自己会算。
+    #   2026-10-23 起台面上放一味药（维B2）—— 空台面拍出来只有一个"台面空着"，
+    #   看不出「同一味药能反复往格子里拖」是什么意思。清单里留一味（维B12），
+    #   这样一张图里三个区域都有东西：格子（摆好的）/ 清单（还没碰的）/ 台面（正在摆的）。
     "box": "var st = document.createElement('style');"
            " st.textContent = '.top,.people,.stats,#warn,.panel-h,#list,.col-side,.foot-sig{display:none !important}'"
            " + '.cols{grid-template-columns:1fr}';"
-           " document.head.appendChild(st);",
+           " document.head.appendChild(st);"
+           " var bs = curStage(); if(bs.indexOf(meds[1].id) < 0) bs.push(meds[1].id);"
+           " save(); renderBox();",
     # ★ 全家偏少（2026-10-23 新增）：跨人聚合页。演示数据里只有「我」一个人，
     #   这里临时加一位「妈妈」，好让「按人分组」这件事在图上看得见 ——
     #   只加在这一张里，主页那张（main）不受影响。
@@ -153,7 +158,7 @@ HOOKS = {
 # box 特写和 main 都要跟着加高，否则清单那条会被裁在画面外。
 SIZE = {"rx": "1240,1240", "rxaudit": "1240,1320", "rxuse": "1240,1240",
         "main": "1240,2030", "bulk": "1240,1560", "edit": "1240,1300",
-        "prnedit": "1240,1140", "box": "820,300", "fam": "1240,1010"}
+        "prnedit": "1240,1140", "box": "820,372", "fam": "1240,1010"}
 
 
 def shoot(profile, url, out_path, size):
