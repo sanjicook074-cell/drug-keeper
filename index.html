@@ -183,13 +183,22 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 .slot-empty{font-size:11px;color:#c3c9d4;text-align:center;padding:14px 0;
   -webkit-user-select:none;user-select:none}
 
-.chip{display:flex;align-items:center;gap:4px;font-size:11.5px;
+.chip{display:flex;align-items:flex-start;gap:4px;font-size:11.5px;flex-wrap:wrap;
   background:#f4f7fb;border:1px solid #e3e9f2;border-radius:7px;padding:3px 4px 3px 6px;
   margin-bottom:4px;cursor:grab}
 .chip:last-child{margin-bottom:0}
 .chip:hover{border-color:#c9d6e8;background:#eef3fa}
 .chip[data-lv=out]{background:#fef2f2;border-color:#fecaca}
-.chip .nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#242a35}
+/* 药名允许折行（2026-10-23 用户要求：「显示不全可以多行」）。
+   格子最窄 92px，11.5px 字号一行只放得下 7 个字左右，"葡萄糖酸钙片""维生素B12注射液"
+   这种就被切了尾巴。折行能看全，再长才省略 —— 不能无限折，否则一个格子能撑半屏。
+   ★ line-clamp 必须是 -webkit-box 显示模式，光写 clamp 不生效。
+   ★ 7 格时格子只剩 80px 内宽，横向三个元素（药名 + 剂量 + ×）挤在一行，药名只够两个字。
+     所以给药名留一个 2.6em 的不可压缩下限：放不下时 flex-wrap 把剂量和 × 甩到下一行，
+     药名独占整行宽度。3~5 格时空间够，不会触发换行，观感与原来一致。 */
+.chip .nm{flex:1 1 auto;min-width:2.6em;overflow:hidden;color:#242a35;
+  word-break:break-word;line-height:1.3;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
 .chip .dose{flex:none;font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 .chip .x{flex:none;width:16px;height:16px;border:none;background:transparent;color:#aab2c0;
   cursor:pointer;border-radius:4px;font-size:13px;line-height:1;padding:0;display:grid;place-items:center}
@@ -211,14 +220,35 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
   padding:1px 6px;font-variant-numeric:tabular-nums}
 .up-tip{font-size:11px;color:var(--faint)}
 .up-list{display:flex;flex-wrap:wrap;gap:6px}
-.up-item{display:flex;align-items:center;gap:5px;font-size:11.5px;background:#fff;
-  border:1px solid #e3e9f2;border-radius:7px;padding:4px 9px;cursor:grab;
+.up-item{display:flex;align-items:flex-start;gap:5px;font-size:11.5px;background:#fff;
+  border:1px solid #e3e9f2;border-radius:7px;padding:4px 9px;cursor:grab;max-width:100%;
   box-shadow:0 1px 2px rgba(16,24,40,.04);transition:border-color .13s,background .13s}
 .up-item:hover{border-color:#c9d6e8;background:#f7faff}
 .up-item[data-lv=out]{opacity:.5}
-.up-item .nm{color:#242a35}
-.up-item .dose{font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+/* 清单里的药名同样允许折行（同一个理由，见上面 .chip .nm） */
+.up-item .nm{color:#242a35;min-width:0;word-break:break-word;line-height:1.3;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+.up-item .dose{flex:none;font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums;
+  padding-top:1px}
 .up-none{font-size:11.5px;color:#9aa3b2;padding:5px 0}
+
+/* ---------- 全家偏少：把每个人药箱里「已用完 / 偏少」的药摊在一页 ----------
+   为什么要它：药不是一个人吃的。给自己看剩几天、给爸妈看剩几天，得来回切人；
+   买药和开药偏偏是全家一趟办完的事，所以要有这么一页把三家的问题并排列出来。 */
+.fam-grp{margin-bottom:15px}
+.fam-grp:last-child{margin-bottom:0}
+.fam-h{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.fam-n{font-size:13px;font-weight:650;color:#1f2937}
+.fam-tag{font-size:10.5px;font-weight:600;color:var(--brand);background:#eff6ff;
+  border-radius:5px;padding:1px 6px;line-height:1.6}
+.fam-c{font-size:11.5px;color:var(--faint);font-variant-numeric:tabular-nums}
+.fam-h .btn{margin-left:auto}
+.fam-day{flex:none;font-size:12px;color:var(--muted);text-align:right;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.fam-day[data-lv=out]{color:var(--out);font-weight:600}
+.fam-day[data-lv=soon]{color:var(--soon);font-weight:600}
+.fam-none{font-size:12.5px;color:var(--muted);padding:20px 0;text-align:center;line-height:1.8}
+.fam-note{margin-top:13px;font-size:11.5px;color:var(--faint);line-height:1.7}
 
 /* 拖动时跟着指针跑的那一小块 —— 用 fixed 定位 + transform 跟手，绝不挡住 elementFromPoint。
    ★ 类名必须是 drag-ghost，不能叫 ghost：`.btn.ghost` 早就是这个项目里"次要按钮"的修饰类，
@@ -514,6 +544,7 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
       <button class="btn ghost" id="btnImport">导入</button>
       <button class="btn ghost" id="btnExport">导出备份</button>
       <button class="btn ghost" id="btnBulk" title="按「够吃 N 天」统一加减这个药箱里所有药品的存量">批量调存量</button>
+      <button class="btn ghost" id="btnFam" title="把全家每个人药箱里「已用完 / 偏少」的药摊在一页，买药开药一趟办完">全家偏少</button>
       <button class="btn ghost" id="btnRx" title="底方照片发给助手（AI），它回你一条链接，点开药就填好了；也可以粘文字或手动加">底方录入</button>
       <button class="btn primary" id="btnAdd">＋ 添加药品</button>
     </div>
@@ -951,6 +982,23 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
       <button type="button" class="btn primary" id="btnBulkPlus">增加</button>
     </div>
   </form>
+</dialog>
+
+<!-- 全家偏少：跨人聚合页（2026-10-23 用户要求「显示全家人偏少的药」）
+     只读清单，不在这里改数 —— 改数还是回各自的药箱（点「去这个药箱」就切过去了）。
+     这样这一页永远回答同一个问题：现在这一趟该买（开）哪些药。 -->
+<dialog id="dlgFam">
+  <div class="dlg-h">
+    <h3>全家偏少</h3>
+    <p id="famSub"></p>
+  </div>
+  <div class="dlg-b">
+    <div class="fam-list" id="famList"></div>
+    <div class="fam-note" id="famNote"></div>
+  </div>
+  <div class="dlg-f">
+    <button type="button" class="btn ghost" id="btnFamClose">关闭</button>
+  </div>
 </dialog>
 
 <!-- 单个数字弹窗：「又买了药」/「校准余量」共用（替代浏览器自带的 prompt 小框） -->
@@ -2404,6 +2452,95 @@ function bulkResetPicks(){
   meds.forEach(function(m){ if(bulkDefaultPick(m)) bulkPicked[m.id] = true; });
 }
 
+/* -------------------- 全家偏少：跨人聚合 --------------------
+   用户 2026-10-23 原话：「再加一个聚合页 里面显示的是全家人偏少的药都加载这一页」
+
+   为什么单独一页：药不是一个人吃的，但"剩几天"是按人算的。想给爸妈补药得切过去看一次、
+   再切回来，来回跳。买药／开药偏偏是全家一趟办完的事，所以要有一页把各家的问题并排列出来。
+
+   ★ 这一页只读，不在这里改数 —— 改数回各自的药箱（点「去这个药箱」就切过去了）。
+     好处是它永远只回答一个问题：现在这一趟该买（开）哪些药。 */
+function familyLow(){
+  const groups = [];
+  let total = 0;
+  // level / daysLeft / stockNow 都是只看单条药的纯函数，传别人的药照样成立
+  people.forEach(function(p){
+    const rows = [];
+    (p.meds || []).forEach(function(m){
+      if(isPrn(m)) return;                       // 备用药不按天吃，没有「偏少」这回事
+      const lv = level(m);
+      if(lv !== 'out' && lv !== 'soon') return;  // na（没填用法）算不出天数，也不进
+      rows.push({ m: m, lv: lv, dl: daysLeft(m) });
+    });
+    if(!rows.length) return;
+    rows.sort(function(a, b){
+      if(a.lv !== b.lv) return a.lv === 'out' ? -1 : 1;   // 已用完的排在最前
+      return a.dl - b.dl;                                 // 同档里先吃完的排前面
+    });
+    groups.push({ p: p, rows: rows });
+    total += rows.length;
+  });
+  return { groups: groups, total: total };
+}
+
+function famRowHTML(x){
+  const m = x.m;
+  const unit = m.unit || '片';
+  const freq = freqText(m);                    // 自带 <b> 和转义，直接插
+  const day = (x.lv === 'out') ? '已用完' : ('还剩 ' + fmtDays(x.dl) + ' 天');
+  return '<div class="disp-row" data-lv="' + x.lv + '">'
+    +   '<div class="disp-info">'
+    +     '<div class="disp-name"><span class="fam-mn">' + esc(m.name) + '</span>'
+    +       '<span class="tag ' + x.lv + '">' + LEVEL_LABEL[x.lv] + '</span></div>'
+    +     '<div class="disp-meta">余量 <b>' + fmtNum(stockNow(m)) + '</b> ' + esc(unit)
+    +       (freq ? '<span class="disp-src">　' + freq + '</span>' : '')
+    +     '</div>'
+    +   '</div>'
+    +   '<div class="fam-day" data-lv="' + x.lv + '">' + day + '</div>'
+    + '</div>';
+}
+
+function renderFam(){
+  const r = familyLow();
+  const n = people.length;
+  const sub = $('#famSub'), list = $('#famList'), note = $('#famNote');
+
+  // 只有一个人时别写「把 1 个人药箱里」，读着别扭
+  sub.textContent = (n <= 1)
+    ? '你药箱里「已用完」和「够吃 ' + settings.alertDays + ' 天以内」的药。'
+    : '把 ' + n + ' 个人药箱里「已用完」和「够吃 ' + settings.alertDays + ' 天以内」的药摊在一页，'
+      + '这一趟该买哪些，看这里。';
+
+  if(!r.total){
+    list.innerHTML = '<div class="fam-none">'
+      + (n ? '全家 ' + n + ' 个人的药都还够吃，这些天没有偏少的。' : '还没有添加人。')
+      + '</div>';
+    note.textContent = '';
+    return;
+  }
+
+  list.innerHTML = r.groups.map(function(g){
+    return '<div class="fam-grp">'
+      +   '<div class="fam-h">'
+      +     '<span class="fam-n">' + esc(g.p.name) + '</span>'
+      +     (g.p.id === currentId ? '<span class="fam-tag">当前</span>' : '')
+      +     '<span class="fam-c">' + g.rows.length + ' 味</span>'
+      +     '<button class="btn ghost sm" data-goto="' + g.p.id + '">去这个药箱</button>'
+      +   '</div>'
+      +   g.rows.map(famRowHTML).join('')
+      + '</div>';
+  }).join('');
+
+  note.textContent = '备用药不按天吃，没有「偏少」这回事，所以不列在这里；'
+    + '没填用法的药也算不出天数，同样漏掉 —— 要一起看的话，先在各自的药箱里把用法补上。';
+}
+
+function openFam(){
+  renderFam();
+  const d = $('#dlgFam');
+  if(!d.open) d.showModal();
+}
+
 function openBulk(){
   if(!meds.length){ alert('这个药箱还是空的，先添加药品。'); return; }
   $('#bulkDays').value = 7;
@@ -3463,6 +3600,15 @@ $('#btnDownload').addEventListener('click', function(){
 $('#btnPrint').addEventListener('click', function(){ window.print(); });
 $('#btnExport').addEventListener('click', exportJSON);
 $('#btnBulk').addEventListener('click', openBulk);
+// 全家偏少：只读聚合页。点「去这个药箱」= 切到那个人，顺手把弹窗关掉
+$('#btnFam').addEventListener('click', openFam);
+$('#btnFamClose').addEventListener('click', function(){ $('#dlgFam').close(); });
+$('#famList').addEventListener('click', function(e){
+  const b = e.target.closest('[data-goto]');
+  if(!b) return;
+  $('#dlgFam').close();
+  switchPerson(b.getAttribute('data-goto'));
+});
 $('#bulkDays').addEventListener('input', renderBulk);
 $('#btnBulkPlus').addEventListener('click', function(){ applyBulk(1); });
 $('#btnBulkMinus').addEventListener('click', function(){ applyBulk(-1); });

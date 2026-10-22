@@ -69,6 +69,22 @@ HOOKS = {
            " st.textContent = '.top,.people,.stats,#warn,.panel-h,#list,.col-side,.foot-sig{display:none !important}'"
            " + '.cols{grid-template-columns:1fr}';"
            " document.head.appendChild(st);",
+    # ★ 全家偏少（2026-10-23 新增）：跨人聚合页。演示数据里只有「我」一个人，
+    #   这里临时加一位「妈妈」，好让「按人分组」这件事在图上看得见 ——
+    #   只加在这一张里，主页那张（main）不受影响。
+    #   妈妈的三味对应三种状态：已用完（0 片）/ 偏少（够 3 天）/ 偏少（够 9 天），
+    #   外加一味充足的（120 天）——它**不该出现**，图上看得出筛选是对的。
+    "fam": "var mom = { id: uid(), name:'妈妈', note:'', box:{ slots: defaultSlots(3) }, meds: ["
+           " { id: uid(), name:'维生素D3滴剂', spec:'400IU', perDose:1, unit:'粒', cycleDays:1,"
+           "   timesPerCycle:1, stockBase:3, stockDate:todayStr(), rxMax:30, kind:'daily' },"
+           " { id: uid(), name:'叶酸片', spec:'0.4mg', perDose:1, unit:'片', cycleDays:1,"
+           "   timesPerCycle:1, stockBase:0, stockDate:todayStr(), rxMax:30, kind:'daily' },"
+           " { id: uid(), name:'葡萄糖酸钙片', spec:'0.5g', perDose:2, unit:'片', cycleDays:1,"
+           "   timesPerCycle:1, stockBase:18, stockDate:todayStr(), rxMax:30, kind:'daily' },"
+           " { id: uid(), name:'维生素E软胶囊', spec:'100mg', perDose:1, unit:'粒', cycleDays:1,"
+           "   timesPerCycle:1, stockBase:120, stockDate:todayStr(), rxMax:30, kind:'daily' }"
+           " ] };"
+           " people.push(mom); save(); render(); openFam();",
     "disp": "openDisp();",
     # ★ 批量调存量（2026-10-12 改版）：列出**全部**药品、可勾选、顺序同主页、按档位着色。
     #   这里临时多塞一味「没设用法」的药，为的是把「勾选框禁用 + 没法按天算 + 底部那行说明」拍进来
@@ -137,7 +153,7 @@ HOOKS = {
 # box 特写和 main 都要跟着加高，否则清单那条会被裁在画面外。
 SIZE = {"rx": "1240,1240", "rxaudit": "1240,1320", "rxuse": "1240,1240",
         "main": "1240,2030", "bulk": "1240,1560", "edit": "1240,1300",
-        "prnedit": "1240,1140", "box": "820,300"}
+        "prnedit": "1240,1140", "box": "820,300", "fam": "1240,1010"}
 
 
 def shoot(profile, url, out_path, size):

@@ -151,8 +151,8 @@ PROBE = r"""
       var cs = getComputedStyle(b), r = b.getBoundingClientRect();
       return cs.position === 'fixed' || r.width <= 0 || r.left < 0;
     });
-    ck('顶栏 6 个按钮都在原位（没被拖拽浮层的样式撞飞）',
-       btns.length === 6 && bad.length === 0,
+    ck('顶栏 7 个按钮都在原位（没被拖拽浮层的样式撞飞）',
+       btns.length === 7 && bad.length === 0,
        btns.length + ' 个，异常 ' + bad.length + ' 个');
   })();
   ck('默认 3 格', slots().length === 3, slots().length);
@@ -557,6 +557,57 @@ PROBE = r"""
   ck('从清单拖出去但没落在格子里 → 盒子不变',
      JSON.stringify(curBox().slots) === beforeUpMiss, '');
   ck('并且给出了提示', /松手要在格子里/.test(q('#toast').textContent), q('#toast').textContent);
+
+  /* ---------------- 15. 药名显示不全时折行（2026-10-23 用户要求）----------------
+     原话：「药盒和未入库的药名 如果显示不全 可以多行显示」
+     ★ 这里量的是**真实布局高度**，不是查 CSS 里写没写 line-clamp ——
+       line-clamp 漏写 -webkit-box 显示模式就完全不生效，只查声明是查不出来的。 */
+  fixture();
+  setSlotCount(7);                                   // 7 格最窄，最容易把名字挤断
+  (function(){
+    var m = byName('早饭前片');
+    m.name = '复方甲氧那明胶囊剂';                    // 9 个字，窄格里一行放不下
+    curBox().slots[0].ids = [m.id];
+    save(); render();
+  })();
+  (function(){
+    var nm = slots()[0].querySelector('.chip .nm');
+    var cs = getComputedStyle(nm);
+    var lh = parseFloat(cs.lineHeight);
+    var h = nm.getBoundingClientRect().height;
+    ck('长药名在窄格里真的折成了多行（不是一行省略号）',
+       h > lh * 1.5, h.toFixed(1) + 'px / 行高 ' + lh);
+    ck('最多折三行，再长才省略（不会把格子撑成半屏）',
+       h <= lh * 3.1, h.toFixed(1) + 'px / 行高 ' + lh);
+    ck('药名不再被 nowrap 锁死在一行', cs.whiteSpace !== 'nowrap', cs.whiteSpace);
+    // ★ 最硬的一条：clamp 范围内没有内容被裁掉。
+    //   有省略号时 scrollHeight 会比 clientHeight 大，这一条能直接抓到"看起来折了但尾巴还是被切"。
+    ck('9 字药名在 7 格最窄处完整显示，没有被省略号切掉',
+       nm.scrollHeight <= nm.clientHeight + 1,
+       'scroll=' + nm.scrollHeight + ' client=' + nm.clientHeight);
+    var chip = slots()[0].querySelector('.chip');
+    var slot = slots()[0];
+    ck('折行之后药片条没溢出格子（右侧不被切）',
+       chip.getBoundingClientRect().right <= slot.getBoundingClientRect().right + 0.5,
+       Math.round(chip.getBoundingClientRect().right) + ' vs ' +
+       Math.round(slot.getBoundingClientRect().right));
+    // 窄格时剂量和 × 被甩到下一行，把整行宽度让给药名（flex-wrap 的作用）
+    var dose = chip.querySelector('.dose');
+    ck('7 格窄条里剂量换到了另一行（药名独占整行宽度）',
+       dose.getBoundingClientRect().top >= nm.getBoundingClientRect().bottom - 1,
+       'dose.top=' + Math.round(dose.getBoundingClientRect().top) +
+       ' nm.bottom=' + Math.round(nm.getBoundingClientRect().bottom));
+  })();
+  (function(){
+    // ★ 别拿刚放进格子的那味来查 —— 它已经不在清单里了（这正是未入清单的规则）
+    var first = upItems()[0];
+    if(!first){ ck('未入清单里有可查的项', false, '清单是空的'); return; }
+    var nm = first.querySelector('.nm');
+    var cs = getComputedStyle(nm);
+    ck('未入清单里的药名同样允许折行（配置与药盒一致）',
+       cs.webkitLineClamp === '3' && cs.whiteSpace !== 'nowrap',
+       'clamp=' + cs.webkitLineClamp + ' ws=' + cs.whiteSpace);
+  })();
 
   function finish(){
     var pre = document.createElement('pre');
