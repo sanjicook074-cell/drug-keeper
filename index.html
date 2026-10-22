@@ -196,6 +196,30 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 .chip .x:hover{background:#e8edf5;color:var(--out)}
 .box-foot{margin-top:8px;font-size:11.5px;color:var(--faint)}
 
+/* ---------- 未入清单：还没摆进任何一格的药 ----------
+   为什么单独列出来：装药时真正要回答的是「还有哪几味没摆进去」。
+   在药品列表里自己一个个比对太费眼，所以从盒子上方那堆药里把「已入盒」的剔掉，
+   剩下的按原顺序排在这里，拖进上面任意一格即可。
+   从格子往回拖到这一块 = 从盒子里拿出来（格子里的 × 也还行，但拖动更顺手）。 */
+.unplaced{margin-top:11px;padding:10px 0 11px;border-top:1px dashed #e6eaf1;
+  border-bottom:1px dashed #e6eaf1}
+.unplaced.over .up-list{outline:2px dashed var(--brand);outline-offset:4px;border-radius:8px}
+.unplaced.over .up-t{color:var(--brand)}
+.up-h{display:flex;align-items:center;gap:7px;margin-bottom:7px;flex-wrap:wrap}
+.up-t{font-size:12.5px;font-weight:650;color:#4b5563}
+.up-n{font-size:11px;font-weight:650;color:#6b7280;background:#eef1f6;border-radius:9px;
+  padding:1px 6px;font-variant-numeric:tabular-nums}
+.up-tip{font-size:11px;color:var(--faint)}
+.up-list{display:flex;flex-wrap:wrap;gap:6px}
+.up-item{display:flex;align-items:center;gap:5px;font-size:11.5px;background:#fff;
+  border:1px solid #e3e9f2;border-radius:7px;padding:4px 9px;cursor:grab;
+  box-shadow:0 1px 2px rgba(16,24,40,.04);transition:border-color .13s,background .13s}
+.up-item:hover{border-color:#c9d6e8;background:#f7faff}
+.up-item[data-lv=out]{opacity:.5}
+.up-item .nm{color:#242a35}
+.up-item .dose{font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.up-none{font-size:11.5px;color:#9aa3b2;padding:5px 0}
+
 /* 拖动时跟着指针跑的那一小块 —— 用 fixed 定位 + transform 跟手，绝不挡住 elementFromPoint。
    ★ 类名必须是 drag-ghost，不能叫 ghost：`.btn.ghost` 早就是这个项目里"次要按钮"的修饰类，
      撞名之后那 5 个顶栏按钮会一起变成 fixed 并跑到 translate(-999px,-999px) 去 ——
@@ -1435,6 +1459,53 @@ function slotHTML(s, i){
     + '</div>';
 }
 
+/* 已经进了盒子的药 id（任何一格都算）。同一味药可能同时在几格里，
+   但只要进了任意一格就不再出现在未入清单 —— 那一份已经摆好了。 */
+function boxedIds(){
+  const set = {};
+  const box = curBox();
+  (box.slots || []).forEach(function(s){
+    (s.ids || []).forEach(function(id){ set[id] = 1; });
+  });
+  return set;
+}
+
+// 未入清单 = 每天吃的药 − 已入盒的。备用药不进盒，也就不出现在这里。
+// 顺序照药品列表原样，不重排 —— 用户认药是认位置的，一排序反而找不到。
+function unplacedMeds(){
+  const inBox = boxedIds();
+  return (meds || []).filter(function(m){ return !isPrn(m) && !inBox[m.id]; });
+}
+
+function unplacedHTML(){
+  const list = unplacedMeds();
+  const dailyN = (meds || []).filter(function(m){ return !isPrn(m); }).length;
+
+  if(!list.length){
+    // ★ 空的时候也保留 data-dropzone：全摆进盒里之后，想拿出来的话还得有个落点可拖
+    return '<div class="unplaced" data-dropzone="unplaced">'
+      + '<div class="up-h"><span class="up-t">未入清单</span></div>'
+      + '<div class="up-none">' + (dailyN ? '每天吃的药都摆进盒子里了。' : '还没有每天吃的药。') + '</div>'
+      + '</div>';
+  }
+  return '<div class="unplaced" data-dropzone="unplaced">'
+    + '<div class="up-h">'
+    +   '<span class="up-t">未入清单</span>'
+    +   '<span class="up-n">' + list.length + '</span>'
+    +   '<span class="up-tip">拖进上面任意一格</span>'
+    + '</div>'
+    + '<div class="up-list">'
+    +   list.map(function(m){
+          return '<div class="up-item" data-med="' + m.id + '" data-from="-1" data-lv="' + level(m) + '"'
+            +      ' title="' + esc(m.name) + '（拖到上面某一格）">'
+            +   '<span class="nm">' + esc(m.name) + '</span>'
+            +   (chipDose(m) ? '<span class="dose">' + chipDose(m) + '</span>' : '')
+            + '</div>';
+        }).join('')
+    + '</div>'
+    + '</div>';
+}
+
 function renderBox(){
   const el = $('#box');
   if(!el) return;
@@ -1447,7 +1518,7 @@ function renderBox(){
   el.innerHTML = ''
   + '<div class="box-h">'
   +   '<span class="box-t">药盒</span>'
-  +   '<span class="box-tip">把下面「每天吃的药」拖进格子 · 双击格名可改</span>'
+  +   '<span class="box-tip">把下面的药拖进格子 · 双击格名可改</span>'
   +   '<span class="box-ctl">'
   +     '<button class="stp" data-box="dec" title="少一格"' + (n <= BOX_MIN ? ' disabled' : '') + '>−</button>'
   +     '<span class="n">' + n + ' 格</span>'
@@ -1455,7 +1526,14 @@ function renderBox(){
   +   '</span>'
   + '</div>'
   + '<div class="slots">' + box.slots.map(slotHTML).join('') + '</div>'
-  + (used ? '' : '<div class="box-foot">还空着 —— 从下面把药拖进来，一格一格摆好，装药时照着拿就行。</div>');
+  // 一味药都还没有的时候不显示未入清单 —— 空应用的正文已经在说"还没有记录任何药品"，
+  // 这里再顶一行"还没有每天吃的药"纯属噪音。有药（哪怕全是备用药）才出。
+  + (used ? '' : '<div class="box-foot">'
+      + ((meds || []).length
+          ? '还空着 —— 从下面的未入清单把药拖进来，一格一格摆好，装药时照着拿就行。'
+          : '还空着 —— 先用上面的「添加药品」把药录进来，再拖进格子。')
+      + '</div>')
+  + ((meds || []).length ? unplacedHTML() : '');
 
   el.onclick = function(e){
     const x = e.target.closest('button[data-del]');
@@ -1552,15 +1630,29 @@ function removeFromSlot(i, id){
 let drag = null;
 
 function slotUnder(x, y){
+  // 先看指针下有没有格子。清单区和格子不重叠，直接 closest 就够。
   const el = document.elementFromPoint(x, y);
   const s = (el && el.closest) ? el.closest('[data-slot]') : null;
   return s ? Number(s.getAttribute('data-slot')) : -1;
+}
+
+// 指针是不是落在「未入清单」那一块上（只有从格子里往外拖才有意义）
+function unplacedUnder(x, y){
+  const el = document.elementFromPoint(x, y);
+  const d = (el && el.closest) ? el.closest('[data-dropzone="unplaced"]') : null;
+  return !!d;
 }
 
 function markOver(i){
   $$('#box .slot').forEach(function(el){
     el.classList.toggle('over', Number(el.getAttribute('data-slot')) === i);
   });
+}
+
+// 只有「从格子拖出来」时清单区才亮 —— 从清单拖清单自己没意义，不亮免得误以为是落点
+function markUnplaced(on){
+  const el = $('#box .unplaced');
+  if(el) el.classList.toggle('over', !!on);
 }
 
 function toast(msg){
@@ -1613,6 +1705,7 @@ function dragMove(e){
     drag.ghost.style.transform = 'translate(' + (e.clientX + 14) + 'px,' + (e.clientY + 12) + 'px)';
   }
   markOver(slotUnder(e.clientX, e.clientY));
+  markUnplaced(drag.from >= 0 && unplacedUnder(e.clientX, e.clientY));
 }
 
 function dragUp(e){
@@ -1622,13 +1715,16 @@ function dragUp(e){
   document.body.classList.remove('dragging');
   if(d.ghost) d.ghost.remove();
   markOver(-1);
+  markUnplaced(false);
   if(!d.started) return;                    // 只是点了一下，当点击处理
   const to = slotUnder(e.clientX, e.clientY);
-  if(to < 0){
-    if(e.pointerType === 'mouse') toast('松手要在格子里 —— 拖到某一格上再松');
+  if(to >= 0){ addToSlot(to, d.id, d.from); return; }
+  // 拖回未入清单 = 从盒子里拿出来（只有本来就在格子里才成立）
+  if(d.from >= 0 && unplacedUnder(e.clientX, e.clientY)){
+    removeFromSlot(d.from, d.id);
     return;
   }
-  addToSlot(to, d.id, d.from);
+  if(e.pointerType === 'mouse') toast('松手要在格子里 —— 拖到某一格上再松');
 }
 
 document.addEventListener('pointerdown', dragDown);

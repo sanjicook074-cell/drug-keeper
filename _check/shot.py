@@ -9,6 +9,7 @@
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))     # drug-keeper/
@@ -132,9 +133,11 @@ HOOKS = {
 # 默认 1120 会把底部「加入药箱」按钮切掉（切掉的成品图不算成品）。
 # 2026-10-22 起演示数据多了 2 味备用药（主页多一栏标题 + 2 张卡片），
 # main / bulk / edit 三张也要加高，否则「备用药」那一栏会被裁在画面外。
+# 2026-10-23 起药盒下面多了「未入清单」一条（标题 + 一排药 + 上分隔线，约 60px），
+# box 特写和 main 都要跟着加高，否则清单那条会被裁在画面外。
 SIZE = {"rx": "1240,1240", "rxaudit": "1240,1320", "rxuse": "1240,1240",
-        "main": "1240,1960", "bulk": "1240,1560", "edit": "1240,1300",
-        "prnedit": "1240,1140", "box": "820,205"}
+        "main": "1240,2030", "bulk": "1240,1560", "edit": "1240,1300",
+        "prnedit": "1240,1140", "box": "820,300"}
 
 
 def shoot(profile, url, out_path, size):
@@ -158,7 +161,11 @@ def main():
     print("空状态 -> docs/screenshot-empty.png")
 
     # 2) 主界面 / 3) 开药弹窗：注入演示数据的临时副本
+    # 只拍指定的几张：`python _check/shot.py box main`（不传就全拍）
+    only = [a for a in sys.argv[1:] if not a.startswith("-")]
     for name, hook in HOOKS.items():
+        if only and name not in only:
+            continue
         page = os.path.join(tmpdir, name + ".html")
         open(page, "w", encoding="utf-8").write(src[:i] + DEMO_JS.replace("__SHOT_HOOK__", hook) + src[i:])
         url = "file:///" + page.replace("\\", "/")

@@ -362,6 +362,202 @@ PROBE = r"""
   ck('渲染后没把野 id 清掉（只跳过，不动数据 —— 万一是导入瞬间的时序问题还能救回来）',
      curBox().slots[0].ids.length === 1, curBox().slots[0].ids.length);
 
+  /* ---------------- 14. 未入清单（2026-10-23 用户要求）----------------
+     原话：「药盒的下面应该有一个 未入清单 里面是全部每天吃的药
+            然后 未入清单的药可以拖进药盒」
+     钉四件事：① 位置在药盒下面；② 内容是「每天吃的药 − 已入盒的」；
+               ③ 拖得进格子；④ 反过来拖回清单 = 从盒子里拿出来。 */
+  function upZone(){ return q('#box .unplaced'); }
+  function upItems(){ return qa('#box .up-item'); }
+  function upNames(){
+    return upItems().map(function(e){ return e.querySelector('.nm').textContent.trim(); });
+  }
+  function upItem(nm){
+    var its = upItems();
+    for(var k = 0; k < its.length; k++){
+      if(its[k].querySelector('.nm').textContent.trim() === nm) return its[k];
+    }
+    return null;
+  }
+  // 从清单里某味药拖到第 i 格
+  function dragFromUp(nm, i){
+    var it = upItem(nm);
+    if(!it) return 'no-item';
+    var s = slots()[i];
+    if(!s) return 'no-slot';
+    s.scrollIntoView({ block: 'center' });
+    var h = it.querySelector('.nm');
+    var a = center(h);
+    var b = center(s);
+    pe('pointerdown', a.x, a.y, h);
+    pe('pointermove', Math.round((a.x + b.x) / 2), Math.round((a.y + b.y) / 2));
+    pe('pointermove', b.x, b.y);
+    pe('pointerup', b.x, b.y);
+    return 'ok';
+  }
+  // 从第 i 格里的某味药拖回未入清单
+  function dragChipToUp(i, nm){
+    var s = slots()[i];
+    if(!s) return 'no-slot';
+    var m = byName(nm);
+    var chip = s.querySelector('.chip[data-med="' + (m ? m.id : '') + '"]');
+    if(!chip) return 'no-chip';
+    var z = upZone();
+    if(!z) return 'no-zone';
+    z.scrollIntoView({ block: 'center' });
+    var h = chip.querySelector('.nm');
+    var a = center(h);
+    var b = center(z.querySelector('.up-h'));
+    pe('pointerdown', a.x, a.y, h);
+    pe('pointermove', Math.round((a.x + b.x) / 2), Math.round((a.y + b.y) / 2));
+    pe('pointermove', b.x, b.y);
+    pe('pointerup', b.x, b.y);
+    return 'ok';
+  }
+
+  fixture();
+  var slotsEl = q('#box .slots');
+  ck('药盒下面确实有一块「未入清单」', !!upZone() && /未入清单/.test(upZone().textContent), '');
+  ck('它在 DOM 里排在格子后面',
+     Array.prototype.indexOf.call(q('#box').children, upZone()) >
+     Array.prototype.indexOf.call(q('#box').children, slotsEl),
+     Array.prototype.indexOf.call(q('#box').children, upZone()) + ' > ' +
+     Array.prototype.indexOf.call(q('#box').children, slotsEl));
+  ck('视觉上也在格子下面（不是靠 CSS 挪上去的）',
+     upZone().getBoundingClientRect().top >= slotsEl.getBoundingClientRect().bottom - 2,
+     Math.round(upZone().getBoundingClientRect().top) + ' vs ' +
+     Math.round(slotsEl.getBoundingClientRect().bottom));
+
+  ck('初始 3 味每天吃的药全在清单里（盒子还空着）',
+     upNames().length === 3, upNames().join('、'));
+  ck('清单里的顺序跟药品列表一致',
+     upNames().join('、') === '早饭前片、晚饭后胶囊、一天两次片', upNames().join('、'));
+  ck('备用药不在清单里（它本来就不进盒）',
+     upNames().indexOf('疼了才吃片') < 0, upNames().join('、'));
+  ck('清单标题旁边有数量（3）',
+     (upZone().querySelector('.up-n') || {}).textContent === '3',
+     (upZone().querySelector('.up-n') || {}).textContent);
+  ck('清单里的药带着剂量（1 片 / 2 粒）',
+     /1\s*片/.test(upItem('早饭前片').textContent) && /2\s*粒/.test(upItem('晚饭后胶囊').textContent),
+     upItem('早饭前片').textContent.replace(/\s+/g, ' ').trim());
+  ck('清单项上没有 × 按钮（它本来就不在盒里，没什么可拿出来的）',
+     !upItem('早饭前片').querySelector('.x'), '');
+
+  // 拖进格子
+  ck('从清单拖「早饭前片」到第 1 格：结构返回 ok', dragFromUp('早饭前片', 0) === 'ok', '');
+  ck('第 1 格里有它了', nameIn(0, '早饭前片'), slotIds(0).length);
+  ck('它从清单里消失了（进了盒就不该再躺在那儿）',
+     upNames().indexOf('早饭前片') < 0, upNames().join('、'));
+  ck('清单数量跟着变成 2', upNames().length === 2, upNames().length);
+  ck('别的药没被顺带挪动', upNames().join('、') === '晚饭后胶囊、一天两次片',
+     upNames().join('、'));
+  ck('已入盒的药不会再出现在清单里（拖第二次找不到它）',
+     dragFromUp('早饭前片', 1) === 'no-item', 'no-item');
+
+  // 同一味药可以进多格，清单里不会冒重复项
+  // 同一味药进两格（早晚各一次那种）：清单里只能拖出第一份，
+  // 第二份要从药品列表拖 —— 入盒之后它就不在清单里了，这是有意的。
+  dragFromUp('一天两次片', 0);
+  dragToListCard('一天两次片', 2);
+  ck('同一味药进两格：第 1 格有', nameIn(0, '一天两次片'), slotIds(0).length);
+  ck('同一味药进两格：第 3 格也有', nameIn(2, '一天两次片'),
+     slotIds(0).length + '|' + slotIds(2).length);
+  ck('同一味药进两格，清单里也不会冒出两份',
+     JSON.stringify(upNames()) === JSON.stringify(['晚饭后胶囊']), upNames().join('、'));
+
+  // 拖回清单 = 从盒子里拿出来
+  ck('从第 1 格把「一天两次片」拖回清单：结构返回 ok',
+     dragChipToUp(0, '一天两次片') === 'ok', '');
+  ck('第 1 格没它了', !nameIn(0, '一天两次片'), slotIds(0).length);
+  ck('第 3 格那份还在（只拿了源格那一份）', nameIn(2, '一天两次片'), slotIds(2).length);
+  ck('它没回到清单（另一格还摆着，这味药仍在盒里）',
+     upNames().indexOf('一天两次片') < 0, upNames().join('、'));
+  ck('药本身和库存都没动（只是从盒子拿出来）',
+     !!byName('一天两次片') && byName('一天两次片').stockBase === 60,
+     byName('一天两次片') ? byName('一天两次片').stockBase : '(药没了)');
+
+  dragChipToUp(2, '一天两次片');
+  ck('最后一份也拖回清单后，清单里有它了', upNames().indexOf('一天两次片') >= 0,
+     upNames().join('、'));
+  ck('清单里不会因为它进过两格就出现两次',
+     upNames().filter(function(n){ return n === '一天两次片'; }).length === 1,
+     upNames().join('、'));
+
+  // 点 × 也是拿出盒子，同样回到清单
+  dragFromUp('晚饭后胶囊', 1);
+  (function(){
+    var m = byName('晚饭后胶囊');
+    var x = slots()[1].querySelector('.chip[data-med="' + m.id + '"] .x');
+    if(x) x.click();
+  })();
+  ck('点 × 之后它自动回到清单', upNames().indexOf('晚饭后胶囊') >= 0, upNames().join('、'));
+
+  // 全部入盒
+  fixture();
+  dragFromUp('早饭前片', 0);
+  dragFromUp('晚饭后胶囊', 0);
+  dragFromUp('一天两次片', 0);
+  ck('全部摆进盒子后，清单提示「都摆进盒子里了」',
+     /都摆进盒子里了/.test(upZone().textContent), upZone().textContent.replace(/\s+/g, ' ').trim());
+  ck('空清单也保留落点（想从盒里拿出来还拖得进去）',
+     !!upZone().getAttribute('data-dropzone'), '');
+  ck('空清单时从格子拖回来仍然生效',
+     dragChipToUp(0, '早饭前片') === 'ok' && nameIn(0, '早饭前片') === false &&
+     upNames().indexOf('早饭前片') >= 0, upNames().join('、'));
+
+  // 只有备用药的人
+  (function(){
+    var p = curPerson();
+    p.box = { slots: defaultSlots(3) };
+    setMeds([ { id: uid(), name:'疼了才吃片', spec:'0.3g', perDose:1, unit:'片',
+                cycleDays:1, timesPerCycle:0, stockBase:8, stockDate:todayStr(),
+                rxMax:30, kind:'prn' } ]);
+    save(); render();
+    ck('一个人只有备用药 → 清单写「还没有每天吃的药」',
+       /还没有每天吃的药/.test(upZone().textContent),
+       upZone().textContent.replace(/\s+/g, ' ').trim());
+    ck('并且一条都不列', upItems().length === 0, upItems().length);
+  })();
+
+  // 用光的药还在清单里（不能因为余量 0 就把待摆的药藏起来）
+  fixture();
+  byName('早饭前片').stockBase = 0;
+  byName('早饭前片').stockDate = agoD(30);
+  render();
+  ck('已经吃完的药仍然留在清单里（它还是要摆进盒子的）',
+     upNames().indexOf('早饭前片') >= 0, upNames().join('、'));
+  ck('用光的药在清单里有淡化标记（data-lv=out）',
+     upItem('早饭前片').getAttribute('data-lv') === 'out',
+     upItem('早饭前片').getAttribute('data-lv'));
+
+  // 换人：清单跟着当前人走
+  fixture();
+  dragFromUp('早饭前片', 0);
+  var upKeep = currentId;
+  var yi2 = { id: uid(), name:'乙', note:'', box: { slots: defaultSlots(2) }, meds:[
+    { id: uid(), name:'乙的片', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+      stockBase:10, stockDate:todayStr(), rxMax:30, kind:'daily' }
+  ]};
+  people.push(yi2); save(); switchPerson(yi2.id);
+  ck('换到乙：清单只列乙自己的药', upNames().join('、') === '乙的片', upNames().join('、'));
+  ck('换到乙：甲已入盒的药没有漏过来', upNames().indexOf('早饭前片') < 0, upNames().join('、'));
+  switchPerson(upKeep);
+  ck('切回来：清单里是甲剩下没入盒的两味',
+     upNames().join('、') === '晚饭后胶囊、一天两次片', upNames().join('、'));
+
+  // 从清单拖出去但没落在格子上 → 什么都不发生
+  var beforeUpMiss = JSON.stringify(curBox().slots);
+  (function(){
+    var it = upItem('晚饭后胶囊');
+    var a = center(it.querySelector('.nm'));
+    pe('pointerdown', a.x, a.y, it.querySelector('.nm'));
+    pe('pointermove', a.x + 40, a.y + 40);
+    pe('pointerup', 8, 8);
+  })();
+  ck('从清单拖出去但没落在格子里 → 盒子不变',
+     JSON.stringify(curBox().slots) === beforeUpMiss, '');
+  ck('并且给出了提示', /松手要在格子里/.test(q('#toast').textContent), q('#toast').textContent);
+
   function finish(){
     var pre = document.createElement('pre');
     pre.id = '__T';
