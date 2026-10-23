@@ -343,6 +343,37 @@ PROBE = r"""
     ck('但它还在药箱里（只是没摆进格子）',
        meds.some(function(m){ return m.name === '原先盒里的片'; }));
 
+    // —— 场景四：AI 直接给 `#rx=` 链接那条路，rows 里也带 slots
+    //   这条容易漏：粘文字那条路走 rxParseLine，链接那条路是 openRx(rxNewRow(x))，
+    //   两边的清洗规则必须一样（七档之外的一律丢掉），否则 AI 写「傍晚」就会造出第八个格子。
+    fixtureBox(false);
+    await openRx([
+      { name:'样例己片', spec:'10mg*24片', unit:'片', perDose:1,
+        cycleDays:1, timesPerCycle:2, total:48, slots:['午饭前', '睡前'] },
+      { name:'样例庚胶囊', spec:'0.25g*12粒', unit:'粒', perDose:1,
+        cycleDays:1, timesPerCycle:1, total:24, slots:['傍晚'] }     // 不在七档里，应被丢掉
+    ], 'AI');
+    var subTxt = Array.prototype.slice.call(document.querySelectorAll('#rxList .rx-slotline'))
+      .map(function(e){ return e.textContent; }).join(' || ');
+    ck('链接里的时段也显示在行上',
+       subTxt.indexOf('午饭前') >= 0 && subTxt.indexOf('睡前') >= 0, subTxt);
+    ck('七档之外的「傍晚」被丢掉，不留到下一层',
+       subTxt.indexOf('傍晚') < 0, subTxt);
+
+    var asks4 = await settle(submitRx({ preventDefault: function(){} }), ['知道了']);
+    var box4 = curBox();
+    ck('★ 链接那条路入库后也照样建盒：只有 午饭前 / 睡前 两格',
+       box4.slots.map(function(s){ return s.name; }).join('|') === '午饭前|睡前',
+       box4.slots.map(function(s){ return s.name; }).join('|'));
+    ck('这味两顿的药在两格里都有它',
+       box4.slots.every(function(s){
+         var names = s.ids.map(function(id){
+           var m = meds.filter(function(x){ return x.id === id; })[0];
+           return m ? m.name : '(野指针)';
+         });
+         return names.indexOf('样例己片') >= 0;
+       }), box4.slots.map(function(s){ return s.ids.length; }).join('/'));
+
   } catch(err){
     R.cases.push({ name: '★ 测试脚本抛异常中断（后面的断言都没跑）', pass: false,
                    got: String((err && err.message) || err) });
