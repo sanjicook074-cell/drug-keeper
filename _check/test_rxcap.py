@@ -905,7 +905,10 @@ PROBE = r"""
      q('#btnRxOk').textContent);
 
   var before10 = meds.length;
-  submitRx({ preventDefault: function(){} });
+  // ★ 必须 await：submitRx 里现在有 await applyRxBox → await askAlert 两道。
+  //   不 await 的话它的续体会被推到后面某个 await 处才跑，最后那句 rxReset() 会把
+  //   #rxSub 冲回默认文案 —— 表现出来是下面 10e 那条「说明里写清…」莫名其妙地红。
+  await submitRx({ preventDefault: function(){} });
   ck('提交后药箱只多了 1 条（没勾的那味没进来）', meds.length === before10 + 1, meds.length - before10);
   var nm1 = byName('维生素B6片');
   ck('入库各项写对（余量 60 / 基准今天 / 每次 1 片 / 每日 1 次）',
@@ -1387,9 +1390,12 @@ def main():
         "got": "已清干净" if ("帮你开这个页面的那个" not in src) else "(还在)",
     })
     data["cases"].append({
-        "name": "写明要 AI「把药品名称和用量打成文字」——这一步是用户唯一要做的活",
-        "pass": ("药品名称和用量" in src) and ("一行一味" in src),
-        "got": "已写明" if ("药品名称和用量" in src) else "(没写)",
+        # 2026-10-23 之后用户不用再自己叮嘱 AI 说什么了 —— 页面给了一段提示词（可一键复制），
+        # 格式要求（一行一味、8 个位置）都写在提示词里。所以这条盯的是"那条动作有没有说清"，
+        # 而不是"有没有教用户跟 AI 说哪句话"。
+        "name": "界面上说清「先复制提示词、连着照片发给 AI」这条动作",
+        "pass": ("复制这段提示词" in src) and ("一行一味" in src) and ('id="btnRxTpl"' in src),
+        "got": "已写明" if "复制这段提示词" in src else "(没写)",
     })
 
     # ---- 源码级：页面里**藏着**一段写给 AI 助手的接口说明（用户 2026-10-13 点名要的）----
