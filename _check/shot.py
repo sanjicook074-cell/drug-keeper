@@ -91,6 +91,23 @@ HOOKS = {
            " ] };"
            " people.push(mom); save(); render(); openFam();",
     "disp": "openDisp();",
+    # ★ 全家汇总（2026-10-27 新增）：跨人按药名合并的那一页。
+    #   演示数据里只有「我」一个人，这里临时加一位「妈妈」，故意让三件事都出现在图上：
+    #     · 葡萄糖酸钙片：两人都有，我 10 天 / 妈妈 20 天 → 写「天数不一（10 / 20）」，
+    #       而且带「调总量」按钮 —— 这一页的核心动作；
+    #     · 维生素C片：两人都有、我快吃完了 → 行是黄的（档位取最急的那个），
+    #     · 蒙脱石散：两人都是备用药 → 写「调不了」，证明"没有天数就不瞎分"。
+    "all": "var mom = { id: uid(), name:'妈妈', note:'', box:{ slots: defaultSlots(3) }, meds: ["
+           " { id: uid(), name:'葡萄糖酸钙片', spec:'0.5g', perDose:1, unit:'片', cycleDays:1,"
+           "   timesPerCycle:1, stockBase:20, stockDate:todayStr(), rxMax:30, kind:'daily' },"
+           " { id: uid(), name:'维生素C片', spec:'100mg', perDose:1, unit:'片', cycleDays:1,"
+           "   timesPerCycle:1, stockBase:8, stockDate:todayStr(), rxMax:7, kind:'daily' },"
+           " { id: uid(), name:'维生素D3滴剂', spec:'400IU', perDose:1, unit:'粒', cycleDays:1,"
+           "   timesPerCycle:1, stockBase:3, stockDate:todayStr(), rxMax:30, kind:'daily' },"
+           " { id: uid(), name:'蒙脱石散', spec:'3g*10', perDose:3, unit:'袋', cycleDays:1,"
+           "   timesPerCycle:0, stockBase:5, stockDate:todayStr(), rxMax:0, kind:'prn' }"
+           " ] };"
+           " people.push(mom); save(); render(); openAll();",
     # ★ 手机版三张（2026-10-23）：390×844 是主流窄屏，宽度落到 ≤640px 媒体查询里，
     #   拍到的就是手机上真正的样子。三张分别对应三个新零件：
     #     m     → 药品页（顶栏只剩「⋯」、统计 2×2、悬浮「＋」、底部页签）
@@ -211,6 +228,8 @@ SIZE = {"rx": "1240,1340", "rxparsed": "1240,1430",
         "rxaudit": "1240,1420", "rxuse": "1240,1320",
         "main": "1240,2030", "bulk": "1240,1560", "edit": "1240,1300",
         "prnedit": "1240,1140", "box": "820,372", "fam": "1240,1010",
+        # 全家汇总：8 行（合并后 8 种）× 约 78px + 头尾，1040 会把脚注切掉
+        "all": "1240,1180",
         "delconfirm": "820,470", "slotname": "820,430", "tip": "820,400",
         "choicemode": "820,480",
         # 手机版三张：390×844 = 窄屏真实尺寸，正好落在 ≤640px 断点里面

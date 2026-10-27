@@ -320,6 +320,75 @@ PROBE = r"""
      !!byName('早饭前片') && byName('早饭前片').stockBase === stockBefore,
      byName('早饭前片') ? byName('早饭前片').stockBase : '(药没了)');
 
+  /* ---------------- 8b. 单格删除：指定删哪一格（2026-10-27 用户要求）----------------
+     用户原话「药盒里 每一格再加一个删除功能 可以指定删除那一格」。
+     上面那排 −／＋ 只能从末尾砍，删中间某一格得先减格再补回来 —— 所以每格自己带一个叉。 */
+  fixture();
+  await setSlotCount(4);
+  dragToListCard('早饭前片', 1);            // 摆在第 2 格（默认叫「中」）
+  dragToListCard('晚饭后胶囊', 3);          // 摆在第 4 格（默认叫「睡前」）
+  ck('每一格都有自己的删除叉', qa('#box .slot-x').length === 4, qa('#box .slot-x').length);
+  var keepStock = byName('早饭前片').stockBase;
+
+  // 删带药的格 → 先问（问清是哪一格、里面有什么、药会不会丢）
+  var pDel = delSlot(1);
+  ck('删带药的格之前先弹确认框（页面内 dialog，不是原生 confirm）',
+     !!(q('#dlgAsk') && q('#dlgAsk').open), '');
+  ck('确认框标题点名是哪一格', /删掉「中」/.test(q('#askTitle').textContent),
+     q('#askTitle').textContent);
+  ck('确认框把这一格里的药名列出来了', /早饭前片/.test(q('#askSub').textContent),
+     q('#askSub').textContent);
+  ck('确认框说清药不会丢（只是不再摆在这一格）',
+     /库存都不动/.test((q('#askBody .ask-warn') || {textContent: ''}).textContent),
+     (q('#askBody .ask-warn') || {textContent: '(没有 warn 段)'}).textContent);
+  tapAsk('取消');
+  await pDel;
+  ck('点取消：一格都没少', slots().length === 4, slots().length);
+  ck('点取消：那味药还在格里', nameIn(1, '早饭前片'), '');
+
+  await ans(delSlot(1), '删掉');
+  ck('删掉第 2 格之后只剩 3 格', slots().length === 3, slots().length);
+  ck('★ 删的是指定的那一格，不是末尾 —— 原来第 4 格那味药还在盒里',
+     nameIn(2, '晚饭后胶囊'), '第 3 格：' + slotIds(2).length + ' 味');
+  ck('删格只是把药从盒里拿出来：药还在、库存没变',
+     !!byName('早饭前片') && byName('早饭前片').stockBase === keepStock,
+     byName('早饭前片') ? byName('早饭前片').stockBase : '(药没了)');
+  ck('★ 被拿出来的药自动回到「未入清单」', upNames().indexOf('早饭前片') >= 0,
+     upNames().join('、'));
+
+  // 空格子不问，直接删 —— 问一次纯属多一步，反正随时能「＋」加回来
+  fixture();
+  await setSlotCount(3);
+  var pEmpty = delSlot(2);
+  ck('删空格子不弹确认框', !(q('#dlgAsk') && q('#dlgAsk').open), q('#dlgAsk').open);
+  await pEmpty;
+  ck('空格子直接删掉', slots().length === 2, slots().length);
+
+  // 只剩一格时不许删：叉是隐藏的（disabled），delSlot 里还有一层兜底
+  fixture();
+  await setSlotCount(1);
+  ck('只剩一格时那个叉是隐藏的（disabled）', q('#box .slot-x').disabled === true, '');
+  var pMin = delSlot(0);
+  ck('兜底：只剩一格时硬删会弹提示，不是默默不动',
+     !!(q('#dlgAsk') && q('#dlgAsk').open), '');
+  ck('提示说清了原因', /至少要留一格/.test(q('#askSub').textContent), q('#askSub').textContent);
+  tapAsk();
+  await pMin;
+  ck('提示之后还是一格', slots().length === 1, slots().length);
+
+  // ★ 两个叉长得一模一样，最容易串的地方：格名旁边那个必须删格，胶囊里那个必须拿药
+  fixture();
+  dragToListCard('早饭前片', 0);
+  q('#box .slot[data-slot="0"] .slot-x').click();
+  ck('点格名旁边的叉 = 删格（弹的是删格框，标题带格名）',
+     /删掉「早」/.test(q('#askTitle').textContent), q('#askTitle').textContent);
+  await ans(null, '取消');
+  ck('取消之后药还在格里（没被误当成「从这格拿出来」）', nameIn(0, '早饭前片'), '');
+  q('#box .chip .x').click();
+  ck('点胶囊上的叉 = 把药拿出来，格子还在',
+     slots().length === 3 && !nameIn(0, '早饭前片'),
+     slots().length + ' 格 / ' + slotIds(0).length + ' 味');
+
   /* ---------------- 9. 格名能改 ---------------- */
   fixture();
   // 改格名原来是原生 prompt，现在是页面内的输入弹窗 —— 顺带查它真的弹了、预填了原名字

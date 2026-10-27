@@ -180,6 +180,16 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:text;
   -webkit-user-select:none;user-select:none}
 .slot-n:hover{color:var(--brand)}
+/* 每格自己的删除（2026-10-27 用户要求「可以指定删除那一格」）。
+   放在格名右边同一个行里 —— 上面那排 −／＋ 只能从末尾砍，删不掉中间某一格。 */
+.slot-hd{display:flex;align-items:center;gap:2px;margin-bottom:5px}
+.slot-hd .slot-n{flex:1;min-width:0;margin-bottom:0}
+.slot-x{flex:none;width:18px;height:18px;padding:0;border:none;background:transparent;
+  color:#c3c9d4;font-size:14px;line-height:1;border-radius:5px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center}
+.slot-x:hover{color:var(--out);background:#fef2f2}
+/* 只剩一格时藏起来（不是 :disabled 变灰 —— 空格子边上挂个灰叉看着像坏了） */
+.slot-x:disabled{opacity:0;pointer-events:none}
 .slot-empty{font-size:11px;color:#c3c9d4;text-align:center;padding:14px 0;
   -webkit-user-select:none;user-select:none}
 
@@ -281,6 +291,16 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 .fam-day[data-lv=soon]{color:var(--soon);font-weight:600}
 .fam-none{font-size:12.5px;color:var(--muted);padding:20px 0;text-align:center;line-height:1.8}
 .fam-note{margin-top:13px;font-size:11.5px;color:var(--faint);line-height:1.7}
+
+/* 全家汇总（2026-10-27）：一行一个药名，下面一行列「谁有几片、够几天」。
+   行主体沿用 .disp-row 那套档位色，这里只补明细和人数标记。 */
+.all-mem{margin-top:5px;font-size:11.5px;color:var(--muted);line-height:1.7}
+.all-mem .am{display:inline-block;margin-right:10px}
+.all-mem .am b{color:#374151;font-weight:650}
+.all-n{font-size:11px;color:var(--faint);font-weight:500;margin-left:6px;
+  font-variant-numeric:tabular-nums}
+.all-adj{flex:none}
+.all-noop{flex:none;font-size:11px;color:var(--faint);white-space:nowrap}
 
 /* 拖动时跟着指针跑的那一小块 —— 用 fixed 定位 + transform 跟手，绝不挡住 elementFromPoint。
    ★ 类名必须是 drag-ghost，不能叫 ghost：`.btn.ghost` 早就是这个项目里"次要按钮"的修饰类，
@@ -668,6 +688,9 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 
   /* 触屏上的点击目标：桌面的 16px 小叉手指点不准，放到 22px（格子还是放得下） */
   .chip .x{width:22px;height:22px;font-size:15px;border-radius:6px}
+  /* 格的删除叉也一样 —— 7 格时格内宽只有 80px，24px 是「点得准」和「不挤掉格名」的折中 */
+  .slot-x{width:24px;height:24px;font-size:16px;border-radius:6px}
+  .slot-hd{margin-bottom:3px}
   .btn.sm{padding:7px 11px;font-size:13px}
 
   /* 「就诊准备」那一页用不着统计，省下的地方留给「要开的药」和底部四个按钮 */
@@ -1278,6 +1301,24 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
   </div>
 </dialog>
 
+<!-- 全家汇总：跨人按药名合并的总量页（2026-10-27 用户要求）
+     「全家人的所有药合在一起生成一个汇总 只有在人数多于1个的时候出现 和添加人并列」
+     和上面「全家偏少」的区别：那一页只回答"这趟该买什么"，只读；
+     这一页回答"全家这个药一共还有多少"，**能改总量**，改完按各人每天用量分下去。 -->
+<dialog id="dlgAll">
+  <div class="dlg-h">
+    <h3>全家汇总</h3>
+    <p id="allSub"></p>
+  </div>
+  <div class="dlg-b">
+    <div class="fam-list" id="allList"></div>
+    <div class="fam-note" id="allNote"></div>
+  </div>
+  <div class="dlg-f">
+    <button type="button" class="btn ghost" id="btnAllClose">关闭</button>
+  </div>
+</dialog>
+
 <!-- 单个数字弹窗：「又买了药」/「校准余量」共用（替代浏览器自带的 prompt 小框） -->
 <!-- ★ 2026-10-12 用户要求：单位不用 0.25（半片那种粒度数药片时用不上）→ step="1"，按 1 片计。
      form 上加 novalidate：否则浏览器会用自己的气泡拦下 step/min 不符的值（用户明确讨厌原生弹窗），
@@ -1699,12 +1740,19 @@ function renderPeople(){
       + '<span class="pnm">' + esc(p.name) + '</span>'
       + (need ? '<span class="badge">' + need + '</span>' : '')
       + '</button>';
-  }).join('') + '<button class="padd" id="btnAddPerson">＋ 添加人</button>';
+  }).join('')
+  + '<button class="padd" id="btnAddPerson">＋ 添加人</button>'
+  // 全家汇总只在人多于一的时候出现（2026-10-27 用户要求）：一个人的时候这一页
+  // 就是「药品列表」，没有任何跨人合并可言，摆在那儿只会让人点进去发现啥也没有。
+  + (people.length > 1
+      ? '<button class="padd" id="btnAll" title="把全家人的药按药名合在一起，同一种药能一次改总量">全家汇总</button>'
+      : '');
 
   box.onclick = function(e){
     const btn = e.target.closest('button');
     if(!btn) return;
     if(btn.id === 'btnAddPerson'){ addPerson(); return; }
+    if(btn.id === 'btnAll'){ openAll(); return; }
     const pid = btn.getAttribute('data-pid');
     if(pid && pid !== currentId) switchPerson(pid);
   };
@@ -1818,12 +1866,20 @@ function chipHTML(m, slotIdx){
     + '</div>';
 }
 
-function slotHTML(s, i){
+/* canDel：只剩一格时不给删（那种情况下这个叉是 opacity:0 的，看不见也点不到）。
+   ★ 别指望 map 自动传第三个参数 —— map 的第三参是**整个数组**，truthy，等于永远允许删。
+     调用处必须显式传（见 renderBox）。 */
+function slotHTML(s, i, canDel){
   // 查不到的 id 直接跳过（药被删了 / 存档被手改过），不显示成空壳
   const items = (s.ids || []).map(findMed).filter(Boolean);
   return '<div class="slot' + (items.length ? ' has' : '') + '" data-slot="' + i + '">'
-    +   '<div class="slot-n" data-slotname="' + i + '" title="双击改名（如 早饭前 / 睡前）">'
-    +     esc(s.name || '') + '</div>'
+    +   '<div class="slot-hd">'
+    +     '<div class="slot-n" data-slotname="' + i + '" title="双击改名（如 早饭前 / 睡前）">'
+    +       esc(s.name || '') + '</div>'
+    +     '<button type="button" class="slot-x" data-slotdel="' + i + '"'
+    +       (canDel ? '' : ' disabled')
+    +       ' aria-label="删除这一格" title="删除这一格">×</button>'
+    +   '</div>'
     +   (items.length
         ? items.map(function(m){ return chipHTML(m, i); }).join('')
         : '<div class="slot-empty">拖药进来</div>')
@@ -1933,7 +1989,9 @@ function renderBox(){
   +     '<button class="stp" data-box="inc" title="多一格"' + (n >= BOX_MAX ? ' disabled' : '') + '>＋</button>'
   +   '</span>'
   + '</div>'
-  + '<div class="slots">' + box.slots.map(slotHTML).join('') + '</div>'
+  + '<div class="slots">' + box.slots.map(function(s, i){
+        return slotHTML(s, i, n > BOX_MIN);
+      }).join('') + '</div>'
   // 一味药都还没有的时候不显示未入清单 —— 空应用的正文已经在说"还没有记录任何药品"，
   // 这里再顶一行"还没有每天吃的药"纯属噪音。有药（哪怕全是备用药）才出。
   + (used ? '' : '<div class="box-foot">'
@@ -1946,6 +2004,10 @@ function renderBox(){
   el.onclick = function(e){
     const sg = e.target.closest('button[data-stgdel]');
     if(sg){ removeFromStage(sg.getAttribute('data-stgdel')); return; }
+    // ★ 顺序要紧：先把「删格」的叉挑出来，再判 removeFromSlot 的 [data-del]。
+    //   两个都是叉，但一个拆格、一个拿药，串了就变成"点格名旁边的叉，药消失了"。
+    const sx = e.target.closest('button[data-slotdel]');
+    if(sx){ delSlot(Number(sx.getAttribute('data-slotdel'))); return; }
     const x = e.target.closest('button[data-del]');
     if(x){ removeFromSlot(Number(x.getAttribute('data-del')), x.getAttribute('data-id')); return; }
     const ctl = e.target.closest('button[data-box]');
@@ -2008,6 +2070,39 @@ async function setSlotCount(n){
     }
     box.slots = box.slots.slice(0, n);
   }
+  save(); renderBox();
+}
+
+// 删掉指定的那一格（2026-10-27 用户要求「每一格再加一个删除功能 可以指定删除那一格」）。
+// 和上面 setSlotCount 的「−」不是一回事：那个只能从末尾砍，要删中间某一格就得先减格再重新加回来。
+// ★ 格子里的药**不会丢**：删格只是把 id 从这一格里去掉，药和库存都不动，
+//   它们会自动回到「未入清单」（那个清单是算出来的，不需要额外搬运）。
+async function delSlot(i){
+  const box = curBox();
+  if(box.slots.length <= BOX_MIN){
+    await askAlert({ title: '只剩一格了', sub: '药盒至少要留一格。要清空这一格的话，把里面的药拖出去就行。' });
+    return;
+  }
+  const s = box.slots[i];
+  if(!s) return;
+  const items = (s.ids || []).map(findMed).filter(Boolean);
+
+  // 空格子没有可丢的东西，不问 —— 问一次纯属多一步（随时能「＋」加回来）
+  if(!items.length){
+    box.slots.splice(i, 1);
+    save(); renderBox();
+    toast('删掉了空的「' + (s.name || '这一格') + '」');
+    return;
+  }
+
+  const ok = await askConfirm({
+    title: '删掉「' + (s.name || '这一格') + '」吗？',
+    sub: '这一格里摆着 ' + items.length + ' 味药：' + items.map(function(m){ return m.name; }).join('、') + '。',
+    warn: '药本身和库存都不动，只是不再摆在这一格 —— 删完它们会回到下面的「未入清单」，想摆还能再拖进来。',
+    okText: '删掉这一格', danger: true
+  });
+  if(!ok) return;
+  box.slots.splice(i, 1);
   save(); renderBox();
 }
 
@@ -3233,6 +3328,176 @@ function openFam(){
   renderFam();
   const d = $('#dlgFam');
   if(!d.open) d.showModal();
+}
+
+/* -------------------- 全家汇总：按药名合并 + 调总量（2026-10-27） --------------------
+   用户原话：「全家人的所有药合在一起生成一个汇总 只有在人数多于1个的时候出现 和添加人并列
+   然后这里面也可以调整药品数量 调整完的药品 如果几个家庭成员都有这个药 就把总药量的变化
+   分配给有药的成员 让他们的药的天数相同」。
+
+   ★ 合并口径 = 药名 + 单位。片和粒加不到一起，宁可分成两行 —— 加错了比不合并更糟。
+   ★ 分配口径 = 按**各自每天用量**的比例分总量：X_i = T · d_i / Σd。
+     这么分的后果自动就是「每人的天数完全相同」，因为 天数 = X_i / d_i = T / Σd 与人无关。
+     反过来，把"差额平摊给每个人"是错的：那样只会让本来就吃得多的人更早吃完。
+   ★ 备用药 / 没填用法的成员 d=0，没有「天数」这回事，**不参与分配**，数量原样不动。
+     整行都是这种成员的（比如两个人恰好都有同一种备用药）→ 整行不可调，写明原因。 */
+function unitOf(m){ return m.unit || '片'; }
+
+function famAllRows(){
+  const map = {}, out = [];
+  people.forEach(function(p){
+    (p.meds || []).forEach(function(m){
+      const k = m.name + '\u0000' + unitOf(m);
+      let r = map[k];
+      if(!r){
+        r = map[k] = { key: k, name: m.name, unit: unitOf(m), members: [] };
+        out.push(r);
+      }
+      r.members.push({ p: p, m: m, daily: dailyUse(m), stock: stockNow(m), dl: daysLeft(m) });
+    });
+  });
+  out.forEach(function(r){
+    // 只把「按天吃」的成员并进总量 —— 备用药没有天数，混进去就算不出"大家几天"了
+    r.pool = r.members.filter(function(x){ return x.daily > 0; });
+    r.total = round2(r.pool.reduce(function(a, x){ return a + round2(x.stock); }, 0));
+    r.adjustable = r.pool.length > 0;
+    // 行的颜色取最急的那一档：4 个人里有一个已用完，这一行就该是红的
+    r.lv = r.members.reduce(function(w, x){
+      const lv = level(x.m);
+      return LEVEL_ORDER[lv] < LEVEL_ORDER[w] ? lv : w;
+    }, 'prn');
+  });
+  out.sort(function(a, b){
+    if(a.lv !== b.lv) return LEVEL_ORDER[a.lv] - LEVEL_ORDER[b.lv];
+    return a.name.localeCompare(b.name, 'zh');
+  });
+  return out;
+}
+
+function allMemberHTML(r, x){
+  const who = '<b>' + esc(x.p.name) + '</b> ';
+  if(x.daily <= 0){
+    return '<span class="am">' + who + fmtNum(x.stock) + ' ' + esc(r.unit)
+      + '（' + (isPrn(x.m) ? '备用药' : '没填用法') + '，不按天算）</span>';
+  }
+  return '<span class="am">' + who + fmtNum(x.stock) + ' ' + esc(r.unit)
+    + ' · 够 ' + fmtDays(x.dl) + ' 天</span>';
+}
+
+function allRowHTML(r){
+  const pool = r.pool;
+  const ds = pool.map(function(x){ return Math.floor(x.dl); });
+  const same = pool.length > 1 && ds.every(function(d){ return d === ds[0]; });
+
+  let meta;
+  if(!pool.length){
+    meta = '不按天算，没有「够吃几天」';
+  } else if(pool.length === 1){
+    meta = '总量 <b>' + fmtNum(r.total) + '</b> ' + esc(r.unit)
+         + ' · 够吃 <b>' + fmtDays(pool[0].dl) + '</b> 天';
+  } else if(same){
+    meta = '总量 <b>' + fmtNum(r.total) + '</b> ' + esc(r.unit)
+         + ' · 都够吃 <b>' + ds[0] + '</b> 天';
+  } else {
+    // 还没对齐过：如实写两个数，不要拿平均天数糊过去
+    meta = '总量 <b>' + fmtNum(r.total) + '</b> ' + esc(r.unit)
+         + ' · 天数不一（' + ds.join(' / ') + '）';
+  }
+  // 明细里把每一种成员都写出来（包括不参与分配的），加不起来的原因才看得见
+  const mem = r.members.map(function(x){ return allMemberHTML(r, x); }).join('');
+
+  return '<div class="disp-row" data-lv="' + r.lv + '">'
+    +   '<div class="disp-info">'
+    +     '<div class="disp-name"><span class="fam-mn">' + esc(r.name) + '</span>'
+    +       '<span class="tag ' + r.lv + '">' + LEVEL_LABEL[r.lv] + '</span>'
+    +       '<span class="all-n">' + r.members.length + ' 人</span></div>'
+    +     '<div class="disp-meta">' + meta + '</div>'
+    +     '<div class="all-mem">' + mem + '</div>'
+    +   '</div>'
+    // ★ key 里有一枚 \u0000 当分隔符，**不能直接写进属性** —— HTML 属性值不允许 NUL，
+    //   浏览器读到会换成 U+FFFD，回来就匹配不上了（点「调总量」会毫无反应）。
+    //   所以先 encodeURIComponent 变成纯 ASCII 的 %00，读的时候再解回来。
+    +   (r.adjustable
+        ? '<button type="button" class="btn ghost sm all-adj" data-alladj="'
+          + esc(encodeURIComponent(r.key)) + '">调总量</button>'
+        : '<span class="all-noop">调不了</span>')
+    + '</div>';
+}
+
+function renderAll(){
+  const rows = famAllRows();
+  const n = people.length;
+  const sub = $('#allSub'), list = $('#allList'), note = $('#allNote');
+
+  sub.textContent = '把 ' + n + ' 个人药箱里的药按药名合在一起，共 ' + rows.length + ' 种。'
+    + '同一个药几家都有的时候，改总量会按各自每天用量分下去 —— 分完每个人够吃的天数一样。';
+
+  if(!rows.length){
+    list.innerHTML = '<div class="fam-none">全家还没有记录任何药品。</div>';
+    note.textContent = '';
+    return;
+  }
+  list.innerHTML = rows.map(allRowHTML).join('');
+  note.textContent = '总量只算「按天吃」的成员：备用药和没填用法的药没有「够吃几天」这回事，'
+    + '数量原样留在各自药箱里，不参与分配 —— 要改它们，用各自药箱里的「校准余量」。';
+}
+
+function openAll(){
+  if(people.length <= 1) return;        // 一个人的时候不该有入口（按钮都不渲染）
+  renderAll();
+  const d = $('#dlgAll');
+  if(!d.open) d.showModal();
+}
+
+// 把总量按权重（各人每天用量）分成若干份，保证加起来正好等于 total。
+// 先按比例四舍五入到 2 位，再把零头挂到用量最大的那一位 —— 零头最多几分之一片，
+// 落谁身上天数都差不到 0.01 天。不这么做的话明细加起来会是 89.99，用户会以为是 bug。
+function splitTotal(total, weights){
+  const sum = weights.reduce(function(a, w){ return a + w; }, 0);
+  if(!(sum > 0)) return weights.map(function(){ return 0; });
+  const out = weights.map(function(w){ return round2(total * w / sum); });
+  const diff = round2(total - out.reduce(function(a, x){ return a + x; }, 0));
+  if(diff){
+    let k = 0;
+    for(let i = 1; i < weights.length; i++) if(weights[i] > weights[k]) k = i;
+    out[k] = round2(out[k] + diff);
+  }
+  return out;
+}
+
+function openAllAdjust(key){
+  const r = famAllRows().filter(function(x){ return x.key === key; })[0];
+  if(!r || !r.adjustable) return;
+  const pool = r.pool;
+  const cur = pool.map(function(x){ return x.p.name + ' ' + fmtNum(x.stock); }).join(' + ');
+  openNumDialog({
+    mode: 'set', value: r.total, min: 0,
+    title: '调整「' + r.name + '」的总量',
+    sub: pool.length > 1
+      ? '全家现在一共 ' + fmtNum(r.total) + ' ' + r.unit + '（' + cur + '）。'
+        + '改完按各人每天用量的比例分下去，分完每个人够吃的天数一样。'
+      : '现在只有 ' + pool[0].p.name + ' 在按天吃这个药，改完就是 TA 的余量。',
+    label: '全家一共多少 ' + r.unit,
+    hint: pool.length > 1
+      ? '吃得多的分到的多，天数才会一样；填 0 等于全用完'
+      : '填今天的实际余量，基准日一并滚到今天',
+    okText: '调整',
+    onOk: function(v){ applyAllTotal(key, v); }
+  });
+}
+
+function applyAllTotal(key, total){
+  const r = famAllRows().filter(function(x){ return x.key === key; })[0];
+  if(!r || !r.adjustable) return;
+  const pool = r.pool;
+  const shares = splitTotal(total, pool.map(function(x){ return x.daily; }));
+  pool.forEach(function(x, i){
+    // 和「校准余量」同一套写法：stockBase 存的就是"今天还剩多少"，日期滚到今天。
+    // 这样 stockNow 立刻等于 shares[i]（dosesUsed 归零），不会跟已吃掉的量打架。
+    x.m.stockBase = shares[i];
+    x.m.stockDate = todayStr();
+  });
+  save(); render(); renderAll();
 }
 
 async function openBulk(){
@@ -4511,6 +4776,14 @@ $('#btnBulk').addEventListener('click', openBulk);
 $('#btnFam').addEventListener('click', openFam);
 $('#btnFamClose').addEventListener('click', function(){ $('#dlgFam').close(); });
 $('#btnFamCopy').addEventListener('click', copyFam);
+
+// 全家汇总：一页里有很多行，用事件委托——renderAll 会整块重画，逐行绑会漏
+$('#allList').addEventListener('click', function(e){
+  const b = e.target.closest('button[data-alladj]');
+  if(!b) return;
+  openAllAdjust(decodeURIComponent(b.getAttribute('data-alladj')));
+});
+$('#btnAllClose').addEventListener('click', function(){ $('#dlgAll').close(); });
 $('#famList').addEventListener('click', function(e){
   const b = e.target.closest('[data-goto]');
   if(!b) return;
