@@ -540,10 +540,6 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
   color:var(--muted);background:#f8f9fb;border:1px solid var(--line-2);border-radius:9px;padding:5px 10px}
 .rx-days-wrap input{width:56px;text-align:center;font-weight:650;padding:4px 6px}
 .rx-hint{font-size:11.5px;color:var(--soon);margin-top:6px}
-/* 「这一味会摆进哪个格子」—— 用青色（和药盒/备用药的青绿同一个色系），
-   跟橙色的 rx-hint（那是提醒你核对）区分开：这条不是问题，是它要去做的事。 */
-.rx-slotline{font-size:11.5px;color:var(--prn);margin-top:6px}
-.rx-slotline b{font-weight:600}
 .rx-empty{text-align:center;padding:24px 10px;color:var(--faint);font-size:13px}
 
 /* 「这份底方是谁的」+ 去重结果 —— 弹窗顶上那条（2026-10-13 加）
@@ -998,10 +994,10 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
           <span class="rx-tpl-t">复制这段提示词，发给 AI</span>
           <button type="button" class="btn ghost sm" id="btnRxTpl">复制提示词</button>
         </div>
-        <p>提示词把格式定死了 —— <b>一行一味</b>，药名 / 规格 / 开几盒 / 每次多少 / 多久一次 /
-           <b>什么时候吃</b>。它照这个回你，粘进来点「解析成药品」就能一次认全，不用一格一格改。<br>
-           步骤：把它回的<b>整段复制</b> → 粘进下面那个框 → 点「解析成药品」。
-           入库时它写的「什么时候吃」会顺手把<b>药盒</b>摆好。</p>
+        <p>提示词把格式定死了 —— <b>一行一味</b>，药名 / 规格 / 开几盒 / 每次多少 / 多久一次 / 用法。
+          它照这个回你，粘进来点「解析成药品」就能一次认全，不用一格一格改。<br>
+           步骤：把它回的<b>整段复制</b> → 粘进下面那个框 → 点「解析成药品」，
+           然后逐味核对药名和「够吃多少天」。</p>
       </div>
 
       <div class="rx-paste">
@@ -1115,12 +1111,6 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
     timesPerCycle  频次里的"几天吃几次"（每日 2 次=2；默认 1）
     total          本次一共开回来多少个（= 数量 × 每盒几个）
     note           备注：口服不用写；外用 / 皮下注射 / 商品名 这类写这儿
-    slots          什么时候吃，数组，只能从这七个里选：
-                   ["早饭前","早饭后","午饭前","午饭后","晚饭前","晚饭后","睡前"]
-                   一天吃三次就写三个。**不给 / 给空数组 = 不进药盒**，让它留在「未入清单」里。
-                   不是每天吃的（隔天、隔周、每两周、按需）**留空** —— 塞进每日药盒就是撒谎：
-                   明天的自己会看到「这格有它」，可它今天根本不用吃。
-                   分不清饭前饭后按「饭后」写（多数口服药饭后吃）。
     picked         true/false，是否默认勾选（**页面还会自己去重**，见下 —— 你只管都列上）
     warn           你没把握的地方（药名没认准 / 数量含糊 …），页面会原样显示给用户
 
@@ -3810,10 +3800,9 @@ function rxNewRow(o){
     total: Math.max(0, num(o.total)),
     note: (o.note || '').trim(),
     warn: o.warn || '',
-    // 「什么时候吃」—— 只留七个标准时段，其余一律丢掉（AI 写「晨起」这种不会变成一个怪格子）。
-    // 空数组 = 这味药不进药盒（隔天吃的、按需吃的、看不清的），入库后留在「未入清单」里等人摆。
-    slots: Array.isArray(o.slots)
-      ? RX_SLOTS.filter(function(s){ return o.slots.indexOf(s) >= 0; }) : [],
+    // 没有 slots 这个字段 —— 这一行只管"药名、用量、开多少"。
+    // 药盒由用户自己建格子、自己把药拖进去（进来时都在「未入清单」里等着）。
+    // ⚠️ `#rx=` 链接那条路如果带了 slots，也在这里被无声丢掉（rxNewRow 只取上面这些字段）。
     // 「药箱里已有」—— 去重标记（见 rxMarkExisting）。只影响默认勾选和那枚角标，
     // 用户想勾还是能勾。★ 它不是"这行错了"，别拿它当校验失败用。
     existing: !!o.existing,
@@ -3875,20 +3864,22 @@ function rxHalf(s){
    逗号把「1盒」和药名隔开，启发式认成「本次开到 1 片」，5 味药全变成够吃 1 天。
    把字段顺序和写法定死（空格分隔 + [药单开始]/[药单结束] 包起来）之后，
    同 5 味药总量 28 / 30 / 56 / 1 / 30、够吃 28 / 15 / 28 / 14 / 30 天，全对。
-   ★ 改这段文字之前先跑 _check/test_rx_tpl.py —— 那 8 个位置逐条有断言。 */
+   ★ 改这段文字之前先跑 _check/test_rx_tpl.py —— 那 7 个位置逐条有断言。
+   ★ 这里**只管把药和用量读准**。什么时候吃、药盒怎么摆，一律不问 ——
+     见下面 RX_SLOT_* 那段注释。 */
 const RX_PROMPT = [
   '我在用「药品管家」记药。我发你一张处方（底方）照片，帮我把上面的药整理成下面这个格式 ——',
   '这是程序要读的，写法请完全照抄，不要自己发挥。',
   '',
   '[药单开始]',
-  '示例片(某厂)[10mg*24片] 1盒 10mg 每日一次 口服 早饭后',
-  '示例胶囊[0.25g*12粒] 2盒 1粒 每日2次 口服 早饭后+晚饭后',
-  '示例注射液[100mg/1mL] 1支 100mg 每两周一次 皮下注射 -',
+  '示例片(某厂)[10mg*24片] 1盒 10mg 每日一次 口服',
+  '示例胶囊[0.25g*12粒] 2盒 1粒 每日2次 口服',
+  '示例注射液[100mg/1mL] 1支 100mg 每两周一次 皮下注射',
   '[药单结束]',
   '',
   '（上面三行只是格式示例 —— 药名、规格、数量都换成照片上真实的。）',
   '',
-  '一行一味药，每行 8 个位置，用一个空格隔开，顺序不能变：',
+  '一行一味药，每行 7 个位置，用一个空格隔开，顺序不能变：',
   '1 药名：通用名，不带商品名和规格',
   '2 商品名：写在圆括号里；没有就把整对括号省掉',
   '3 规格：每片剂量*每盒几片，如 [40mg*28片]、[80mg*28粒]；不要写「/盒」',
@@ -3896,16 +3887,13 @@ const RX_PROMPT = [
   '5 每次用量：如 40mg、1片、1贴',
   '6 频次：每日一次、每日2次、每两周一次、每晚一次',
   '7 用法：口服、外用、皮下注射、舌下含服',
-  '8 什么时候吃：只能从这七个里选 —— 早饭前、早饭后、午饭前、午饭后、晚饭前、晚饭后、睡前。',
-  '   一天吃几次就写几个，用 + 连起来（如 早饭后+晚饭后）；照片上分不清饭前饭后，按饭后写；',
-  '   不是每天吃的（隔天、隔周、每两周、按需吃）写 -',
   '',
   '几点要求：',
   '· [药单开始] 和 [药单结束] 这两行原样保留 —— 程序靠它们找药单，少一行就整段认不出来',
   '· 两行之间只放药，不要写表头、金额、诊断',
-  '· 某一项照片上看不清就写 ?，不要猜',
-  '· 不用算「够吃几天」，程序自己算',
-  '· 药单之外你照常提醒我（怎么吃、注意什么），那些我能看到，但不要写进药单里'
+  '· 药名、规格、数量、用量、频次**逐字照抄处方**，看不清就写 ?，不要猜',
+  '· 不用写「饭前饭后」「早上晚上」这类服药时间，也不用算「够吃几天」—— 这两样程序不读',
+  '· 药单之外你照常提醒我怎么吃、注意什么，那些我能看到，但不要写进药单里'
 ].join('\n');
 
 /* 药单的起止标记。容忍 AI 加粗（**[药单开始]**）和全角方括号（【药单开始】）——
@@ -3913,35 +3901,14 @@ const RX_PROMPT = [
 const RX_TAG_BEGIN = /[[【]\s*药单\s*开始\s*[\]】]/;
 const RX_TAG_END   = /[[【]\s*药单\s*结束\s*[\]】]/;
 
-/* ---- 「什么时候吃」→ 药盒的格子 ----
-   只认这七个。为什么不放 AI 自由写：格名会原样印在药盒上，
-   「早餐后」「早上饭后」「晨起」各写一个，就会变成七八个格子，药盒就没法看了。 */
-const RX_SLOTS = ['早饭前', '早饭后', '午饭前', '午饭后', '晚饭前', '晚饭后', '睡前'];
-const RX_SLOT_ALIAS = {
-  '早饭前': '早饭前', '早餐前': '早饭前', '早上前': '早饭前',
-  '早饭后': '早饭后', '早餐后': '早饭后', '早饭': '早饭后', '早餐': '早饭后',
-  '午饭前': '午饭前', '午餐前': '午饭前',
-  '午饭后': '午饭后', '午餐后': '午饭后', '午饭': '午饭后', '午餐': '午饭后',
-  '晚饭前': '晚饭前', '晚餐前': '晚饭前',
-  '晚饭后': '晚饭后', '晚餐后': '晚饭后', '晚饭': '晚饭后', '晚餐': '晚饭后',
-  '睡前': '睡前', '临睡前': '睡前'
-};
-// 长词必须排在短词前面：「早饭前」不能先被「早饭」吃掉，否则「前」就丢了
-const RX_SLOT_RE = /早饭前|早餐前|早上前|早饭后|早餐后|早饭|早餐|午饭前|午餐前|午饭后|午餐后|午饭|午餐|晚饭前|晚餐前|晚饭后|晚餐后|晚饭|晚餐|临睡前|睡前/g;
-// 「早中晚各一片」—— 正则里没有「中」，单独认一遍，按饭后算（多数口服药饭后吃）
-const RX_SLOT_EZW = /早\s*[、,，+／/]?\s*中\s*[、,，+／/]?\s*晚/;
-
-function rxSlotsIn(text){
-  const s = rxHalf(text);
-  const hit = {};
-  if(RX_SLOT_EZW.test(s)){ hit['早饭后'] = 1; hit['午饭后'] = 1; hit['晚饭后'] = 1; }
-  (s.match(RX_SLOT_RE) || []).forEach(function(w){
-    const v = RX_SLOT_ALIAS[w];
-    if(v) hit[v] = 1;
-  });
-  // 按药盒的标准顺序返回，不按出现顺序 —— 同一味药两行写反了，格子顺序也不会乱
-  return RX_SLOTS.filter(function(v){ return hit[v]; });
-}
+/* ---- 服药时间：只擦掉，不解析 ----
+   底方上、「用法用量」列的末尾常常带着「早饭后」「睡前」这类字。这些字留在行里会干扰
+   别的字段：`/每晚|每夜|睡前|qn/` 是「每日一次」的判据，于是「每日2次 睡前服」会被算成 1 次。
+   所以解析前先把它擦掉 —— 但**擦下来的东西直接扔掉**，不往药盒里摆。
+   药盒的格子和里面放什么，由用户在页面上自己拖（见 renderBox / addToSlot）。 */
+const RX_SLOT_RE = /早饭前|早餐前|早上前|早饭后|早餐后|早饭|早餐|午饭前|午餐前|午饭后|午餐后|午饭|午餐|晚饭前|晚餐前|晚饭后|晚餐后|晚饭|晚餐|临睡前|睡前|晨起|空腹|饭前|饭后|早上|中午|晚上|早晨/g;
+// 「早中晚各一片」—— 正则里没有「中」，单独擦一遍
+const RX_SLOT_EZW = /早\s*[、,，+／/]?\s*中\s*[、,，+／/]?\s*晚/g;
 
 const RX_MASS = 'mg|g|ml|ug|iu';
 const RX_CNT  = '片|粒|支|贴|袋|滴|喷|丸|包';
@@ -3962,10 +3929,10 @@ function rxParseLine(line){
   let s = rxHalf(line);
   if(!s) return null;
 
-  // ⓪ 「什么时候吃」先摘出来，再解析别的字段。
-  //    不先摘的话，「睡前」会被下面的频次规则当成「每晚一次」——
+  // ⓪ 「早饭后」「睡前」这类服药时间先擦掉，再解析别的字段。
+  //    不擦的话，「睡前」会被下面的频次规则当成「每晚一次」——
   //    「每日2次 睡前服」这种写法就会把频次算错。
-  const slots = rxSlotsIn(s);
+  //    ★ 擦掉就完了，**不留下任何东西**：药盒不由这里决定（见 RX_SLOT_RE 上面那段）。
   s = s.replace(RX_SLOT_RE, ' ').replace(RX_SLOT_EZW, ' ').replace(/\s+/g, ' ').trim();
   if(!s) return null;
 
@@ -4097,7 +4064,7 @@ function rxParseLine(line){
   return rxNewRow({
     name: name, spec: spec, unit: unit,
     perDose: perDose, cycleDays: cycleDays, timesPerCycle: timesPerCycle,
-    total: round2(total), note: note, warn: warn, slots: slots
+    total: round2(total), note: note, warn: warn
   });
 }
 
@@ -4161,9 +4128,6 @@ function rxRowHTML(r){
     +       '<input type="number" class="rx-days-in" step="1" min="0" value="' + (dl == null ? '' : dl) + '"'
     +         (d > 0 ? '' : ' disabled title="没设用法，算不出天数"') + '>天</span>'
     +   '</div>'
-    +   (r.slots && r.slots.length
-          ? '<div class="rx-slotline">入库后摆进药盒：<b>' + r.slots.join(' · ') + '</b></div>'
-          : '')
     +   (r.warn ? '<div class="rx-hint">' + esc(r.warn) + '</div>' : '')
     + '</div>';
 }
@@ -4545,9 +4509,8 @@ async function submitRx(e){
   }
 
   picked.forEach(function(r){
-    const id = uid();
     meds.push({
-      id: id,
+      id: uid(),
       name: r.name.trim(),
       spec: (r.spec || '').trim(),
       perDose: Math.max(0, num(r.perDose, 1)),
@@ -4559,65 +4522,16 @@ async function submitRx(e){
       rxMax: 0,
       note: (r.note || '').trim()
     });
-    r._newId = id;      // 摆药盒时靠它找「刚入库的这一味」，弹窗一关 rxRows 就清了
   });
   save(); render();
   $('#dlgRx').close();
-  const boxRes = await applyRxBox(picked);
   const who = curPerson();
   await askAlert({
     title: '已加入 ' + picked.length + ' 味药',
     sub: (who ? '记到「' + who.name + '」的药箱里。' : '')
-      + (boxRes && !boxRes.skipped
-          ? '\n\n药盒也照「什么时候吃」摆好了：建了 ' + boxRes.slots + ' 格（'
-            + boxRes.names.join('、') + '），' + boxRes.meds + ' 味药各就各位。'
-          : '')
-      + (boxRes && boxRes.skipped ? '\n\n药盒没动 —— 你在确认框里选了「不动」，药都还在药箱里。' : '')
       + '\n\n「余量」记的是这次开回来的量，基准日是今天；卡片上的「剩 N 天」按你确认的天数走，之后每天自动往下扣。'
   });
   rxReset();
-}
-
-/* ---- 入库后按「什么时候吃」把药盒摆好 ----
-   三条规矩，都是为了不撒谎：
-   ① 只摆**每天吃**的（slots 非空）。隔天、隔周、按需吃的那几味不进盒 ——
-      塞进每日药盒里，等于告诉明天的自己"这格有它"，可它今天根本不用吃。
-   ② 药盒已经有药 → 先问。重建会把现有盒里的摆法整个换掉，这是不可逆的；
-      药盒是空的 → 直接摆，不拿这种事烦人。
-   ③ 有几格建几格，不为了"整齐"补空格 —— 底方只有早晚两顿，就只建那两格。 */
-async function applyRxBox(picked){
-  const withSlot = (picked || []).filter(function(r){ return r._newId && r.slots && r.slots.length; });
-  if(!withSlot.length) return null;
-
-  const used = {};
-  withSlot.forEach(function(r){ r.slots.forEach(function(s){ used[s] = 1; }); });
-  const names = RX_SLOTS.filter(function(s){ return used[s]; });
-
-  const box = curBox();
-  const oldCount = box.slots.reduce(function(n, s){ return n + (s.ids || []).length; }, 0);
-  if(oldCount > 0){
-    const ok = await askConfirm({
-      title: '按「什么时候吃」重排药盒吗？',
-      sub: '会按这份底方建 ' + names.length + ' 格（' + names.join('、') + '），把刚入库的 '
-        + withSlot.length + ' 味药摆进去。\n'
-        + '现在的药盒是 ' + box.slots.length + ' 格、摆了 ' + oldCount + ' 份药，这一下会整个换掉。',
-      warn: '原来盒里那些不是这份底方的药，就不在盒里了（药本身还在药箱，只是没摆进格子）。'
-        + '不想动的话点「不动药盒」，照旧自己拖。',
-      okText: '重排药盒',
-      danger: true
-    });
-    if(!ok) return { skipped: true, slots: names.length, names: names, meds: withSlot.length };
-  }
-
-  box.slots = names.map(function(n){ return { name: n, ids: [] }; });
-  withSlot.forEach(function(r){
-    r.slots.forEach(function(s){
-      const i = names.indexOf(s);
-      if(i >= 0 && box.slots[i].ids.indexOf(r._newId) < 0) box.slots[i].ids.push(r._newId);
-    });
-  });
-  save(); render();
-  return { slots: names.length, names: names, meds: withSlot.length };
 }
 
 /* ---- 链接预填（给「把照片发给助手」那条路用）----

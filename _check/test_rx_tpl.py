@@ -6,21 +6,29 @@ drug-keeper：底方录入的「提示词」这条路 —— 真实 DOM 驱动�
     「底方录入那里 你设计一套提示词 让 ai 软件能够输出结构化的结果 比如说 让 ai 在药品信息
       前后加上特定的字符 现在 ai 出的是这样的……没有结构化 咱们这个系统可能出问题
       然后 提示词支持一键复制」
-    「提示词里还需要告诉 ai 患者是早中晚饭前还是饭后吃 然后 根据这个 在录入药品的时候
-      可以自动创建好药盒 把药物放进去」
 
-拆成六块，本脚本就按这六块钉：
+★ 2026-10-27 追加（推翻了 10-23 那条「顺带自动建药盒」）：
+    「底方录入里 提示词不涉及药是什么时候吃的 程序也不用自动安排药什么时候吃
+      这个建药盒 放药的过程完全交给用户 目的是用这一步来强制用户查清楚录入的药品对不对
+      但是你不用把这个目的写在网站上」
 
-① **提示词本身**：必须含 [药单开始]/[药单结束] 这对标记、含 8 个位置的写法、
-   含七个服药时段、含「不是每天吃的写 -」。按钮点一下要真进剪贴板。
+所以现在这一块只钉**一件事**：把药名和用量读准、摆给人核对。
+「什么时候吃」既不进提示词、也不进数据结构、更不碰药盒 —— 底方那一步的产出
+就是「几味药 + 各自够吃多少天」，剩下的全由用户自己拖。
+
+拆成五块：
+
+① **提示词本身**：必须含 [药单开始]/[药单结束] 这对标记、含 7 个位置的写法、
+   **不许**出现任何服药时间（七个时段一个都不能有）。按钮点一下要真进剪贴板。
 ② **切段**：AI 回的全文（寒暄 + 药单 + 用药提醒）只取药单中间那段。
    不切的话，寒暄那句「好的，我从照片上认出了 5 种药：」会被当成一味药解析。
-③ **八个位置逐个认**：药名 / 商品名 / 规格 / 开几盒 / 每次用量 / 频次 / 用法 / 什么时候吃。
+③ **七个位置逐个认**：药名 / 商品名 / 规格 / 开几盒 / 每次用量 / 频次 / 用法。
 ④ **AI 原来的写法也不能崩**：它自己发挥的那版（「40mg×28片/盒，1盒 — 每次 40mg」）
    页面仍然要出 5 味药 —— 认不全是启发式的老问题，但不许整段解析失败。
-⑤ **时段 → 药盒**：格名就是七个标准时段、按标准顺序、一味药能进多格、
-   隔两周/按需的那种**不进盒**（塞进每日药盒就是撒谎）。
-⑥ **建盒不硬来**：药盒里有药 → 先问；选「不动」→ 盒子一格都不动。
+⑤ **服药时间只擦不解析**：底方末尾带「早饭后」「睡前」时，这些字要从行里擦掉
+   （不擦的话「睡前」会被频次正则当成「每晚一次」，把「每日2次」算成 1 次），
+   但**不许**留下任何东西 —— 行对象上没有 slots，入库后药盒一格都不动。
+   `#rx=` 链接那条路带了 slots 也一样被无视。
 
 ★ 全部用**虚构药名**（样例甲片/样例乙凝胶贴膏…）。真实处方上的药名在本机的
   `_check/_tmp_deny_names.txt` 里，`test_rxcap.py` 会扫源码，写进来会直接判失败。
@@ -43,12 +51,15 @@ CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 # AI 按提示词回的**完整一段**：寒暄 + 药单 + 药单外的提醒。
 # 寒暄故意不用「金额/诊断」这类词 —— 那些本来就会被 RX_NOT_DRUG 滤掉，
 # 用它们测「切段」等于白测（滤网挡住了，看不出切段有没有生效）。
+# ★ 这几行末尾**故意还带着「早饭后」「睡前」「早中晚」** —— 提示词已经不要求了，
+#   但 AI 常常自作主张加一句，用户粘过来也会带上。这些字必须被擦掉（它们会污染频次），
+#   同时不许留下任何东西（不产出 slots、不碰药盒）。
 AI_REPLY = """好的，我从照片上认出了 5 种药：
 [药单开始]
 样例甲片(某厂)[40mg*28片] 1盒 40mg 每日一次 口服 早饭后
 样例乙凝胶贴膏[40mg*6贴] 5盒 1贴 每日2次 外用 早饭后+晚饭后
 样例丙胶囊(某牌)[80mg*28粒] 2盒 160mg 每日一次 口服 睡前
-样例丁注射液[100mg/1mL] 1支 100mg 每两周一次 皮下注射 -
+样例丁注射液[100mg/1mL] 1支 100mg 每两周一次 皮下注射
 样例戊片[600mg*30片/瓶] 1瓶 600mg 每日3次 口服 早中晚
 [药单结束]
 
@@ -121,14 +132,27 @@ PROBE = r"""
        RX_PROMPT.indexOf('[药单开始]') >= 0 && RX_PROMPT.indexOf('[药单结束]') >= 0);
     ck('提示词写明了「这两行原样保留，程序靠它们找药单」',
        RX_PROMPT.indexOf('原样保留') >= 0 && RX_PROMPT.indexOf('程序靠它们') >= 0);
-    ck('提示词含 8 个位置：药名 / 商品名 / 规格 / 开几盒 / 每次用量 / 频次 / 用法 / 什么时候吃',
-       ['药名', '商品名', '规格', '开几盒', '每次用量', '频次', '用法', '什么时候吃']
+    ck('提示词含 7 个位置：药名 / 商品名 / 规格 / 开几盒 / 每次用量 / 频次 / 用法',
+       ['药名', '商品名', '规格', '开几盒', '每次用量', '频次', '用法']
          .every(function(k){ return RX_PROMPT.indexOf(k) >= 0; }));
-    ck('提示词把七个时段全列出来了',
+    ck('★ 提示词里**没有**第 8 个位置「什么时候吃」（2026-10-27 砍掉）',
+       RX_PROMPT.indexOf('什么时候吃') < 0 && RX_PROMPT.indexOf('8 什么时候') < 0,
+       RX_PROMPT.split('\n').filter(function(x){ return x.indexOf('什么时候吃') >= 0; }).join(' / '));
+    ck('★ 提示词里一个服药时段都不出现（早饭前…睡前）',
        ['早饭前', '早饭后', '午饭前', '午饭后', '晚饭前', '晚饭后', '睡前']
-         .every(function(k){ return RX_PROMPT.indexOf(k) >= 0; }));
-    ck('提示词说明了一天吃几次就写几个（+ 连起来）', RX_PROMPT.indexOf('+ 连起来') >= 0);
-    ck('提示词说明了「不是每天吃的写 -」', /不是每天吃的[^\n]*-/.test(RX_PROMPT));
+         .every(function(k){ return RX_PROMPT.indexOf(k) < 0; }),
+       ['早饭前', '早饭后', '午饭前', '午饭后', '晚饭前', '晚饭后', '睡前']
+         .filter(function(k){ return RX_PROMPT.indexOf(k) >= 0; }).join('/'));
+    ck('★ 提示词明说了不用写服药时间、不用算天数',
+       /不用写[^\n]*服药时间/.test(RX_PROMPT) && RX_PROMPT.indexOf('不用算') >= 0,
+       RX_PROMPT.split('\n').filter(function(x){ return /不用写|不用算/.test(x); }).join(' / '));
+    ck('提示词的示例行只有 7 个位置（示例段里没有时段词）',
+       (function(){
+         var m = RX_PROMPT.match(/\[药单开始\]([\s\S]*?)\[药单结束\]/);
+         if(!m) return false;
+         return ['早饭前', '早饭后', '午饭前', '午饭后', '晚饭前', '晚饭后', '睡前']
+           .every(function(k){ return m[1].indexOf(k) < 0; });
+       })());
     ck('提示词要求看不清就写 ?、不许猜', RX_PROMPT.indexOf('不要猜') >= 0);
     ck('提示词允许在药单之外写提醒（那些不该进药单）',
        RX_PROMPT.indexOf('不要写进药单里') >= 0);
@@ -214,55 +238,51 @@ PROBE = r"""
     ck('老版本的 5 个药名都对得上', free.every(function(r){ return /^样例/.test(r.name); }),
        free.map(function(r){ return r.name; }).join('/'));
 
-    /* ============ ⑤ 时段 ============ */
-    function slots(line){ return rxParseLine(line).slots.join('+'); }
-    ck('「早饭后」→ 早饭后', slots('样例片[10mg*10片] 1盒 10mg 每日一次 口服 早饭后') === '早饭后');
-    ck('「早饭前」和「早饭后」是两个不同的格子（前 ≠ 后）',
-       slots('样例片[10mg*10片] 1盒 10mg 每日一次 口服 早饭前') === '早饭前');
-    ck('早饭后+晚饭后 → 两个格，按标准顺序排',
-       slots('样例片[10mg*10片] 1盒 10mg 每日2次 口服 早饭后+晚饭后') === '早饭后+晚饭后');
-    ck('写反了顺序也按标准顺序返回（晚饭后+早饭后 仍是 早饭后+晚饭后）',
-       slots('样例片[10mg*10片] 1盒 10mg 每日2次 口服 晚饭后+早饭后') === '早饭后+晚饭后');
-    ck('「早中晚」一口气写三个 → 三格都认（按饭后算）',
-       slots('样例片[10mg*10片] 1盒 10mg 每日3次 口服 早中晚') === '早饭后+午饭后+晚饭后');
-    ck('「睡前」单独一格', slots('样例片[10mg*10片] 1盒 10mg 每日一次 口服 睡前') === '睡前');
-    ck('「临睡前」也算睡前', slots('样例片[10mg*10片] 1盒 10mg 每日一次 口服 临睡前') === '睡前');
-    ck('「早餐前 / 午餐后 / 晚餐后」这些近义写法都归到标准格',
-       slots('样例片[10mg*10片] 1盒 10mg 每日3次 口服 早餐前、午餐后、晚餐后')
-         === '早饭前+午饭后+晚饭后');
-    ck('「-」（不是每天吃的）→ 不进盒', slots('样例针[10mg] 1支 10mg 每两周一次 皮下注射 -') === '');
-    ck('照片上没写时段的（如隔天一次）→ 不进盒，不瞎猜一格',
-       slots('样例片[10mg*10片] 1盒 10mg 隔日一次 口服') === '');
-    ck('七个标准之外的写法（「晨起」）→ 丢掉，不造出第八个格子',
-       slots('样例片[10mg*10片] 1盒 10mg 每日一次 口服 晨起') === '');
-    ck('★ 时段先摘再解析：「每日2次 睡前服」的频次仍是 2（没被「睡前」改写成 1 次）',
+    /* ============ ⑤ 服药时间：只擦掉，不解析 ============ */
+    function row(line){ return rxParseLine(line); }
+    function keysOf(line){ return Object.keys(row(line)).join(','); }
+    ck('★ 行对象上根本没有 slots 这个字段（不是空数组，是压根没有）',
+       keysOf('样例片[10mg*10片] 1盒 10mg 每日一次 口服 早饭后').indexOf('slots') < 0,
+       keysOf('样例片[10mg*10片] 1盒 10mg 每日一次 口服 早饭后'));
+    ck('★ 擦掉「早饭后」不影响别的字段：药名 / 用量 / 单位 / 总量 / 天数照旧',
        (function(){
-         var r = rxParseLine('样例片[10mg*10片] 1盒 10mg 每日2次 口服 睡前');
-         return r.timesPerCycle === 2 && r.slots.join('+') === '睡前';
+         var r = row('样例片(某厂)[10mg*10片] 1盒 10mg 每日一次 口服 早饭后');
+         return r.name === '样例片' && r.perDose === 1 && r.unit === '片'
+             && r.total === 10 && rxDaysOf(r) === 10;
        })(), (function(){
-         var r = rxParseLine('样例片[10mg*10片] 1盒 10mg 每日2次 口服 睡前');
-         return r.timesPerCycle + '次 / ' + r.slots.join('+');
+         var r = row('样例片(某厂)[10mg*10片] 1盒 10mg 每日一次 口服 早饭后');
+         return r.name + ' / ' + r.perDose + ' / ' + r.unit + ' / ' + r.total;
        })());
-    ck('★ 「隔日一次 早饭后」这种：时段认出来、但周期是 2 天（不改成每天）',
-       (function(){
-         var r = rxParseLine('样例片[10mg*10片] 1盒 10mg 隔日一次 口服 早饭后');
-         return r.cycleDays === 2 && r.slots.join('+') === '早饭后';
-       })());
+    ck('★ 「每日2次 口服 睡前」的频次仍是 2 —— 睡前没被当成「每晚一次」',
+       (function(){ var r = row('样例片[10mg*10片] 1盒 10mg 每日2次 口服 睡前');
+         return r.timesPerCycle === 2 && r.cycleDays === 1; })(),
+       (function(){ var r = row('样例片[10mg*10片] 1盒 10mg 每日2次 口服 睡前');
+         return r.cycleDays + '天×' + r.timesPerCycle + '次'; })());
+    ck('「早中晚」一口气写三个的也擦干净，频次还是 3',
+       (function(){ var r = row('样例片[10mg*10片] 1盒 10mg 每日3次 口服 早中晚');
+         return r.timesPerCycle === 3 && r.name === '样例片'; })(),
+       (function(){ var r = row('样例片[10mg*10片] 1盒 10mg 每日3次 口服 早中晚');
+         return r.name + ' / ' + r.timesPerCycle + '次'; })());
+    ck('「临睡前」「晨起」「空腹」这些更随意的写法也擦掉，不留进药名',
+       row('样例片[10mg*10片] 1盒 10mg 每日一次 口服 临睡前').name === '样例片'
+       && row('样例片[10mg*10片] 1盒 10mg 每日一次 口服 晨起').name === '样例片'
+       && row('样例片[10mg*10片] 1盒 10mg 每日一次 空腹服用').name === '样例片');
+    ck('★ 「隔日一次 早饭后」：周期还是 2 天（没被时段改成每天）',
+       (function(){ var r = row('样例片[10mg*10片] 1盒 10mg 隔日一次 口服 早饭后');
+         return r.cycleDays === 2; })(),
+       (function(){ return row('样例片[10mg*10片] 1盒 10mg 隔日一次 口服 早饭后').cycleDays; })());
+    ck('整行只有时段、没有药（「早饭后」单独一行）→ 直接丢掉，不出空药行',
+       rxParseText('早饭后').length === 0, rxParseText('早饭后').length + ' 行');
 
-    /* ============ ⑥ 自动建药盒 ============ */
-    function fixtureBox(withOld){
+    /* ============ ⑥ 入库不碰药盒 ============ */
+    function fixtureBox(){
       var p = curPerson();
       p.stage = [];
-      if(withOld){
-        var m = { id: uid(), name: '原先盒里的片', spec: '5mg', perDose: 1, unit: '片',
-                  cycleDays: 1, timesPerCycle: 1, stockBase: 10, stockDate: todayStr(),
-                  rxMax: 0, kind: 'daily' };
-        p.meds = [m];
-        p.box = { slots: [{ name: '早', ids: [m.id] }, { name: '晚', ids: [m.id] }] };
-      } else {
-        p.meds = [];
-        p.box = { slots: defaultSlots(3) };
-      }
+      var m = { id: uid(), name: '原先盒里的片', spec: '5mg', perDose: 1, unit: '片',
+                cycleDays: 1, timesPerCycle: 1, stockBase: 10, stockDate: todayStr(),
+                rxMax: 0, kind: 'daily' };
+      p.meds = [m];
+      p.box = { slots: [{ name: '早', ids: [m.id] }, { name: '晚', ids: [m.id] }] };
       setMeds(p.meds);
       save(); render();
       return p;
@@ -272,107 +292,72 @@ PROBE = r"""
       rxRows.forEach(function(r){ r.picked = true; });
       return await settle(submitRx({ preventDefault: function(){} }), btns);
     }
+    function boxShape(){
+      return curBox().slots.map(function(s){
+        return s.name + ':' + s.ids.map(function(id){
+          var m = meds.filter(function(x){ return x.id === id; })[0];
+          return m ? m.name : '(野指针)';
+        }).join('+');
+      }).join('|');
+    }
 
-    // —— 场景一：药盒本来是空的（三个空格）→ 不问，直接摆
-    fixtureBox(false);
+    fixtureBox();
+    var bBefore = boxShape();
     var asks1 = await submit(DAT.ai, ['知道了']);
-    var box = curBox();
-    var names = box.slots.map(function(s){ return s.name; });
-    ck('药盒是空的时候不弹确认框（没什么可覆盖的，不拿这个烦人）',
+    var bAfter = boxShape();
+    ck('入库只弹一个「已加入 N 味药」，不再问要不要重排药盒',
        asks1.length === 1 && asks1[0].title.indexOf('已加入') >= 0,
        asks1.map(function(x){ return x.title; }).join(' / '));
-    ck('★ 按用到的时段建格：早饭后 / 午饭后 / 晚饭后 / 睡前，共 4 格',
-       names.join('|') === '早饭后|午饭后|晚饭后|睡前', names.join('|'));
-    ck('没有为了整齐补出「早饭前」「晚饭前」这些空格子', names.length === 4, names.length + ' 格');
+    ck('★ 药盒一格都没动（格数、格名、里面摆的是谁都原样）',
+       bBefore === bAfter, bBefore + '  →  ' + bAfter);
+    ck('★ 5 味药全都进了药箱（入库这一步不受影响）', meds.length === 6, meds.length + ' 味');
+    ck('★ 刚入库的 5 味全在「未入清单」里，等着人自己摆',
+       (function(){
+         var un = unplacedMeds().map(function(m){ return m.name; });
+         return ['样例甲片', '样例乙凝胶贴膏', '样例丙胶囊', '样例丁注射液', '样例戊片']
+           .every(function(n){ return un.indexOf(n) >= 0; });
+       })(), unplacedMeds().map(function(m){ return m.name; }).join('/'));
+    ck('★ 入库提示里一个字都不提药盒（不暗示程序替人摆过）',
+       asks1[0].sub.indexOf('药盒') < 0 && asks1[0].sub.indexOf('格') < 0,
+       asks1[0].sub.slice(0, 70));
 
-    function idsOf(name){
-      var s = box.slots.filter(function(x){ return x.name === name; })[0];
-      return s ? s.ids.map(function(id){
-        var m = meds.filter(function(x){ return x.id === id; })[0];
-        return m ? m.name : '(野指针)';
-      }) : [];
-    }
-    ck('「样例甲片」在早饭后格',
-       idsOf('早饭后').indexOf('样例甲片') >= 0, idsOf('早饭后').join('/'));
-    ck('★ 一天两次的「样例乙凝胶贴膏」同时进了早饭后和晚饭后两格',
-       idsOf('早饭后').indexOf('样例乙凝胶贴膏') >= 0
-       && idsOf('晚饭后').indexOf('样例乙凝胶贴膏') >= 0,
-       idsOf('早饭后').join('/') + ' || ' + idsOf('晚饭后').join('/'));
-    ck('「样例丙胶囊」在睡前格', idsOf('睡前').indexOf('样例丙胶囊') >= 0, idsOf('睡前').join('/'));
-    ck('「样例戊片」（早中晚）三格都有它',
-       ['早饭后', '午饭后', '晚饭后'].every(function(n){ return idsOf(n).indexOf('样例戊片') >= 0; }));
-    ck('★ 每两周打一次的「样例丁注射液」不进任何一格（每日药盒里放它 = 撒谎）',
-       box.slots.every(function(s){ return idsOf(s.name).indexOf('样例丁注射液') < 0; }));
-    ck('但它照样在药箱里（药本身入库了，只是没摆进格子）',
-       meds.some(function(m){ return m.name === '样例丁注射液'; }));
-    ck('入库的药一共有 5 味', meds.length === 5, meds.length + ' 味');
-    ck('提示里说清了「药盒也照什么时候吃摆好了」',
-       asks1[0].sub.indexOf('药盒也照') >= 0 && asks1[0].sub.indexOf('4 格') >= 0,
-       asks1[0].sub.slice(0, 60));
+    // —— 空药盒也一样：不会因为「盒子正好空着」就顺手建几格
+    fixtureBox();
+    var p2 = curPerson();
+    p2.meds = [];
+    p2.box = { slots: defaultSlots(3) };
+    setMeds(p2.meds); save(); render();
+    var emptyBefore = boxShape();
+    await submit(DAT.ai, ['知道了']);
+    ck('★★ 空药盒也不建格：还是原来那 3 个空格，格名一个字没改',
+       boxShape() === emptyBefore, emptyBefore + '  →  ' + boxShape());
+    ck('空盒里那 3 格仍然是空的（药没被塞进去）',
+       curBox().slots.every(function(s){ return s.ids.length === 0; }),
+       curBox().slots.map(function(s){ return s.ids.length; }).join('/'));
 
-    // —— 场景二：药盒里本来有药 → 先问；选「不动」→ 一格都不动
-    fixtureBox(true);
-    var before = curBox().slots.map(function(s){ return s.name + ':' + s.ids.length; }).join('|');
-    var asks2 = await submit(DAT.ai, ['取消', '知道了']);
-    var after = curBox().slots.map(function(s){ return s.name + ':' + s.ids.length; }).join('|');
-    ck('★ 药盒里有药时先弹确认，标题带「重排药盒」',
-       asks2.length >= 1 && asks2[0].title.indexOf('重排药盒') >= 0,
-       asks2.map(function(x){ return x.title; }).join(' / '));
-    ck('确认框说清了现在盒里有几格几份药（覆盖后果）',
-       asks2.length >= 1 && /2 格/.test(asks2[0].sub) && /2 份/.test(asks2[0].sub),
-       asks2.length ? asks2[0].sub.slice(0, 70) : '');
-    ck('选「取消 / 不动」→ 药盒一格没变', before === after, before + ' → ' + after);
-    ck('选「不动」之后，5 味药照样入库了', meds.length === 6, meds.length + ' 味');
-    ck('提示里说明了「药盒没动」',
-       asks2.length > 1 && asks2[1].sub.indexOf('药盒没动') >= 0,
-       asks2.length > 1 ? asks2[1].sub.slice(0, 50) : '');
-
-    // —— 场景三：药盒里有药，选「重排」→ 整个换掉
-    fixtureBox(true);
-    var asks3 = await submit(DAT.ai, ['重排药盒', '知道了']);
-    var box3 = curBox();
-    ck('点「重排药盒」→ 格子换成新的 4 格',
-       box3.slots.map(function(s){ return s.name; }).join('|') === '早饭后|午饭后|晚饭后|睡前',
-       box3.slots.map(function(s){ return s.name; }).join('|'));
-    ck('原来盒里那位「原先盒里的片」已经不在盒里',
-       box3.slots.every(function(s){ return s.ids.length === 0
-         || s.ids.every(function(id){
-              var m = meds.filter(function(x){ return x.id === id; })[0];
-              return m && m.name !== '原先盒里的片';
-            }); }));
-    ck('但它还在药箱里（只是没摆进格子）',
-       meds.some(function(m){ return m.name === '原先盒里的片'; }));
-
-    // —— 场景四：AI 直接给 `#rx=` 链接那条路，rows 里也带 slots
-    //   这条容易漏：粘文字那条路走 rxParseLine，链接那条路是 openRx(rxNewRow(x))，
-    //   两边的清洗规则必须一样（七档之外的一律丢掉），否则 AI 写「傍晚」就会造出第八个格子。
-    fixtureBox(false);
+    // —— `#rx=` 链接那条路：带了 slots 也一律无视
+    //   两条路（粘文字 / 链接）现在都**不再**处理服药时间。这里钉住链接那条：
+    //   AI 自作主张塞 slots 进来，不许在界面上冒出来，也不许入库后去动药盒。
+    fixtureBox();
     await openRx([
       { name:'样例己片', spec:'10mg*24片', unit:'片', perDose:1,
         cycleDays:1, timesPerCycle:2, total:48, slots:['午饭前', '睡前'] },
       { name:'样例庚胶囊', spec:'0.25g*12粒', unit:'粒', perDose:1,
-        cycleDays:1, timesPerCycle:1, total:24, slots:['傍晚'] }     // 不在七档里，应被丢掉
+        cycleDays:1, timesPerCycle:1, total:24, slots:['傍晚'] }
     ], 'AI');
-    var subTxt = Array.prototype.slice.call(document.querySelectorAll('#rxList .rx-slotline'))
-      .map(function(e){ return e.textContent; }).join(' || ');
-    ck('链接里的时段也显示在行上',
-       subTxt.indexOf('午饭前') >= 0 && subTxt.indexOf('睡前') >= 0, subTxt);
-    ck('七档之外的「傍晚」被丢掉，不留到下一层',
-       subTxt.indexOf('傍晚') < 0, subTxt);
-
-    var asks4 = await settle(submitRx({ preventDefault: function(){} }), ['知道了']);
-    var box4 = curBox();
-    ck('★ 链接那条路入库后也照样建盒：只有 午饭前 / 睡前 两格',
-       box4.slots.map(function(s){ return s.name; }).join('|') === '午饭前|睡前',
-       box4.slots.map(function(s){ return s.name; }).join('|'));
-    ck('这味两顿的药在两格里都有它',
-       box4.slots.every(function(s){
-         var names = s.ids.map(function(id){
-           var m = meds.filter(function(x){ return x.id === id; })[0];
-           return m ? m.name : '(野指针)';
-         });
-         return names.indexOf('样例己片') >= 0;
-       }), box4.slots.map(function(s){ return s.ids.length; }).join('/'));
+    ck('链接里的 slots 不在行上显示（页面上没有任何「摆进药盒」的提示）',
+       document.querySelectorAll('#rxList .rx-slotline').length === 0,
+       document.querySelectorAll('#rxList .rx-slotline').length + ' 处');
+    ck('链接进来的行也没有 slots 字段',
+       !('slots' in rxRows[0]) && !('slots' in rxRows[1]),
+       Object.keys(rxRows[0] || {}).join(','));
+    var b5Before = boxShape();
+    await settle(submitRx({ preventDefault: function(){} }), ['知道了']);
+    ck('★★ 链接那条路入库后药盒同样一格不动',
+       boxShape() === b5Before, b5Before + '  →  ' + boxShape());
+    ck('两味药都进药箱了',
+       meds.some(function(m){ return m.name === '样例己片'; })
+       && meds.some(function(m){ return m.name === '样例庚胶囊'; }));
 
   } catch(err){
     R.cases.push({ name: '★ 测试脚本抛异常中断（后面的断言都没跑）', pass: false,
