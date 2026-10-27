@@ -297,6 +297,10 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 .all-mem{margin-top:5px;font-size:11.5px;color:var(--muted);line-height:1.7}
 .all-mem .am{display:inline-block;margin-right:10px}
 .all-mem .am b{color:#374151;font-weight:650}
+/* 「余量最少」小标：调总量时多出来的药就加到这个人身上，得让人一眼看到是谁 */
+.all-mem .am-low{display:inline-block;margin-left:5px;padding:0 5px;border-radius:999px;
+  font-size:10.5px;font-style:normal;font-weight:650;
+  color:#9a3412;background:#ffedd5;white-space:nowrap}
 .all-n{font-size:11px;color:var(--faint);font-weight:500;margin-left:6px;
   font-variant-numeric:tabular-nums}
 .all-adj{flex:none}
@@ -1304,7 +1308,8 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 <!-- 全家汇总：跨人按药名合并的总量页（2026-10-27 用户要求）
      「全家人的所有药合在一起生成一个汇总 只有在人数多于1个的时候出现 和添加人并列」
      和上面「全家偏少」的区别：那一页只回答"这趟该买什么"，只读；
-     这一页回答"全家这个药一共还有多少"，**能改总量**，改完按各人每天用量分下去。 -->
+     这一页回答"全家这个药一共还有多少"，**能改总量**，
+     改完多的全加给「余量最少」那位（2026-10-27 当天从"天数对齐"改过来的口径）。 -->
 <dialog id="dlgAll">
   <div class="dlg-h">
     <h3>全家汇总</h3>
@@ -3336,9 +3341,14 @@ function openFam(){
    分配给有药的成员 让他们的药的天数相同」。
 
    ★ 合并口径 = 药名 + 单位。片和粒加不到一起，宁可分成两行 —— 加错了比不合并更糟。
-   ★ 分配口径 = 按**各自每天用量**的比例分总量：X_i = T · d_i / Σd。
-     这么分的后果自动就是「每人的天数完全相同」，因为 天数 = X_i / d_i = T / Σd 与人无关。
-     反过来，把"差额平摊给每个人"是错的：那样只会让本来就吃得多的人更早吃完。
+   ★ 分配口径（2026-10-27 **当天改过一次**，以现在的 giveDelta 为准）：
+     一开始按「各人每天用量的比例分总量」，分完每人天数相同。用户随后推翻了：
+       「不能搞成一样的，因为开药的时候可能每个人药量不同，比如 a 是 2 片 b 是 1 片，
+         如果搞成一样的，那开药的时候开成 b、a 就不够吃了 —— 还是改成谁的余量更少就加给谁」
+     现在是：多的量**全给余量最少**的那位；少的量从**余量最多**的那位开始扣。
+     按剩余天数比余量（不按片数）—— 天数才是「快吃完了」的尺度。
+     ⚠️ 别再改回"按比例分、天数对齐"，也别做"差额平摊"：前者会被开药场景打翻，
+        后者只会让吃得多的人更早吃完。
    ★ 备用药 / 没填用法的成员 d=0，没有「天数」这回事，**不参与分配**，数量原样不动。
      整行都是这种成员的（比如两个人恰好都有同一种备用药）→ 整行不可调，写明原因。 */
 function unitOf(m){ return m.unit || '片'; }
@@ -3374,14 +3384,16 @@ function famAllRows(){
   return out;
 }
 
-function allMemberHTML(r, x){
+function allMemberHTML(r, x, mark){
   const who = '<b>' + esc(x.p.name) + '</b> ';
   if(x.daily <= 0){
     return '<span class="am">' + who + fmtNum(x.stock) + ' ' + esc(r.unit)
       + '（' + (isPrn(x.m) ? '备用药' : '没填用法') + '，不按天算）</span>';
   }
   return '<span class="am">' + who + fmtNum(x.stock) + ' ' + esc(r.unit)
-    + ' · 够 ' + fmtDays(x.dl) + ' 天</span>';
+    + ' · 够 ' + fmtDays(x.dl) + ' 天'
+    // 「余量最少」这个标不是装饰：调总量时多出来的量就加给 TA，标错了药就补错人
+    + (mark ? '<em class="am-low">余量最少</em>' : '') + '</span>';
 }
 
 function allRowHTML(r){
@@ -3404,7 +3416,10 @@ function allRowHTML(r){
          + ' · 天数不一（' + ds.join(' / ') + '）';
   }
   // 明细里把每一种成员都写出来（包括不参与分配的），加不起来的原因才看得见
-  const mem = r.members.map(function(x){ return allMemberHTML(r, x); }).join('');
+  // ★ 第三参必须在这里显式传（包一层函数），别写成 map(allMemberHTML) —— map 的第三参是
+  //   **整个数组**，truthy，等于给每个人都挂上「余量最少」，标就废了。
+  const low = pool.length > 1 ? lowestPool(pool) : null;
+  const mem = r.members.map(function(x){ return allMemberHTML(r, x, x === low); }).join('');
 
   return '<div class="disp-row" data-lv="' + r.lv + '">'
     +   '<div class="disp-info">'
@@ -3430,7 +3445,7 @@ function renderAll(){
   const sub = $('#allSub'), list = $('#allList'), note = $('#allNote');
 
   sub.textContent = '把 ' + n + ' 个人药箱里的药按药名合在一起，共 ' + rows.length + ' 种。'
-    + '同一个药几家都有的时候，改总量会按各自每天用量分下去 —— 分完每个人够吃的天数一样。';
+    + '同一个药几家都有的时候，改总量只往「余量最少」的那个人身上加 —— 不按人头平摊。';
 
   if(!rows.length){
     list.innerHTML = '<div class="fam-none">全家还没有记录任何药品。</div>';
@@ -3439,7 +3454,8 @@ function renderAll(){
   }
   list.innerHTML = rows.map(allRowHTML).join('');
   note.textContent = '总量只算「按天吃」的成员：备用药和没填用法的药没有「够吃几天」这回事，'
-    + '数量原样留在各自药箱里，不参与分配 —— 要改它们，用各自药箱里的「校准余量」。';
+    + '数量原样留在各自药箱里，不参与分配 —— 要改它们，用各自药箱里的「校准余量」。'
+    + '调总量时多的全给「余量最少」那位、少了从余量最多的扣，不会两个人都变。';
 }
 
 function openAll(){
@@ -3449,18 +3465,46 @@ function openAll(){
   if(!d.open) d.showModal();
 }
 
-// 把总量按权重（各人每天用量）分成若干份，保证加起来正好等于 total。
-// 先按比例四舍五入到 2 位，再把零头挂到用量最大的那一位 —— 零头最多几分之一片，
-// 落谁身上天数都差不到 0.01 天。不这么做的话明细加起来会是 89.99，用户会以为是 bug。
-function splitTotal(total, weights){
-  const sum = weights.reduce(function(a, w){ return a + w; }, 0);
-  if(!(sum > 0)) return weights.map(function(){ return 0; });
-  const out = weights.map(function(w){ return round2(total * w / sum); });
-  const diff = round2(total - out.reduce(function(a, x){ return a + x; }, 0));
-  if(diff){
-    let k = 0;
-    for(let i = 1; i < weights.length; i++) if(weights[i] > weights[k]) k = i;
-    out[k] = round2(out[k] + diff);
+// 余量最少 / 最多的成员（按剩余天数比，天数相同时取顺序靠前的那个）。
+// giveDelta 和界面上的「余量最少」标记都走这两个函数，保证"标出来的"就是"会给的"。
+function lowestPool(pool){
+  let k = 0;
+  for(let i = 1; i < pool.length; i++) if(pool[i].dl < pool[k].dl - 1e-9) k = i;
+  return pool[k];
+}
+function highestPool(pool){
+  let k = 0;
+  for(let i = 1; i < pool.length; i++) if(pool[i].dl > pool[k].dl + 1e-9) k = i;
+  return pool[k];
+}
+
+/* 把「全家总量」的变化量分下去（2026-10-27 用户改的口径，见上面那段注释）：
+   Δ > 0（加药）→ **全部**加到余量最少的那一位身上，其余人一分不动；
+   Δ < 0（减药）→ 从余量最多的那位开始扣，扣光再找下一位，不会扣成负数。
+   返回新余量数组，与 pool 顺序一一对应；加起来恰等于 target
+   （target 最小是 0，所以 Δ 不可能比总量还小 —— 弹窗的 min:0 已经拦住了）。 */
+function giveDelta(pool, target){
+  const out = pool.map(function(x){ return round2(x.stock); });
+  let rest = round2(target - out.reduce(function(a, x){ return a + x; }, 0));
+  if(!rest || !pool.length) return out;
+
+  if(rest > 0){
+    const k = pool.indexOf(lowestPool(pool));
+    out[k] = round2(out[k] + rest);
+    return out;
+  }
+
+  // 减：余量多的先扣。顺序一次算定，边扣边改 out 也不会把顺序搞乱。
+  const order = pool.map(function(_, i){ return i; }).sort(function(i, j){
+    const d = pool[j].dl - pool[i].dl;
+    return Math.abs(d) > 1e-9 ? d : 0;
+  });
+  let need = -rest;
+  for(let t = 0; t < order.length && need > 1e-9; t++){
+    const i = order[t];
+    const take = Math.min(out[i], need);
+    out[i] = round2(out[i] - take);
+    need = round2(need - take);
   }
   return out;
 }
@@ -3470,16 +3514,19 @@ function openAllAdjust(key){
   if(!r || !r.adjustable) return;
   const pool = r.pool;
   const cur = pool.map(function(x){ return x.p.name + ' ' + fmtNum(x.stock); }).join(' + ');
+  // 多人时必须点名「多的加到谁头上」—— 不点名的话，调完发现另一人一动没动会以为是 bug
+  const low = lowestPool(pool), high = highestPool(pool);
   openNumDialog({
     mode: 'set', value: r.total, min: 0,
     title: '调整「' + r.name + '」的总量',
     sub: pool.length > 1
       ? '全家现在一共 ' + fmtNum(r.total) + ' ' + r.unit + '（' + cur + '）。'
-        + '改完按各人每天用量的比例分下去，分完每个人够吃的天数一样。'
+        + '改完多出来的全加给 ' + low.p.name + '（余量最少，只够 ' + fmtDays(low.dl) + ' 天）；'
+        + '少了先从 ' + high.p.name + ' 那里扣。'
       : '现在只有 ' + pool[0].p.name + ' 在按天吃这个药，改完就是 TA 的余量。',
     label: '全家一共多少 ' + r.unit,
     hint: pool.length > 1
-      ? '吃得多的分到的多，天数才会一样；填 0 等于全用完'
+      ? '不按人头平摊：谁快吃完了就补给谁，按剩下几天比'
       : '填今天的实际余量，基准日一并滚到今天',
     okText: '调整',
     onOk: function(v){ applyAllTotal(key, v); }
@@ -3490,14 +3537,32 @@ function applyAllTotal(key, total){
   const r = famAllRows().filter(function(x){ return x.key === key; })[0];
   if(!r || !r.adjustable) return;
   const pool = r.pool;
-  const shares = splitTotal(total, pool.map(function(x){ return x.daily; }));
+  const before = pool.map(function(x){ return round2(x.stock); });
+  const after = giveDelta(pool, total);
   pool.forEach(function(x, i){
     // 和「校准余量」同一套写法：stockBase 存的就是"今天还剩多少"，日期滚到今天。
-    // 这样 stockNow 立刻等于 shares[i]（dosesUsed 归零），不会跟已吃掉的量打架。
-    x.m.stockBase = shares[i];
+    // 这样 stockNow 立刻等于 after[i]（dosesUsed 归零），不会跟已吃掉的量打架。
+    x.m.stockBase = after[i];
     x.m.stockDate = todayStr();
   });
   save(); render(); renderAll();
+
+  // ★ 只落到一个人头上时必须说一声 —— 不然另一人的数字纹丝不动，看着像没生效。
+  //   多人同时变动只在「减到一个人不够扣」时出现，那就把每一笔都报出来。
+  if(pool.length > 1){
+    const moved = pool.map(function(x, i){ return { x: x, d: round2(after[i] - before[i]) }; })
+      .filter(function(o){ return Math.abs(o.d) >= 0.005; });
+    if(moved.length === 1){
+      const o = moved[0];
+      toast(o.d > 0
+        ? '多的 ' + fmtNum(o.d) + ' ' + r.unit + ' 全加给了 ' + o.x.p.name
+        : '从 ' + o.x.p.name + ' 扣了 ' + fmtNum(-o.d) + ' ' + r.unit);
+    } else if(moved.length > 1){
+      toast(moved.map(function(o){
+        return o.x.p.name + ' ' + (o.d > 0 ? '+' : '−') + fmtNum(Math.abs(o.d));
+      }).join('，'));
+    }
+  }
 }
 
 async function openBulk(){
