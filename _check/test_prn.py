@@ -322,8 +322,8 @@ PROBE = r"""
   var n3 = meds.length, al2 = R.alerts.length;
   submitMed({ preventDefault: function(){} });
   ck('每天吃的缺开药上限 → 仍被拦下', meds.length === n3, meds.length - n3);
-  ck('提示仍是「一次最多能开多少」',
-     /一次最多能开多少/.test(R.alerts.slice(al2).join(' | ')), R.alerts[R.alerts.length - 1]);
+  ck('提示仍是「一次最多能开几天」（2026-10-27 改成按天填）',
+     /一次最多能开几天/.test(R.alerts.slice(al2).join(' | ')), R.alerts[R.alerts.length - 1]);
   // 每周期几次填 0（= 没设用法）→ 仍拦
   fmed.rxMax.value = '30';
   fmed.timesPerCycle.value = 0;

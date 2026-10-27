@@ -22,16 +22,20 @@ DEMO_JS = r"""
 (function(){
   var agoD = function(n){ var d = new Date(); d.setDate(d.getDate() - n); return fmtDate(d); };
   var demo = [
+    /* ★ 2026-10-27 起「开药限制」填的是**天数**（rxMaxDay:1 是这个口径的标记）。
+       编辑那张截图拍的就是葡萄糖酸钙：30 天 × 每天 2 片 ＝ 60 片，
+       正好把「按天填、程序自己换算」这件事摆在图上。 */
     { name:'维生素C片', spec:'100mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
-      stockBase:14, stockDate:agoD(13), rxMax:7, note:'早饭后服' },
+      stockBase:14, stockDate:agoD(13), rxMax:7, rxMaxDay:1, note:'早饭后服' },
     { name:'维生素B2片', spec:'5mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
-      stockBase:21, stockDate:agoD(18), rxMax:14, note:'晚饭后服' },
+      stockBase:21, stockDate:agoD(18), rxMax:14, rxMaxDay:1, note:'晚饭后服' },
     { name:'葡萄糖酸钙片', spec:'0.5g', perDose:1, unit:'片', cycleDays:1, timesPerCycle:2,
-      stockBase:60, stockDate:agoD(20), rxMax:30, note:'随餐服' },
+      stockBase:60, stockDate:agoD(20), rxMax:30, rxMaxDay:1, note:'随餐服' },
     { name:'健胃消食片', spec:'0.8g', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
-      stockBase:90, stockDate:agoD(10), rxMax:30, note:'空腹服' },
+      stockBase:90, stockDate:agoD(10), rxMax:30, rxMaxDay:1, note:'空腹服' },
+    /* 每 2 周 1 支：限 30 天 → 2 支（28 天），药拆不开不能给 2.14 支 */
     { name:'维生素B12注射液', spec:'0.5mg/支', perDose:1, unit:'支', cycleDays:14, timesPerCycle:1,
-      stockBase:2, stockDate:agoD(20), rxMax:2, note:'皮下注射，每 2 周 1 次' },
+      stockBase:2, stockDate:agoD(20), rxMax:30, rxMaxDay:1, note:'皮下注射，每 2 周 1 次' },
     /* ★ 2026-10-22 起药分两类，截图里必须有「备用药」那一栏 —— 否则 docs/ 还是旧版的样子，
        README 就成了"图和事实对不上"。这两味的 timesPerCycle = 0 / kind = 'prn'：
        不按天数推算、不进续方清单、卡片右上角写的是**余量**不是天数。 */

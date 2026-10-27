@@ -942,11 +942,12 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
         </label>
 
         <div class="sec-title" id="secRxLimit">开药限制</div>
-        <label class="full" id="rxMaxLabel"><span class="lb">一次最多能开多少<b class="req">*</b></span>
+        <label class="full" id="rxMaxLabel"><span class="lb">一次最多能开几天<b class="req">*</b></span>
           <input name="rxMax" type="number" step="1" min="1" autocomplete="off" placeholder="如 30" required>
-          <span class="hintline">医生单次处方的上限 —— 一次挂号只能开一次药，所以这一次能拿到多少
-            就看这里。单位是上面填的「<b id="rxUnitTip">片</b>」；卡片和「已经开药」都会按这个数来。
-            拿不准就照上次开药的数量填 —— 它决定「要跑几趟」，不能空着。</span>
+          <span class="hintline">医生单次处方最多能给<b>几天</b>的量 —— 这一格填<b>天数</b>，不填片数。
+            程序按上面填的用法自己换算成数量：<b id="rxConv">—</b>。
+            一次挂号只能开一次药，所以这一格决定「这一次能拿多少、一共要跑几趟」，不能空着。
+            拿不准就照上次开的那几天填。</span>
         </label>
 
         <label class="full"><span class="lb">备注<span class="opt">选填</span></span>
@@ -1243,7 +1244,7 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
   <form id="formDisp">
     <div class="dlg-h">
       <h3>已经开药</h3>
-      <p id="dispSub">一次挂号只能开一次药：每个药按「一次最多能开多少」入库，没设上限的就补满到目标天数。确认即更新药库。</p>
+      <p id="dispSub">一次挂号只能开一次药：每个药按「一次最多能开几天」换算出数量入库，没填天数的就补满到目标天数。确认即更新药库。</p>
     </div>
     <div class="dlg-b">
       <div class="disp-list" id="dispList"></div>
@@ -1671,10 +1672,29 @@ function needUnits(m){
   if(d <= 0 || !isFinite(dl)) return 0;
   return Math.max(0, Math.ceil((settings.targetDays - dl) * d - 1e-9));
 }
-// 单次开药上限（单位数）。没填 = 不限
+// 单次开药上限（**单位数**）—— 界面填的是天数，这里负责换算。
+// ★ 2026-10-27 用户要求：这一格改成「一次最多能开几天」。理由是开药按天说话
+//   （「最多开 30 天」），换算成片数每家规格都不一样，填片数等于让人自己乘一遍。
+// ★ 老存档里那个数是**数量**（没有 rxMaxDay 标记）：原样当数量用，**不偷偷换算写回** ——
+//   换算是不可逆的（数量 ÷ 每天用量，除不尽就会改掉用户当初填的数）。
+//   只有在编辑那一格里才按天显示出来给人看，保存时才落成天数。
+//   没填 / 填 0 = 老的「不限」。
+function rxMaxIsDay(m){ return !!(m && m.rxMaxDay); }
+function rxCapDays(m){
+  const v = num(m.rxMax);
+  return (v > 0 && rxMaxIsDay(m)) ? v : Infinity;
+}
 function rxCap(m){
   const v = num(m.rxMax);
-  return v > 0 ? v : Infinity;
+  if(!(v > 0)) return Infinity;                 // 没填 = 不限
+  if(!rxMaxIsDay(m)) return v;                  // 老存档：这个数本来就是数量
+  const c = cycle(m);
+  if(c.days <= 0 || c.times <= 0) return Infinity;   // 没填用法，换算不了
+  // 天数 → 次数：按**整周期向下取整**（30 天上限、每 14 天 1 支 → 2 支 = 28 天，不超上限）。
+  // 至少给 1 次的量 —— 上限比一个周期还短时（写 7 天、其实两周打一支），
+  // 药是拆不开的，给 0 支等于「这药永远开不了」，那才是胡说。
+  const doses = Math.max(1, Math.floor(v / c.days + 1e-9)) * c.times;
+  return round2(doses * num(m.perDose));
 }
 // 要开够得跑几趟（受单次上限限制时 > 1）
 function rxTrips(m){
@@ -2502,11 +2522,15 @@ function openEditor(id){
     };
     f.stockBase.value = preQty;
     f.stockDate.value = todayStr();
-    // 「一次最多能开多少」现在是必填，所以老存档里 rxMax=0（旧的「不限」）要留空让人补填，
+    // 「一次最多能开几天」现在是必填，所以老存档里 rxMax=0（旧的「不限」）要留空让人补填，
     // 并换一句 placeholder 说明为什么这格是空的 —— 不然看着像 bug。
     // 备用药用不上这一格（它不按天数补货），留着空即可。
-    if(num(m.rxMax) > 0){
-      f.rxMax.value = m.rxMax;
+    // ★ 老存档那个数是**数量**（没有 rxMaxDay 标记），这格现在按天显示 → 当场换算给人看，
+    //   不写回存档。换算除不尽就取整，反正保存时落在用户眼前这个数上。
+    const rxv = num(m.rxMax);
+    if(rxv > 0){
+      const pd = dailyUse(m);
+      f.rxMax.value = (rxMaxIsDay(m) || !(pd > 0)) ? rxv : Math.max(1, Math.round(rxv / pd));
       f.rxMax.placeholder = '如 30';
     } else {
       f.rxMax.value = '';
@@ -2571,14 +2595,38 @@ function syncKindUI(){
   f.timesPerCycle.required = !prn;
   f.rxMax.required = !prn;
 
-  syncRxUnitTip();
+  syncRxConv();
   syncDosePreview();
 }
 
-// 「单位」改了就同步「开药限制」里那个提示单位，读起来是一致的
-function syncRxUnitTip(){
-  const u = ($('#formMed').unit.value || '').trim() || '片';
-  $('#rxUnitTip').textContent = u;
+// 「开药限制」那格填的是**天数**，旁边实时把那句换算写出来：
+// 「每天 2 片 × 30 天 ＝ 60 片」。为什么非要这个 —— 填天数最大的疑惑就是
+// 「那我到底能拿几片」，不写出来人会自己拿计算器乘一遍（还常常乘错规格）。
+function syncRxConv(){
+  const f = $('#formMed');
+  const el = $('#rxConv');
+  if(!el) return;
+  const u = (f.unit.value || '').trim() || '片';
+  const prn = f.kind && f.kind.value === 'prn';
+  const days = num(f.rxMax.value);
+  if(prn){ el.textContent = '—'; return; }
+  const tmp = {
+    kind: 'daily',
+    perDose: num(f.perDose.value, 1),
+    timesPerCycle: num(f.timesPerCycle.value, 1),
+    cycleDays: Math.max(1, Math.round(num(f.cycleDays.value, 1)) || 1),
+    unit: u, rxMax: days, rxMaxDay: 1
+  };
+  const d = dailyUse(tmp);
+  if(!(days > 0)){ el.textContent = '还没填天数'; return; }
+  if(!(d > 0)){ el.textContent = '用法还没填完整，算不出数量'; return; }
+  const qty = rxCap(tmp);
+  const c = cycle(tmp);
+  el.textContent = (c.days === 1
+      ? '每天 ' + fmtNum(d) + ' ' + u + ' × ' + fmtNum(days) + ' 天'
+      : '每 ' + c.days + ' 天 ' + fmtNum(c.times * num(tmp.perDose)) + ' ' + u
+        + '，' + fmtNum(days) + ' 天最多')
+    + ' ＝ ' + fmtNum(qty) + ' ' + u;
 }
 
 // 用法那行的实时白话预览。为什么非要这个：把「每几天」填错的代价是整段余量推算都错，
@@ -2615,7 +2663,7 @@ function syncDosePreview(){
      ① HTML 上的 required / min —— 留空、或低于下限时浏览器当场拦下并把光标放到那一格；
      ② 下面这段 JS —— required 只管「没留空」，管不住「填了 0」：
         每次用量、每周期几次填 0 等于没填用法（卡片算不出「剩几天」），
-        单次上限填 0 是老口径的「不限」而这一格现在必填 —— 都得照样拦。
+        「一次最多能开几天」填 0 是老口径的「不限」而这一格现在必填 —— 都得照样拦。
    一次把所有问题列全再弹，别让人改一格试一次。 */
 async function submitMed(e){
   e.preventDefault();
@@ -2642,7 +2690,7 @@ async function submitMed(e){
   // 余量可以填 0（刚好吃完），但不能空着
   if((f.stockBase.value || '').trim() === '' || !(stockBase >= 0)) miss.push('余量（填 0 可以，但不能空）');
   if(!f.stockDate.value) miss.push('余量日期');
-  if(!prn && !(rxMax > 0)) miss.push('一次最多能开多少（要大于 0）');
+  if(!prn && !(rxMax > 0)) miss.push('一次最多能开几天（要大于 0）');
   if(miss.length){
     await askAlert({
       title: '还有几项没填',
@@ -2664,7 +2712,10 @@ async function submitMed(e){
     timesPerCycle: prn ? 0 : timesPerCycle,
     stockBase: Math.max(0, stockBase),
     stockDate: f.stockDate.value || todayStr(),
+    // ★ rxMax 存的是**天数**，rxMaxDay 这个标记就是「它是天数」的凭证。
+    //   老存档没有这个标记 → 读的时候按老口径（数量）用，不动它。
     rxMax: prn ? 0 : rxMax,
+    rxMaxDay: 1,
     note: (f.note.value || '').trim()
   };
 
@@ -3078,11 +3129,12 @@ function dispItems(){
 
 // 这次的入库计划：不必手填——一次挂号只能开一次药，有单次上限就按上限开满，
 // 没设上限就补满目标天数。qty 统一走 dispQty，和卡片上的「需补」是同一个数。
+// capDays 一并带出去：界面要能说清「单次最多开 N 天」，光给片数等于让用户自己除。
 function dispPlan(){
   return dispItems().map(function(m){
     const cap = rxCap(m);
     const byCap = isFinite(cap);
-    return { m: m, qty: dispQty(m), byCap: byCap };
+    return { m: m, qty: dispQty(m), byCap: byCap, capDays: rxCapDays(m) };
   });
 }
 
@@ -3096,8 +3148,8 @@ async function openDisp(){
     return;
   }
 
-  $('#dispSub').textContent = '一次挂号只能开一次药：每个药按「一次最多能开多少」入库（开满），'
-    + '没设上限的就补满到够吃 ' + settings.targetDays + ' 天。确认即更新药库。';
+  $('#dispSub').textContent = '一次挂号只能开一次药：每个药按「一次最多能开几天」换算出数量入库（开满），'
+    + '没填天数的就补满到够吃 ' + settings.targetDays + ' 天。确认即更新药库。';
 
   let still = 0;
   $('#dispList').innerHTML = plan.map(function(p){
@@ -3117,12 +3169,15 @@ async function openDisp(){
       +     '<div class="disp-meta">现有约 <b>' + fmtNum(stockNow(m)) + '</b> ' + esc(unit)
       +       '　→　入库 <b>' + fmtNum(p.qty) + '</b> ' + esc(unit)
       +       '<span class="disp-src">' + (p.byCap
-              ? '（单次限 ' + fmtNum(p.qty) + ' ' + esc(unit) + '，一次挂号按上限开满'
+              ? '（' + (isFinite(p.capDays)
+                    ? '单次最多开 ' + fmtNum(p.capDays) + ' 天 ＝ ' + fmtNum(p.qty) + ' ' + esc(unit)
+                    : '单次限 ' + fmtNum(p.qty) + ' ' + esc(unit))
+                + '，一次挂号按上限开满'
                 + (p.qty < nu
                     ? '，共需 ' + fmtNum(nu) + '，要开 ' + rxTrips(m) + ' 次'
                     : '')
                 + '）'
-              : '（没设上限，补满 ' + settings.targetDays
+              : '（没填天数，补满 ' + settings.targetDays
                 + ' 天需 ' + fmtNum(nu) + ' ' + esc(unit) + '）') + '</span>'
       +     '</div>'
       +   '</div>'
@@ -3155,7 +3210,7 @@ async function submitDisp(e){
   await askAlert({
     title: '已入库 ' + plan.length + ' 种药',
     sub: left.length
-      ? '还有 ' + left.length + ' 种没到位（受「一次最多能开多少」限制），可以再点一次「已经开药」。'
+      ? '还有 ' + left.length + ' 种没到位（受「一次最多能开几天」限制），可以再点一次「已经开药」。'
       : '现在都在偏少线以上了。'
   });
 }
@@ -4706,6 +4761,9 @@ function importJSON(file){
           stockBase: num(m.stockBase),
           stockDate: m.stockDate || todayStr(),
           rxMax: num(m.rxMax),
+          // ★ 这个标记必须跟着备份一起搬 —— 丢了它，60 天会被当成 60 片读，
+          //   开药上限一下缩到按天算的几分之一（用户会以为程序算错了）。
+          rxMaxDay: m.rxMaxDay ? 1 : 0,
           note: m.note ? String(m.note) : ''
         };
       });
@@ -4787,9 +4845,9 @@ $('#peopleMgr').addEventListener('input', function(e){
 });
 $('#btnCancel').addEventListener('click', function(){ $('#dlgMed').close(); });
 $('#formMed').addEventListener('submit', submitMed);
-// 单位一改，「开药限制」提示里的单位跟着变；用法改了，下面那行白话预览跟着变
+// 天数 / 用法 / 单位一改，「开药限制」旁边那句换算和下面那行白话预览都要跟着变
 $('#formMed').addEventListener('input', function(){
-  syncRxUnitTip();
+  syncRxConv();
   syncDosePreview();
 });
 // 「每天吃 / 备用药」一换，整张表单的字段和必填标记跟着换

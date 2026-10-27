@@ -583,8 +583,8 @@ PROBE = r"""
   var al0 = R.alerts.length;
   submitMed({ preventDefault: function(){} });
   ck('单次上限空着 → 被拦下，没写进药箱', meds.length === before8e, meds.length - before8e);
-  ck('提示点名了「一次最多能开多少」',
-     /一次最多能开多少/.test(R.alerts.slice(al0).join(' | ')), R.alerts[R.alerts.length - 1]);
+  ck('提示点名了「一次最多能开几天」（2026-10-27 改成按天填）',
+     /一次最多能开几天/.test(R.alerts.slice(al0).join(' | ')), R.alerts[R.alerts.length - 1]);
   ck('被拦下时弹窗还开着（没当成功）', q('#dlgMed').open, '');
 
   // 每次用量填 0 = 没填用法（卡片会算不出「剩几天」）→ 照样拦
@@ -621,8 +621,8 @@ PROBE = r"""
   var al4 = R.alerts.length;
   submitMed({ preventDefault: function(){} });
   ck('单次上限填 0 → 被拦下（不再当「不限」）', meds.length === before8e, meds.length - before8e);
-  ck('同上，提示仍是「一次最多能开多少（要大于 0）」',
-     /一次最多能开多少（要大于 0）/.test(R.alerts.slice(al4).join(' | ')),
+  ck('同上，提示仍是「一次最多能开几天（要大于 0）」',
+     /一次最多能开几天（要大于 0）/.test(R.alerts.slice(al4).join(' | ')),
      R.alerts[R.alerts.length - 1]);
 
   // 都填齐了 → 规格 / 备注留空照样存得下去（这两格是选填）
@@ -669,6 +669,101 @@ PROBE = r"""
   fmed.stockBase.value = '0';
   ck('余量填 0 → 合法（0 是有效值，不是"没填"）', formEl.checkValidity() === true, formEl.checkValidity());
   q('#dlgMed').close();
+
+  // --- 8f. ★ 2026-10-27 用户要求：开药限制按**天数**填，不按片数 ---
+  //   原话：「开药限制这里 用天数 一次最多能开多少天 而不是 药片数量」
+  //   为什么：「最多开 30 天」是医生嘴里的话；要多少**片**得按自己的用法乘一遍，
+  //     而那一步恰恰最容易乘错（规格、每日几次、每次几片三处都能错）。
+  //   口径：rxMax 存**天数**，rxMaxDay=1 是「这个数是天」的凭证；
+  //     老存档没有这个标记 → 那个数还是**数量**，读的时候原样当数量用（第 1、2 节
+  //     验的就是这条路），**绝不偷偷换算写回** —— 数量 ÷ 每天用量常常除不尽，
+  //     一换算就把用户当初填的数改掉了（而且不可逆）。
+  var rl = q('#rxMaxLabel');
+  ck('这一格标题改成「一次最多能开几天」',
+     /一次最多能开几天/.test(rl.textContent), rl.textContent.replace(/\s+/g, ' ').slice(0, 40));
+  ck('标题里不再说「一次最多能开多少」', !/一次最多能开多少/.test(rl.textContent), '');
+  ck('说明写明「填天数、不填片数」',
+     /填天数，不填片数/.test(rl.textContent.replace(/\s+/g, '')),
+     rl.textContent.replace(/\s+/g, ' ').slice(0, 200));
+  ck('说明里解释了程序会自己换算成数量', /换算成数量/.test(rl.textContent), '');
+
+  function mkRx(o){
+    return Object.assign({ id: 'rx' + Math.random().toString(36).slice(2, 7), name: '样例',
+      spec: '', kind: 'daily', perDose: 1, unit: '片', cycleDays: 1, timesPerCycle: 1,
+      stockBase: 0, stockDate: todayStr(), rxMax: 0, note: '' }, o);
+  }
+
+  // ① 每天 1 片、最多 7 天
+  var c1r = mkRx({ rxMax: 7, rxMaxDay: 1 });
+  ck('★ 每天 1 片 · 限 7 天 → 单次上限 7 片', rxCap(c1r) === 7, rxCap(c1r));
+  ck('  同一个人理论缺口 = 30 片（补满 30 天）', needUnits(c1r) === 30, needUnits(c1r));
+  ck('  一次 7 天 → 要跑 5 趟', rxTrips(c1r) === 5, rxTrips(c1r));
+
+  // ② ★ 按天算和按片算分道扬镳的那一格：每天 2 片、最多 30 天
+  var c2r = mkRx({ timesPerCycle: 2, rxMax: 30, rxMaxDay: 1 });
+  ck('★ 每天 2 片 · 限 30 天 → 上限 60 片（不是 30 片）', rxCap(c2r) === 60, rxCap(c2r));
+  ck('  rxCapDays 读到的是 30', rxCapDays(c2r) === 30, rxCapDays(c2r));
+  ck('  60 片正好 30 天的量 → 只跑 1 趟', rxTrips(c2r) === 1, rxTrips(c2r));
+
+  // ③ 隔天用的药：天数要落到「整周期」上，不能给 2.14 支
+  var c3r = mkRx({ unit: '支', cycleDays: 14, timesPerCycle: 1, rxMax: 30, rxMaxDay: 1 });
+  ck('★ 每 14 天 1 支 · 限 30 天 → 2 支（2×14=28 天，不超上限）', rxCap(c3r) === 2, rxCap(c3r));
+  // ④ 上限比一个周期还短：至少给一次的量（药拆不开，给 0 支等于这药永远开不了）
+  var c4r = mkRx({ unit: '支', cycleDays: 14, timesPerCycle: 1, rxMax: 7, rxMaxDay: 1 });
+  ck('★ 限 7 天、其实两周打一支 → 至少 1 支（不能给 0.5 支）', rxCap(c4r) === 1, rxCap(c4r));
+
+  // ⑤ 老存档（没有 rxMaxDay）里的 30 是**数量**
+  var c5r = mkRx({ timesPerCycle: 2, rxMax: 30 });
+  ck('★ 老存档的 30 当 30 片读，不当 30 天（否则上限凭空翻倍）',
+     rxCap(c5r) === 30, rxCap(c5r));
+  ck('  老存档没有「天数」可说 → rxCapDays 是无穷（弹窗仍按片数写）',
+     rxCapDays(c5r) === Infinity, String(rxCapDays(c5r)));
+  // ⑥ 0 = 老口径的「不限」
+  ck('rxMax=0 → 不限（Infinity）', rxCap(mkRx({ rxMax: 0 })) === Infinity,
+     String(rxCap(mkRx({ rxMax: 0 }))));
+
+  // ⑦ 表单：按天填，旁边当场把天数换算成数量
+  var fMed = mkRx({ name: '按天开药片', timesPerCycle: 2, rxMax: 30, rxMaxDay: 1 });
+  meds.push(fMed); render();
+  openEditor(fMed.id);
+  ck('编辑时那格显示 30（天），不是 60（片）', fmed.rxMax.value === '30', fmed.rxMax.value);
+  var conv = q('#rxConv') ? q('#rxConv').textContent.replace(/\s+/g, ' ') : '(没有 #rxConv)';
+  ck('★ 旁边当场写出换算「每天 2 片 × 30 天 ＝ 60 片」',
+     /每天 2 片/.test(conv) && /30 天/.test(conv) && /60 片/.test(conv), conv);
+  fmed.rxMax.value = '15';
+  fmed.rxMax.dispatchEvent(new Event('input', { bubbles: true }));
+  conv = q('#rxConv').textContent.replace(/\s+/g, ' ');
+  ck('改天数 → 那句换算当场跟着变（15 天 ＝ 30 片）',
+     /15 天/.test(conv) && /30 片/.test(conv), conv);
+  submitMed({ preventDefault: function(){} });
+  var savedDays = byName('按天开药片');
+  ck('★ 存下来的是天数：rxMax=15 且 rxMaxDay=1',
+     !!savedDays && savedDays.rxMax === 15 && savedDays.rxMaxDay === 1,
+     savedDays ? savedDays.rxMax + ' / ' + savedDays.rxMaxDay : '(没存上)');
+  ck('  它的单次上限仍是 30 片', savedDays && rxCap(savedDays) === 30,
+     savedDays ? rxCap(savedDays) : null);
+
+  // ⑧ 老存档那味药（rxMax 是数量）→ 打开编辑时按天显示，但**不改存档**
+  var oldMed = mkRx({ name: '老口径开药片', timesPerCycle: 2, rxMax: 60 });   // 60 片 / 每天 2 片
+  meds.push(oldMed); render();
+  openEditor(oldMed.id);
+  ck('老存档 60 片 ÷ 每天 2 片 → 那格显示 30 天', fmed.rxMax.value === '30', fmed.rxMax.value);
+  q('#dlgMed').close();
+  ck('只是打开看一眼 → 存档里的 60 和「没有标记」都原样不动',
+     oldMed.rxMax === 60 && !oldMed.rxMaxDay, oldMed.rxMax + ' / ' + oldMed.rxMaxDay);
+
+  // ⑨ 「已经开药」弹窗得把「限几天」和「多少片」一起写清
+  setMeds([ mkRx({ name: '弹窗按天片', rxMax: 7, rxMaxDay: 1 }) ]);
+  save(); render();
+  openDisp();
+  var drow = q('#dispList').textContent.replace(/\s+/g, ' ');
+  ck('★ 弹窗行内写「单次最多开 7 天 ＝ 7 片」',
+     /单次最多开\s*7\s*天\s*＝\s*7\s*片/.test(drow), drow.slice(0, 200));
+  ck('  也照样给出趟数（共需 30、要开 5 次）',
+     /共需\s*30.*?要开\s*5\s*次/.test(drow), drow.slice(0, 260));
+  ck('弹窗开头改口成「一次最多能开几天」',
+     /一次最多能开几天/.test(q('#dispSub').textContent), q('#dispSub').textContent);
+  q('#dlgDisp').close();
 
   // ---- 9. ★ 2026-10-11 用户要求：「又买了药」「校准余量」也走中间弹窗 ----
   //    原来是浏览器原生 prompt（顶部小框、手机上难用）。现在共用 #dlgNum，
