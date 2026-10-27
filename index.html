@@ -944,10 +944,9 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
         <div class="sec-title" id="secRxLimit">开药限制</div>
         <label class="full" id="rxMaxLabel"><span class="lb">一次最多能开几天<b class="req">*</b></span>
           <input name="rxMax" type="number" step="1" min="1" autocomplete="off" placeholder="如 30" required>
-          <span class="hintline">医生单次处方最多能给<b>几天</b>的量 —— 这一格填<b>天数</b>，不填片数。
-            程序按上面填的用法自己换算成数量：<b id="rxConv">—</b>。
-            一次挂号只能开一次药，所以这一格决定「这一次能拿多少、一共要跑几趟」，不能空着。
-            拿不准就照上次开的那几天填。</span>
+          <span class="hintline">医生单次处方最多能给几天 —— 填<b>天数</b>，不填片数；
+            程序按你填的用法换算成数量：<b id="rxConv">—</b>。
+            它决定一次挂号能拿多少、要跑几趟，不能空着。拿不准就照上次开的那几天填。</span>
         </label>
 
         <label class="full"><span class="lb">备注<span class="opt">选填</span></span>
