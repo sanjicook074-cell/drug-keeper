@@ -61,9 +61,15 @@ PROBE = r"""
     return s ? (s.getAttribute('data-wstep') || '') : '(没有/多步同时露)';
   }
   function nOn(form){ return qa('#' + form + ' .wstep.on').length; }
-  // 进度栏里「第 N 步」和右边的短名字是两个元素，textContent 拼起来中间没有空白 —— 统一去空再比
-  function bar(form){ return txt(q('#' + form + ' .wizline')).replace(/\s+/g, ''); }
   function dots(form){ return qa('#' + form + ' .wizdots i'); }
+  // 2026-10-28 用户要求进度栏只留图形、去掉「第 N 步 / 共 M 步」那行字，
+  // 所以这里改成读图形本身：「一共几段 : 亮在第几段」。
+  function nowAt(form){
+    var d = dots(form);
+    for(var i = 0; i < d.length; i++) if(d[i].className === 'now') return i + 1;
+    return 0;
+  }
+  function bar(form){ return dots(form).length + ':' + nowAt(form); }
   function nextB(form){ return q('#' + form + ' [data-wiz=next]'); }
   function prevB(form){ return q('#' + form + ' [data-wiz=prev]'); }
   function errTxt(form){
@@ -88,7 +94,10 @@ PROBE = r"""
   openEditor(null);
   ck('打开「添加药品」→ 同时只露出一步', nOn('formMed') === 1, nOn('formMed'));
   ck('第一步问的是药名（不是一上来就让人填七八格）', stepOf('formMed') === 'name', stepOf('formMed'));
-  ck('进度栏写「第 1 步 / 共 8 步」', bar('formMed') === '第1步/共8步药名', bar('formMed'));
+  ck('★ 进度栏只有图形，没有「第 N 步 / 共 M 步」那行字',
+     txt(q('#formMed .wizbar')) === '' && !q('#formMed .wizline'),
+     '"' + txt(q('#formMed .wizbar')) + '"' + (q('#formMed .wizline') ? ' / 还有 wizline' : ''));
+  ck('图形是 8 段、亮在第 1 段', bar('formMed') === '8:1', bar('formMed'));
   ck('进度条分 8 段，第一段是当前段', dots('formMed').length === 8
      && dots('formMed')[0].className === 'now', dots('formMed').length + ' / ' + (dots('formMed')[0] || {}).className);
   ck('第一步不显示「上一步」（但位置留着，按钮不乱挪）',
@@ -113,7 +122,7 @@ PROBE = r"""
   f.name.value = '引导片';
   tapNext('formMed');
   ck('填上药名 → 走到第二步「规格」', stepOf('formMed') === 'spec', stepOf('formMed'));
-  ck('第二步进度栏跟着变', bar('formMed') === '第2步/共8步规格', bar('formMed'));
+  ck('走到第二步，亮的那段跟着挪到第 2 段', bar('formMed') === '8:2', bar('formMed'));
   ck('红字跟着这一步清掉了', errTxt('formMed') === '(没有红字)', errTxt('formMed'));
 
   tapNext('formMed');
@@ -158,7 +167,9 @@ PROBE = r"""
   tapNext('formMed');
   ck('走到最后一步「备注」', stepOf('formMed') === 'note', stepOf('formMed'));
   ck('★ 到最后一步，「下一步」才变成「保存」', txt(nextB('formMed')) === '保存', txt(nextB('formMed')));
-  ck('最后一步进度栏是 8/8', bar('formMed') === '第8步/共8步备注', bar('formMed'));
+  ck('最后一步亮的是第 8 段（前面 7 段都算过去了）',
+     bar('formMed') === '8:8' && dots('formMed').slice(0, 7).every(function(d){ return d.className === 'done'; }),
+     bar('formMed'));
 
   var saved = null;
   nextB('formMed').click();                 // 点「保存」
@@ -179,14 +190,14 @@ PROBE = r"""
   openEditor(null);
   f.kind.value = 'prn';
   syncKindUI();
-  ck('★ 选「备用药」→ 总步数从 8 变 7', /共7步/.test(bar('formMed')), bar('formMed'));
+  ck('★ 选「备用药」→ 进度条从 8 段变 7 段', dots('formMed').length === 7, bar('formMed'));
   ck('★ 备用药没有「开药限制」这一步（不是灰着让人点）',
      WIZ.formMed.all.filter(function(s){ return s.getAttribute('data-wstep') === 'limit'; }).length === 1
      && wizList(WIZ.formMed).every(function(s){ return s.getAttribute('data-wstep') !== 'limit'; }),
      wizList(WIZ.formMed).map(function(s){ return s.getAttribute('data-wstep'); }).join(','));
   f.kind.value = 'daily';
   syncKindUI();
-  ck('切回「每天吃」→ 步数也回到 8', /共8步/.test(bar('formMed')), bar('formMed'));
+  ck('切回「每天吃」→ 段数也回到 8', dots('formMed').length === 8, bar('formMed'));
   q('#dlgMed').close();
 
   /* ================= 7. 每次打开都从第一步开始 ================= */
@@ -209,7 +220,7 @@ PROBE = r"""
 
   restockMed(rest.id);
   await null;
-  ck('「又买了药」是两步：先问数量', stepOf('formNum') === 'val' && /共2步/.test(bar('formNum')),
+  ck('「又买了药」是两步：先问数量', stepOf('formNum') === 'val' && bar('formNum') === '2:1',
      stepOf('formNum') + ' / ' + bar('formNum'));
   ck('弹窗里只有数量那一格露着（自费/医保还没问）', visible(q('#numVal')) && !visible(q('#numIns')),
      visible(q('#numVal')) + ' / ' + visible(q('#numIns')));
@@ -237,9 +248,9 @@ PROBE = r"""
   var cal = byName('补货引导片');
   calibMed(cal.id);
   await null;
-  ck('「校准余量」只有一步 → 进度栏不出现（一格的表不配进度条）',
-     q('#formNum .wizline').hidden === true && q('#formNum .wizdots').hidden === true,
-     String(q('#formNum .wizline').hidden));
+  ck('「校准余量」只有一步 → 进度条不出现（一格的表不配进度条）',
+     q('#formNum .wizdots').hidden === true
+       && txt(q('#formNum .wizbar')) === '', String(q('#formNum .wizdots').hidden));
   ck('只有一步时按钮直接就是那件事（校准余量 → 「校准」），不写「下一步」',
      txt(nextB('formNum')) === '校准', txt(nextB('formNum')));
   q('#numVal').value = '9';
@@ -250,7 +261,7 @@ PROBE = r"""
 
   /* ================= 10. 设置也是引导式 ================= */
   openSettings();
-  ck('设置打开是第 1 步 / 共 5 步', bar('formSet') === '第1步/共5步偏少线', bar('formSet'));
+  ck('设置打开：5 段、亮在第 1 段', bar('formSet') === '5:1', bar('formSet'));
   var names = [];
   for(var k = 0; k < 5; k++){
     names.push((onStep('formSet') || { getAttribute: function(){ return '?'; } }).getAttribute('data-name'));

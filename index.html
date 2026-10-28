@@ -462,13 +462,11 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 .wizbtns{display:flex;justify-content:flex-end;gap:9px}
 .wizbtns .btn[data-wiz=prev]{visibility:hidden}
 .wizbtns .btn[data-wiz=prev].can{visibility:visible}
-.wizline{display:flex;align-items:baseline;gap:7px;font-size:11.5px;color:var(--faint)}
-.wizline b{font-size:12px;font-weight:680;color:var(--brand)}
-.wizline .wizname{margin-left:auto;font-weight:620;color:var(--muted)}
-.wizline[hidden]{display:none}
+/* 进度栏只有图形，不写「第 3 步 / 共 8 步」——数是哪一步这件事，一段亮着的方块
+   比一句话更快看懂，还省掉弹窗里的一整行高度。 */
 /* 进度条本身就是「点得动」的：一格一段，点哪段跳哪步 ——
    编辑一味老药只想改备注时，不用把前面六步一步步点过去。 */
-.wizdots{display:flex;gap:4px;padding:5px 0 0;cursor:default}
+.wizdots{display:flex;gap:4px;padding:0;cursor:default}
 .wizdots i{flex:1;height:6px;border-radius:99px;background:var(--line);
   transition:background .2s;cursor:pointer}
 .wizdots i.done{background:#bfd3fb}
@@ -2815,16 +2813,8 @@ function wizInit(formId){
   };
   if(!w.all.length || !w.bar || !w.next || !w.prev) return null;
 
-  w.line = document.createElement('div');
-  w.line.className = 'wizline';
-  w.no = document.createElement('b');
-  w.nm = document.createElement('span');
-  w.nm.className = 'wizname';
-  w.line.appendChild(w.no);
-  w.line.appendChild(w.nm);
   w.dots = document.createElement('div');
   w.dots.className = 'wizdots';
-  w.bar.appendChild(w.line);
   w.bar.appendChild(w.dots);
 
   w.prev.addEventListener('click', function(){ wizGo(w, w.i - 1); });
@@ -2865,10 +2855,7 @@ function wizRender(w){
 
   w.all.forEach(function(s){ s.classList.toggle('on', s === cur); });
 
-  w.no.textContent = (n > 1) ? ('第 ' + (w.i + 1) + ' 步 / 共 ' + n + ' 步') : '就一步';
-  w.nm.textContent = cur.getAttribute('data-name') || '';
-  w.line.hidden = (n < 2);
-  w.dots.hidden = (n < 2);
+  w.dots.hidden = (n < 2);   // 只有一步时不画条：一整段全亮，什么也没说
   // 第一步不显示「上一步」，但**留着位置**（visibility 而不是 hidden）：
   // 否则底下按钮会左右挪一下，连点两下很容易点空。
   w.prev.classList.toggle('can', w.i > 0);
