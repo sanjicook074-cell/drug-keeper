@@ -796,7 +796,10 @@ PROBE = r"""
   ck('表单带 novalidate（校验不弹浏览器原生气泡）',
      q('#formNum').hasAttribute('novalidate'), q('#formNum').hasAttribute('novalidate'));
   q('#numVal').value = '28';
-  ck('按钮文案是「加到库存」', dlgNumTxt('#btnNumOk') === '加到库存', dlgNumTxt('#btnNumOk'));
+  // ★ 2026-10-28 引导式：「又买了药」现在是两步（数量 → 自费/医保），第一步的按钮是「下一步」
+  ck('引导式：填完数量，按钮先写「下一步」', dlgNumTxt('#btnNumOk') === '下一步', dlgNumTxt('#btnNumOk'));
+  q('#btnNumOk').click();          // 真点一下那颗按钮（走完整引导流程，不直接调函数）
+  ck('走到最后一步，按钮才变成「加到库存」', dlgNumTxt('#btnNumOk') === '加到库存', dlgNumTxt('#btnNumOk'));
   submitNum({ preventDefault: function(){} });
   ck('确认后库存 = 4 + 28 = 32', byName(restName).stockBase === 32, byName(restName).stockBase);
   ck('确认后弹窗已关闭', !q('#dlgNum').open, '');
@@ -1395,7 +1398,7 @@ def main():
     #   ★ 为什么非要在源码上再钉一遍：`required` 是**浏览器在 submit 事件之前**拦的，
     #     插进页面的 JS 探针根本摸不到它 —— DOM 那段只能验 JS 兜底那一层。
     #     所以「哪几格真的带 required」只在源码上看得到；谁手一滑摘掉一个，这里当场红。
-    mform = re.search(r'<form id="formMed">(.*?)</form>', src, flags=re.S)
+    mform = re.search(r'<form id="formMed"[^>]*>(.*?)</form>', src, flags=re.S)
     fbody = mform.group(1) if mform else ""
 
     def _attrs(field):

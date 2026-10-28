@@ -411,6 +411,11 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
    ★ 标签文字必须包在 `.lb` 里：`.grid2 label` 是 column flex，**它的每个子元素都会独占一行** ——
      直接写 `药品名称<b>*</b>` 会把星号挤到下一行（第一版就是这么翻车的，截图里星号孤零零一行）。 */
 .grid2 label .lb{display:block}
+/* ⚠️ 栅格里「占整行」那条规则只写了 `.grid2 label.full` —— **认的是 label**，
+   所以 `#peopleMgr` 这种 div.full 一直只占一列，家庭成员那行被挤在左半边、
+   右边空着（原来一打开设置就是两栏，不明显；设置改成一步一格之后很显眼）。
+   这里单独补上，别再指望 `.full` 这个类名本身。 */
+#peopleMgr, #peopleMgr + .full{grid-column:1/-1}
 .grid2 label .req{color:var(--out);font-weight:700;margin-left:3px}
 .grid2 label .opt{font-size:10.5px;font-weight:600;color:var(--faint);
   border:1px solid var(--line);border-radius:5px;padding:0 4px;margin-left:5px;vertical-align:1px}
@@ -432,6 +437,45 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 .dose-tip{font-size:11.5px;color:var(--faint)}
 #dosePreview{font-size:11.5px;color:var(--brand)}
 .dlg-f{display:flex;justify-content:flex-end;gap:9px;padding:0 22px 20px}
+
+/* ---------- 引导式填写：一次只问一件事 ---------- */
+/* 用户 2026-10-28：「所有要填写多个信息的……都改成一次只填一个信息 然后蹦出下一个
+   下面有个进度栏 因为一看到这么多信息要填 用户本身就头大了 所以都做成引导式的」。
+   ⚠️ `.wstep` 用 display:contents —— **表单原来那套两列栅格一格没动**，
+      只是把这一步不参与的那些块 display:none 掉。字段本身一个都没删：
+      校验、存档、备份导入读的还是同一批 name，这里只决定「露哪一块」。
+      所以别把它改成 wrapper div，一改整张表单的栅格就散了。 */
+.wstep{display:none}
+.wstep.on{display:contents}
+/* 这一步还差什么 —— 就地写在格子下面，不弹窗（用户明确讨厌打断式弹窗） */
+.wstep-err{grid-column:1/-1;margin-top:2px;padding:8px 11px;border-radius:8px;
+  background:#fef2f2;border:1px solid #fecaca;font-size:12px;color:#b91c1c;
+  line-height:1.6;white-space:pre-line}
+.wstep-err[hidden]{display:none}
+input.wbad{border-color:#fca5a5;background:#fffafa}
+/* 每一步都要有足够高度，否则从「一品名」跳到「开药限制」时弹窗一抽一抽地长高，
+   底下那颗「下一步」跟着上下乱跑 —— 连点两下很容易点空。 */
+.wizbody.wizmulti{min-height:190px}
+
+/* 底部：进度栏在上，三个按钮在下 */
+.wizfoot{flex-direction:column;align-items:stretch;gap:11px}
+.wizbtns{display:flex;justify-content:flex-end;gap:9px}
+.wizbtns .btn[data-wiz=prev]{visibility:hidden}
+.wizbtns .btn[data-wiz=prev].can{visibility:visible}
+.wizline{display:flex;align-items:baseline;gap:7px;font-size:11.5px;color:var(--faint)}
+.wizline b{font-size:12px;font-weight:680;color:var(--brand)}
+.wizline .wizname{margin-left:auto;font-weight:620;color:var(--muted)}
+.wizline[hidden]{display:none}
+/* 进度条本身就是「点得动」的：一格一段，点哪段跳哪步 ——
+   编辑一味老药只想改备注时，不用把前面六步一步步点过去。 */
+.wizdots{display:flex;gap:4px;padding:5px 0 0;cursor:default}
+.wizdots i{flex:1;height:6px;border-radius:99px;background:var(--line);
+  transition:background .2s;cursor:pointer}
+.wizdots i.done{background:#bfd3fb}
+.wizdots i.now{background:var(--brand)}
+.wizdots i:hover{background:#93b4f5}
+.wizdots i.now:hover{background:var(--brand-d)}
+.wizdots[hidden]{display:none}
 
 /* ---------- 通用弹窗（确认 / 提示 / 输入） ---------- */
 /* 替代浏览器原生的 confirm / alert / prompt。用户 2026-10-23 要求：
@@ -733,6 +777,7 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
   .dlg-b{padding:13px 16px}
   .dlg-f{padding:0 16px 16px}
   .dlg-f .btn{flex:1}                   /* 底部两个按钮在手机上均分整行，好点 */
+  .wizbody.wizmulti{min-height:170px}   /* 手机上每一步没那么高，留 196 就够稳 */
   .grid2{grid-template-columns:1fr;gap:11px}
   .kinds{grid-template-columns:1fr}
   .use-list{max-height:52vh}
@@ -910,103 +955,144 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 </dialog>
 
 <!-- 药品编辑弹窗 -->
+<!-- ★ 2026-10-28 用户要求：「所有要填写多个信息的 比如说添加药品里 要填怎么用 药名 规格 等等……
+     都改成一次只填一个信息 然后蹦出下一个 下面有个进度栏 因为一看到这么多信息要填 用户本身就头大了」。
+     所以这张表单拆成了 6～7 步（备用药少一步），一次只问一件事，底下一条进度栏。
+     ⚠️ 字段一个没少、name 一个没改，只是分包进 `.wstep`：
+        校验（submitMed）、存档、备份导入读的还是同一批 name。
+        想做的是一个"少看一眼"的界面，不是第二套数据。
+     ⚠️ 每一步的开头都是 .sec-title —— 它是 .wstep 的第一个孩子，
+        `.sec-title:first-child` 会把那条上分隔线去掉（不然后面每一步顶上多一道杠）。 -->
 <dialog id="dlgMed">
-  <form id="formMed">
+  <form id="formMed" novalidate>
     <div class="dlg-h">
       <h3 id="dlgTitle">添加药品</h3>
-      <p id="dlgMedSub">填「余量」和「余量日期」后，余量会随时间自动往下推算——不用每天手动扣药。</p>
+      <p id="dlgMedSub">一步一步来，一次只问一件事。</p>
     </div>
-    <div class="dlg-b">
+    <div class="dlg-b wizbody">
       <div class="grid2">
-        <div class="sec-title">这是怎么用的</div>
-        <div class="kinds" id="kindRow">
-          <label class="kind on" data-kind="daily">
-            <input type="radio" name="kind" value="daily" checked>
-            <span><span class="kt">每天都要吃</span>
-              <span class="ks">按天数推算余量，快没了会提醒你续方</span></span>
+
+        <section class="wstep" data-wstep="name" data-name="药名">
+          <div class="sec-title">这是什么药</div>
+          <label class="full"><span class="lb">药品名称<b class="req">*</b></span>
+            <input name="name" required autocomplete="off" placeholder="如 维生素B2片" data-wlabel="药品名称">
+            <span class="hintline">照药盒正面最大的那几个字填就行。</span>
           </label>
-          <label class="kind" data-kind="prn">
-            <input type="radio" name="kind" value="prn">
-            <span><span class="kt">备用药</span>
-              <span class="ks">平时不吃，只记还剩多少、不按天数算</span></span>
+        </section>
+
+        <!-- 规格单独一步：用户要的是「一次只问一件事」。
+             它选填，想不起来直接点「下一步」就过去了。 -->
+        <section class="wstep" data-wstep="spec" data-name="规格">
+          <div class="sec-title">多大规格<span class="opt">选填</span></div>
+          <label class="full"><span class="lb">规格<span class="opt">选填</span></span>
+            <input name="spec" autocomplete="off" placeholder="如 20mg / 0.5g">
+            <span class="hintline">药盒上印的那个数（20mg、0.5g 这样）。想不起来就留空，不影响别的。</span>
           </label>
-        </div>
+        </section>
 
-        <div class="sec-title">这是什么药</div>
-        <label class="full"><span class="lb">药品名称<b class="req">*</b></span>
-          <input name="name" required autocomplete="off" placeholder="如 维生素B2片">
-        </label>
-        <label class="full"><span class="lb">规格<span class="opt">选填</span></span>
-          <input name="spec" autocomplete="off" placeholder="如 20mg / 0.5g">
-        </label>
+        <section class="wstep" data-wstep="kind" data-name="用法">
+          <div class="sec-title">这是怎么用的</div>
+          <div class="kinds" id="kindRow">
+            <label class="kind on" data-kind="daily">
+              <input type="radio" name="kind" value="daily" checked>
+              <span><span class="kt">每天都要吃</span>
+                <span class="ks">按天数推算余量，快没了会提醒你续方</span></span>
+            </label>
+            <label class="kind" data-kind="prn">
+              <input type="radio" name="kind" value="prn">
+              <span><span class="kt">备用药</span>
+                <span class="ks">平时不吃，只记还剩多少、不按天数算</span></span>
+            </label>
+          </div>
+        </section>
 
-        <div class="sec-title" id="secDose">怎么吃</div>
-        <div class="dose-row">
-          <span>每次</span>
-          <input name="perDose" type="number" step="0.25" min="0" value="1" class="mini" aria-label="每次用量" required>
-          <input name="unit" value="片" autocomplete="off" class="mini unit" aria-label="单位" placeholder="片" required>
-          <span id="doseCycleWrap">
-            <span>，每</span>
-            <input name="cycleDays" type="number" step="1" min="1" value="1" class="mini" aria-label="每几天用一次药" required>
-            <span>天</span>
-            <input name="timesPerCycle" type="number" step="1" min="0" value="1" class="mini" aria-label="每个周期用几次" required>
-            <span>次</span>
-          </span>
-        </div>
-        <div class="dose-note">
-          <span class="dose-tip" id="doseTip">单位可填 片 / 粒 / ml / 支 / 袋 —— <b>这一行四格都是必填</b></span>
-          <span id="dosePreview"></span>
-        </div>
+        <section class="wstep" data-wstep="dose" data-name="用量">
+          <div class="sec-title" id="secDose">怎么吃</div>
+          <div class="dose-row">
+            <span>每次</span>
+            <input name="perDose" type="number" step="0.25" min="0" value="1" class="mini" aria-label="每次用量"
+                   required data-wlabel="每次用量" data-wmin="0.001" data-wmsg="每次用量要大于 0">
+            <input name="unit" value="片" autocomplete="off" class="mini unit" aria-label="单位"
+                   placeholder="片" required data-wlabel="单位">
+            <span id="doseCycleWrap">
+              <span>，每</span>
+              <input name="cycleDays" type="number" step="1" min="1" value="1" class="mini" aria-label="每几天用一次药"
+                     required data-wlabel="每几天" data-wmin="1" data-wmsg="每几天至少是 1">
+              <span>天</span>
+              <input name="timesPerCycle" type="number" step="1" min="0" value="1" class="mini" aria-label="每个周期用几次"
+                     required data-wlabel="每周期几次" data-wmin="0.001" data-wmsg="每周期几次要大于 0">
+              <span>次</span>
+            </span>
+          </div>
+          <div class="dose-note">
+            <span class="dose-tip" id="doseTip">单位可填 片 / 粒 / ml / 支 / 袋 —— <b>这一行四格都是必填</b></span>
+            <span id="dosePreview"></span>
+          </div>
+        </section>
 
-        <div class="sec-title">现在还剩多少</div>
-        <label><span class="lb">余量<b class="req">*</b></span>
-          <input name="stockBase" type="number" step="0.25" min="0" value="0" required>
-        </label>
-        <label><span class="lb">这个余量是哪天的<b class="req">*</b></span>
-          <input name="stockDate" type="date" required>
-          <span class="hintline" id="stockHint">默认今天。上面那格预填的是<b>按用法扣到今天</b>的推算值（和卡片一致）；
-            你数的数不一样就直接改上面那格，日期填<b>你数的那天</b>。这两个都不动就不会改掉原来的基准</span>
-        </label>
+        <section class="wstep" data-wstep="stock" data-name="余量">
+          <div class="sec-title">现在还剩多少</div>
+          <label class="full"><span class="lb">余量<b class="req">*</b></span>
+            <input name="stockBase" type="number" step="0.25" min="0" value="0" required data-wlabel="余量">
+          </label>
+          <label class="full"><span class="lb">这个余量是哪天的<b class="req">*</b></span>
+            <input name="stockDate" type="date" required data-wlabel="余量日期">
+            <span class="hintline" id="stockHint">默认今天。上面那格预填的是<b>按用法扣到今天</b>的推算值（和卡片一致）；
+              你数的数不一样就直接改上面那格，日期填<b>你数的那天</b>。这两个都不动就不会改掉原来的基准</span>
+          </label>
+        </section>
 
-        <div class="sec-title" id="secRxLimit">开药限制</div>
-        <label class="full" id="rxMaxLabel"><span class="lb">一次最多能开几天<b class="req">*</b></span>
-          <input name="rxMax" type="number" step="1" min="1" autocomplete="off" placeholder="如 30" required>
-          <span class="hintline">医生单次处方最多能给几天 —— 填<b>天数</b>，不填片数；
-            程序按你填的用法换算成数量：<b id="rxConv">—</b>。
-            它决定一次挂号能拿多少、要跑几趟，不能空着。拿不准就照上次开的那几天填。</span>
-        </label>
+        <section class="wstep" data-wstep="limit" data-name="开药天数">
+          <div class="sec-title" id="secRxLimit">开药限制</div>
+          <label class="full" id="rxMaxLabel"><span class="lb">一次最多能开几天<b class="req">*</b></span>
+            <input name="rxMax" type="number" step="1" min="1" autocomplete="off" placeholder="如 30"
+                   required data-wlabel="一次最多能开几天" data-wmin="1" data-wmsg="一次能开几天，至少填 1">
+            <span class="hintline">医生单次处方最多能给几天 —— 填<b>天数</b>，不填片数；
+              程序按你填的用法换算成数量：<b id="rxConv">—</b>。
+              它决定一次挂号能拿多少、要跑几趟，不能空着。拿不准就照上次开的那几天填。</span>
+          </label>
+        </section>
 
         <!-- 2026-10-28 用户要求：每个「加药」的入口都要能分出这味药是自费还是医保开的。
              医保开的上一把锁（天数在设置里），到「能再开之前 N 天」锁才开。 -->
-        <div class="sec-title" id="secIns">这笔药怎么来的</div>
-        <div class="kinds" id="insRow">
-          <label class="kind on" data-ins="self">
-            <input type="radio" name="ins" value="self" checked>
-            <span><span class="kt">自费买的</span>
-              <span class="ks">药店、自费门诊都算 —— 不上锁，随时能加</span></span>
+        <section class="wstep" data-wstep="ins" data-name="自费 / 医保">
+          <div class="sec-title" id="secIns">这笔药怎么来的</div>
+          <div class="kinds" id="insRow">
+            <label class="kind on" data-ins="self">
+              <input type="radio" name="ins" value="self" checked>
+              <span><span class="kt">自费买的</span>
+                <span class="ks">药店、自费门诊都算 —— 不上锁，随时能加</span></span>
+            </label>
+            <label class="kind" data-ins="mi">
+              <input type="radio" name="ins" value="mi">
+              <span><span class="kt">医保开的</span>
+                <span class="ks" id="miKindTip">会上一把锁，到能再开之前才解开</span></span>
+            </label>
+          </div>
+          <label class="full" id="miWrap">
+            <span class="lb">医保开药是哪天</span>
+            <input name="miStart" type="date">
+            <span class="hintline" id="miHint">默认今天</span>
           </label>
-          <label class="kind" data-ins="mi">
-            <input type="radio" name="ins" value="mi">
-            <span><span class="kt">医保开的</span>
-              <span class="ks" id="miKindTip">会上一把锁，到能再开之前才解开</span></span>
+        </section>
+
+        <section class="wstep" data-wstep="note" data-name="备注">
+          <div class="sec-title">最后，还有什么要记的</div>
+          <label class="full"><span class="lb">备注<span class="opt">选填</span></span>
+            <input name="note" autocomplete="off" placeholder="如 晚饭后服 / 冰箱冷藏">
           </label>
-        </div>
-        <label class="full" id="miWrap">
-          <span class="lb">医保开药是哪天</span>
-          <input name="miStart" type="date">
-          <span class="hintline" id="miHint">默认今天</span>
-        </label>
+          <div class="req-legend" id="reqLegend"><b class="req">*</b> 为必填；只有<b>规格</b>、<b>备注</b>两格可以留空。</div>
+        </section>
 
-        <label class="full"><span class="lb">备注<span class="opt">选填</span></span>
-          <input name="note" autocomplete="off" placeholder="如 晚饭后服 / 冰箱冷藏">
-        </label>
-
-        <div class="req-legend" id="reqLegend"><b class="req">*</b> 为必填；只有<b>规格</b>、<b>备注</b>两格可以留空。</div>
       </div>
     </div>
-    <div class="dlg-f">
-      <button type="button" class="btn ghost" id="btnCancel">取消</button>
-      <button type="submit" class="btn primary">保存</button>
+    <div class="dlg-f wizfoot">
+      <div class="wizbar"></div>
+      <div class="wizbtns">
+        <button type="button" class="btn ghost" id="btnCancel">取消</button>
+        <button type="button" class="btn ghost" data-wiz="prev">上一步</button>
+        <button type="button" class="btn primary" data-wiz="next">下一步</button>
+      </div>
     </div>
   </form>
 </dialog>
@@ -1257,48 +1343,69 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 </dialog>
 
 <!-- 设置弹窗 -->
+<!-- ★ 2026-10-28 同一条要求：这里本来一口气摆 4 个数 + 一整个成员管理列表，
+     一打开就是一大片 —— 也拆成一步一步（最后一步才是家庭成员）。 -->
 <dialog id="dlgSet">
-  <form id="formSet">
+  <form id="formSet" novalidate>
     <div class="dlg-h">
       <h3>设置</h3>
-      <p>决定「哪些药算要开了」，以及开药时按多少天的量来算。</p>
+      <p>几个数分别管一件事，一次填一个。</p>
     </div>
-    <div class="dlg-b">
+    <div class="dlg-b wizbody">
       <div class="grid2">
-        <label>偏少线（天）
-          <input name="alertDays" type="number" step="1" min="0">
-          <span class="hintline">剩余天数 ≤ 这个值，就标<b>「偏少」</b>、卡片转黄，并进「要开的药」清单。上方统计里的「偏少（≤N天）」用的就是它——只有这一条线</span>
-        </label>
-        <label class="full">补货目标天数
-          <input name="targetDays" type="number" step="1" min="1">
-          <span class="hintline">按「够吃这么多天」倒推该补多少（慢病长处方通常 30～90 天）</span>
-        </label>
-      </div>
-      <div class="grid2" style="margin-top:16px">
-        <div class="sec-title">医保开药</div>
-        <label>医保开药间隔（天）
-          <input name="miDays" type="number" step="1" min="1">
-          <span class="hintline">用医保开过一味药之后，这么多天内<b>不能再开同一味</b>。各地政策不一样，按医院说的填。
-            它只影响标记成<b>「医保开的」</b>的药，自费买的药不上锁</span>
-        </label>
-        <label>提前几天解锁
-          <input name="miEarly" type="number" step="1" min="0">
-          <span class="hintline">离「能再开」还剩这么多天时，锁先打开 —— 好让你提前挂号线。
-            填 0 就是到期当天才解锁；不能大过上面的间隔</span>
-        </label>
-      </div>
-      <div class="grid2" style="margin-top:16px">
-        <div class="sec-title">家庭成员</div>
-        <div class="full" id="peopleMgr"></div>
-        <div class="full hintline" style="margin-top:2px">每个人的药箱彼此独立，清单也分开出。</div>
+        <section class="wstep" data-wstep="alert" data-name="偏少线">
+          <div class="sec-title">什么时候提醒你</div>
+          <label class="full">偏少线（天）
+            <input name="alertDays" type="number" step="1" min="0">
+            <span class="hintline">剩余天数 ≤ 这个值，就标<b>「偏少」</b>、卡片转黄，并进「要开的药」清单。上方统计里的「偏少（≤N天）」用的就是它——只有这一条线</span>
+          </label>
+        </section>
+
+        <section class="wstep" data-wstep="target" data-name="补货目标">
+          <div class="sec-title">按几天备货</div>
+          <label class="full">补货目标天数
+            <input name="targetDays" type="number" step="1" min="1">
+            <span class="hintline">按「够吃这么多天」倒推该补多少（慢病长处方通常 30～90 天）</span>
+          </label>
+        </section>
+
+        <section class="wstep" data-wstep="midays" data-name="医保间隔">
+          <div class="sec-title">医保开药</div>
+          <label class="full">医保开药间隔（天）
+            <input name="miDays" type="number" step="1" min="1">
+            <span class="hintline">用医保开过一味药之后，这么多天内<b>不能再开同一味</b>。各地政策不一样，按医院说的填。
+              它只影响标记成<b>「医保开的」</b>的药，自费买的药不上锁</span>
+          </label>
+        </section>
+
+        <section class="wstep" data-wstep="miearly" data-name="提前解锁">
+          <div class="sec-title">提前几天解锁</div>
+          <label class="full">提前几天解锁
+            <input name="miEarly" type="number" step="1" min="0">
+            <span class="hintline">离「能再开」还剩这么多天时，锁先打开 —— 好让你提前挂号线。
+              填 0 就是到期当天才解锁；不能大过上面的间隔</span>
+          </label>
+        </section>
+
+        <section class="wstep" data-wstep="people" data-name="家庭成员">
+          <div class="sec-title">家庭成员</div>
+          <div class="full" id="peopleMgr"></div>
+          <div class="full hintline" style="margin-top:2px">每个人的药箱彼此独立，清单也分开出。</div>
+        </section>
       </div>
     </div>
-    <div class="dlg-f">
-      <button type="button" class="btn ghost" id="btnSetCancel">取消</button>
-      <button type="submit" class="btn primary">保存</button>
+    <div class="dlg-f wizfoot">
+      <div class="wizbar"></div>
+      <div class="wizbtns">
+        <button type="button" class="btn ghost" id="btnSetCancel">取消</button>
+        <button type="button" class="btn ghost" data-wiz="prev">上一步</button>
+        <button type="button" class="btn primary" data-wiz="next">下一步</button>
+      </div>
     </div>
   </form>
 </dialog>
+
+
 
 <input type="file" id="fileImport" accept=".json,application/json" hidden>
 
@@ -1407,24 +1514,36 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
       <h3 id="numTitle">数量</h3>
       <p id="numSub"></p>
     </div>
-    <div class="dlg-b">
-      <label class="bulk-days">
-        <span id="numLabel">数量</span>
-        <input name="val" id="numVal" type="number" step="1" min="0" autocomplete="off">
-        <span class="hintline" id="numHint"></span>
-      </label>
+    <div class="dlg-b wizbody">
+      <!-- ★ 2026-10-28 用户要求：「又买了药里 要填又买了多少片 这笔是自费医保……都改成
+           一次只填一个信息 然后蹦出下一个」。所以这两格现在是两步：
+           先填数量，填完点「下一步」再问这笔的来路。
+           校准余量只有一格，那一步就直接是最后一步，进度条也不出现（见 wizRender）。 -->
+      <section class="wstep" data-wstep="val" data-name="数量">
+        <label class="bulk-days">
+          <span id="numLabel">数量</span>
+          <input name="val" id="numVal" type="number" step="1" min="0" autocomplete="off">
+          <span class="hintline" id="numHint"></span>
+        </label>
+      </section>
       <!-- 「又买了药」时问一句这笔是自费还是医保（2026-10-28）。
            「校准余量」不是一次买药，不开这一块 —— 那是在把数字改对，不该动锁。 -->
-      <div class="num-ins" id="numIns" hidden>
-        <span class="lt">这笔是</span>
-        <label><input type="radio" name="numIns" value="self" checked> 自费买的</label>
-        <label><input type="radio" name="numIns" value="mi"> 医保开的</label>
-        <span class="hintline" id="numInsTip"></span>
-      </div>
+      <section class="wstep" data-wstep="ins" data-name="自费 / 医保">
+        <div class="num-ins" id="numIns" hidden>
+          <span class="lt">这笔是</span>
+          <label><input type="radio" name="numIns" value="self" checked> 自费买的</label>
+          <label><input type="radio" name="numIns" value="mi"> 医保开的</label>
+          <span class="hintline" id="numInsTip"></span>
+        </div>
+      </section>
     </div>
-    <div class="dlg-f">
-      <button type="button" class="btn ghost" id="btnNumCancel">取消</button>
-      <button type="submit" class="btn primary" id="btnNumOk">确定</button>
+    <div class="dlg-f wizfoot">
+      <div class="wizbar"></div>
+      <div class="wizbtns">
+        <button type="button" class="btn ghost" id="btnNumCancel">取消</button>
+        <button type="button" class="btn ghost" data-wiz="prev">上一步</button>
+        <button type="button" class="btn primary" id="btnNumOk" data-wiz="next">确定</button>
+      </div>
     </div>
   </form>
 </dialog>
@@ -2664,6 +2783,223 @@ function renderNote(force){
   $('#notePrint').textContent = val;
 }
 
+/* -------------------- 引导式填写：一次只问一件事 -------------------- */
+/* 用户 2026-10-28：「所有要填写多个信息的 比如说添加药品里 要填怎么用 药名 规格 等等
+   还有 又买了药里 要填又买了多少片 这笔是自费医保 所有这些要填入多个信息的 都改成
+   一次只填一个信息 然后蹦出下一个 下面有个进度栏 因为一看到这么多信息要填
+   用户本身就头大了 所以都做成引导式的」。
+
+   实现口径（改之前先读这三行）：
+     ① 只控制「露哪一块」。字段、name、required、取值路径一个都没动 ——
+        所以校验、存档、备份导入、老存档读进来全都还是原来那套，不会出现第二套数据。
+     ② 每一步就是一个 <section class="wstep" data-wstep="名字" data-name="进度栏上显示的名字">，
+        里面照旧是原来那些 label / input。`.wstep.on{display:contents}` ——
+        两列栅格一点没变，只是把不参与的那几块 display:none。
+     ③ 「下一步」只校验**这一步**。攒到最后一次性报「还差 7 项」是最气人的做法：
+        人得来回翻着改。宁可一步拦一次，也别让人走到终点被打回起点。 */
+const WIZ = {};
+
+function wizInit(formId){
+  const form = $('#' + formId);
+  if(!form) return null;
+  const w = {
+    form: form,
+    body: $('.dlg-b', form),
+    all: $$('.wstep', form),
+    prev: $('[data-wiz=prev]', form),
+    next: $('[data-wiz=next]', form),
+    bar: $('.wizbar', form),
+    i: 0,
+    skip: {},            // data-wstep 名 → true，表示这一步这一次不参与
+    okText: '保存'
+  };
+  if(!w.all.length || !w.bar || !w.next || !w.prev) return null;
+
+  w.line = document.createElement('div');
+  w.line.className = 'wizline';
+  w.no = document.createElement('b');
+  w.nm = document.createElement('span');
+  w.nm.className = 'wizname';
+  w.line.appendChild(w.no);
+  w.line.appendChild(w.nm);
+  w.dots = document.createElement('div');
+  w.dots.className = 'wizdots';
+  w.bar.appendChild(w.line);
+  w.bar.appendChild(w.dots);
+
+  w.prev.addEventListener('click', function(){ wizGo(w, w.i - 1); });
+  w.next.addEventListener('click', function(){ wizAdvance(w); });
+  // 进度条每一段都点得动：编辑一味老药只想改备注时，不用把前面六步一步步点过去
+  w.dots.addEventListener('click', function(e){
+    const k = [].indexOf.call(w.dots.children, e.target);
+    if(k >= 0) wizGo(w, k);
+  });
+  // ★ 回车 = 下一步。不挡的话浏览器会把它当成「提交整张表」——
+  //   在「药品名称」里敲个回车就把药存了，这个引导等于白做。
+  //   按钮上的回车放行（那是人家自己要激活那颗按钮）。
+  w.form.addEventListener('keydown', function(e){
+    if(e.key !== 'Enter' && e.keyCode !== 13) return;
+    const t = e.target;
+    if(t && (t.tagName === 'TEXTAREA' || t.tagName === 'BUTTON')) return;
+    e.preventDefault();
+    wizAdvance(w);
+  });
+
+  WIZ[formId] = w;
+  wizRender(w);
+  return w;
+}
+
+// 这次真正参与的那几步（备用药会跳过「开药限制」，校准余量会跳过「自费还是医保」）
+function wizList(w){
+  return w.all.filter(function(s){ return !w.skip[s.getAttribute('data-wstep') || '']; });
+}
+
+function wizRender(w){
+  if(!w) return;
+  const list = wizList(w);
+  if(!list.length) return;
+  if(w.i > list.length - 1) w.i = list.length - 1;
+  if(w.i < 0) w.i = 0;
+  const cur = list[w.i], n = list.length, last = (w.i === n - 1);
+
+  w.all.forEach(function(s){ s.classList.toggle('on', s === cur); });
+
+  w.no.textContent = (n > 1) ? ('第 ' + (w.i + 1) + ' 步 / 共 ' + n + ' 步') : '就一步';
+  w.nm.textContent = cur.getAttribute('data-name') || '';
+  w.line.hidden = (n < 2);
+  w.dots.hidden = (n < 2);
+  // 第一步不显示「上一步」，但**留着位置**（visibility 而不是 hidden）：
+  // 否则底下按钮会左右挪一下，连点两下很容易点空。
+  w.prev.classList.toggle('can', w.i > 0);
+  w.prev.disabled = (w.i === 0);
+  w.next.textContent = last ? (w.okText || '保存') : '下一步';
+  // 每一步高度不一样：不给个下限的话弹窗会一抽一抽地长高，
+  // 底下那颗「下一步」跟着上下乱跑。
+  if(w.body) w.body.classList.toggle('wizmulti', n > 1);
+
+  if(n > 1){
+    while(w.dots.children.length > n) w.dots.removeChild(w.dots.lastChild);
+    while(w.dots.children.length < n){
+      const d = document.createElement('i');
+      w.dots.appendChild(d);
+    }
+    [].slice.call(w.dots.children).forEach(function(d, k){
+      d.className = (k < w.i) ? 'done' : (k === w.i ? 'now' : '');
+      d.title = list[k].getAttribute('data-name') || ('第 ' + (k + 1) + ' 步');
+    });
+  }
+}
+
+// 这一格还没填 / 填得不对 → 就地写一行红字（不弹窗）；返回「能不能往下走」
+function wizLabel(el){
+  const d = el.getAttribute('data-wlabel');
+  if(d) return d;
+  const a = el.getAttribute('aria-label');
+  if(a) return a;
+  const lab = el.closest ? el.closest('label') : null;
+  if(!lab) return '这一格';
+  const lb = $('.lb', lab);
+  const t = String((lb ? lb.textContent : lab.textContent) || '')
+    .replace(/[＊*]/g, '').replace(/选填/g, '').trim();
+  return t ? t.slice(0, 14) : '这一格';
+}
+
+function wizErr(step, msgs){
+  let box = $('.wstep-err', step);
+  if(!msgs.length){
+    if(box) box.hidden = true;
+    return;
+  }
+  if(!box){
+    box = document.createElement('div');
+    box.className = 'wstep-err';
+    step.appendChild(box);
+  }
+  box.hidden = false;
+  box.textContent = msgs.join('\n');   // 一行一条（CSS 上是 pre-line）
+}
+
+function wizCheck(w){
+  const list = wizList(w);
+  const step = list[w.i];
+  if(!step) return true;
+  const msgs = [];
+  $$('input,select,textarea', step).forEach(function(el){
+    el.classList.remove('wbad');
+    if(el.disabled) return;
+    const t = String(el.type || '').toLowerCase();
+    if(t === 'radio' || t === 'checkbox' || t === 'button' || t === 'submit') return;
+    const raw = (el.value == null ? '' : String(el.value)).trim();
+    const lb = wizLabel(el);
+    if(raw === ''){
+      if(el.required){ msgs.push('先填「' + lb + '」'); el.classList.add('wbad'); }
+      return;
+    }
+    if(t === 'number'){
+      const v = Number(raw.replace(',', '.'));
+      // data-wmin 优先于 min：`min="0"` 只挡住负数，可「每次用量 0」等于没填用法
+      const dm = el.getAttribute('data-wmin');
+      const am = el.getAttribute('min');
+      const min = (dm != null) ? Number(dm) : (am != null ? Number(am) : null);
+      if(!isFinite(v)){
+        msgs.push('「' + lb + '」要填数字'); el.classList.add('wbad');
+      } else if(min != null && v < min){
+        msgs.push(el.getAttribute('data-wmsg') || ('「' + lb + '」不能小于 ' + min));
+        el.classList.add('wbad');
+      }
+    }
+  });
+  wizErr(step, msgs);
+  return !msgs.length;
+}
+
+function wizGo(w, k){
+  if(!w) return;
+  const list = wizList(w);
+  if(k < 0 || k > list.length - 1) return;
+  if(k > w.i && !wizCheck(w)) return;    // 往后走，先过这一格
+  w.i = k;
+  wizRender(w);
+  if(w.body) w.body.scrollTop = 0;
+}
+
+function wizAdvance(w){
+  if(!w) return;
+  const list = wizList(w);
+  if(!wizCheck(w)) return;
+  if(w.i >= list.length - 1){ wizSubmit(w); return; }
+  wizGo(w, w.i + 1);
+}
+
+// 最后一步点「保存」→ 走原来那条提交链（submitMed / submitSettings / submitNum 一点没改）
+function wizSubmit(w){
+  const b = w.form.querySelector ? w.form.querySelector('button[type=submit]') : null;
+  if(b && w.form.requestSubmit){ w.form.requestSubmit(b); return; }
+  w.form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+}
+
+// 每次打开弹窗都从这里开始：回到第一步、清掉上一次留下的红字
+function wizReset(w, okText){
+  if(!w) return;
+  if(okText) w.okText = okText;
+  w.i = 0;
+  w.all.forEach(function(s){
+    const e = $('.wstep-err', s);
+    if(e) e.hidden = true;
+    $$('.wbad', s).forEach(function(el){ el.classList.remove('wbad'); });
+  });
+  wizRender(w);
+  if(w.body) w.body.scrollTop = 0;
+}
+
+// 这一步这次不参与（备用药的「开药限制」、校准余量的「自费还是医保」）
+function wizSkip(w, name, on){
+  if(!w) return;
+  if(on) w.skip[name] = true; else delete w.skip[name];
+  wizRender(w);
+}
+
 /* -------------------- 操作 -------------------- */
 // 打开编辑时记下「原来的基准」和「预填进去的值」，保存时用来判断你动没动这一节（见 submitMed）
 let editAnchor = null;
@@ -2730,6 +3066,7 @@ function openEditor(id){
   }
   syncKindUI();
   syncInsUI();
+  wizReset(WIZ.formMed);        // 每次打开都从第一步开始（编辑也是），红字一并清掉
   $('#dlgMed').showModal();
   setTimeout(function(){ f.name.focus(); }, 30);
 }
@@ -2755,9 +3092,6 @@ function syncKindUI(){
   $('#doseTip').innerHTML = prn
     ? '备用药只记<b>一次吃多少</b>和还剩多少，<b>不按天数推算</b>'
     : '单位可填 片 / 粒 / ml / 支 / 袋 —— <b>这一行四格都是必填</b>';
-  $('#dlgMedSub').textContent = prn
-    ? '备用药不跟天数走：填好还剩多少之后，程序不会去自动扣它 —— 买新的点「又买了药」，吃掉一些点「校准余量」。'
-    : '填「余量」和「余量日期」后，余量会随时间自动往下推算——不用每天手动扣药。';
   $('#reqLegend').innerHTML = prn
     ? '<b class="req">*</b> 为必填；备用药只要<b>名称</b>、<b>单位</b>、<b>余量</b>、<b>余量日期</b>'
     : '<b class="req">*</b> 为必填；只有<b>规格</b>、<b>备注</b>两格可以留空。';
@@ -2775,6 +3109,10 @@ function syncKindUI(){
   f.cycleDays.required = !prn;
   f.timesPerCycle.required = !prn;
   f.rxMax.required = !prn;
+
+  // 备用药用不上「一次最多能开几天」，那一步干脆整步跳过 ——
+  // 不然走到那儿是一格灰的、还要人点「下一步」才放行。
+  wizSkip(WIZ.formMed, 'limit', prn);
 
   syncRxConv();
   syncDosePreview();
@@ -3122,6 +3460,17 @@ function openNumDialog(o){
   const inp = $('#numVal');
   inp.value = (o.value == null) ? '' : String(o.value);
   inp.min   = (o.min == null) ? 0 : o.min;
+  // 引导式：这一格没填就点「下一步」→ 就地红字，不用等提交时才说。
+  // 「又买了多少」还必须大于 0（下限用 data-wmin，因为 min="0" 只挡负数）。
+  inp.required = true;
+  inp.setAttribute('data-wlabel', o.label);
+  if(o.mode === 'add'){
+    inp.setAttribute('data-wmin', '0.001');
+    inp.setAttribute('data-wmsg', '要填一个大于 0 的数量');
+  } else {
+    inp.removeAttribute('data-wmin');
+    inp.removeAttribute('data-wmsg');
+  }
   // 「又买了药」才问来源；「校准余量」不开这一块（那不是一次买药）
   const insBox = $('#numIns');
   if(insBox){
@@ -3131,8 +3480,10 @@ function openNumDialog(o){
     syncNumIns();
   }
   const ok = $('#btnNumOk');
-  ok.textContent = o.okText || '确定';
   ok.className   = 'btn ' + (o.danger ? 'danger' : 'primary');
+  // 只有一格（校准余量）→ 那一步就是最后一步，进度条不出现，按钮直接写「确定」
+  wizSkip(WIZ.formNum, 'ins', !o.insPick);
+  wizReset(WIZ.formNum, o.okText || '确定');
   $('#dlgNum').showModal();
   inp.focus();
   inp.select();
@@ -5051,6 +5402,7 @@ function openSettings(){
   f.miDays.value = miDays();
   f.miEarly.value = miEarly();
   renderPeopleMgr();
+  wizReset(WIZ.formSet);        // 设置也是一步一个数，从第一步开始
   $('#dlgSet').showModal();
 }
 async function submitSettings(e){
@@ -5079,6 +5431,12 @@ async function submitSettings(e){
 }
 
 /* -------------------- 绑定 -------------------- */
+// 三张「要填好几格」的表都改成引导式：一次只露一格，底下一条进度栏。
+// 必须在下面那些 openXxx 之前建好 —— 它们一打开就会调 wizReset。
+wizInit('formMed');
+wizInit('formSet');
+wizInit('formNum');
+
 $('#btnAdd').addEventListener('click', function(){ openEditor(null); });
 $('#btnSettings').addEventListener('click', openSettings);
 
