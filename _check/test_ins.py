@@ -104,7 +104,7 @@ PROBE = r"""
     f.cycleDays.value = 1;
     f.timesPerCycle.value = o.times || 1;
     f.stockBase.value = (o.stock == null ? 30 : o.stock);
-    f.stockDate.value = todayStr();
+    // 2026-10-28 起「余量是哪天的」不再让人填，表单里没有这一格了（基准日 = 今天）
     f.rxMax.value = 30;
     f.ins.value = o.ins || 'self';
     if(o.miStart) f.miStart.value = o.miStart;

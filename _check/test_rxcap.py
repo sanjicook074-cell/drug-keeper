@@ -577,7 +577,6 @@ PROBE = r"""
   fmed.cycleDays.value = 1;
   fmed.timesPerCycle.value = 1;
   fmed.stockBase.value = 0;
-  fmed.stockDate.value = todayStr();
   fmed.rxMax.value = '';                       // 唯一会空着的必填格
 
   var al0 = R.alerts.length;
@@ -1408,14 +1407,22 @@ def main():
         return m.group(1) if m else None
 
     want_req = ["name", "perDose", "unit", "cycleDays", "timesPerCycle",
-                "stockBase", "stockDate", "rxMax"]
+                "stockBase", "rxMax"]
     want_opt = ["spec", "note"]
     bad_req = [k for k in want_req if not (_attrs(k) and "required" in _attrs(k))]
     bad_opt = [k for k in want_opt if _attrs(k) is None or "required" in _attrs(k)]
     data["cases"].append({
-        "name": "「添加药品」8 格必填都带 required（药名/每次/单位/每几天/几次/余量/日期/开药上限）",
+        "name": "「添加药品」7 格必填都带 required（药名/每次/单位/每几天/几次/余量/开药上限）",
         "pass": bool(fbody) and not bad_req,
-        "got": "、".join(bad_req) if bad_req else "8/8",
+        "got": "、".join(bad_req) if bad_req else "7/7",
+    })
+    # 防回潮：2026-10-28 用户要求去掉「这个余量是哪天的」——基准日改由程序定，别再长回来。
+    # ⚠️ 只查字段名，别查「是哪天的」这几个字：用户原话留在 form 里的注释里，
+    #    textContent 看不见注释，那边（test_wiz）已经钉了「界面上不许出现」。
+    data["cases"].append({
+        "name": "「余量是哪天的」那一格已删（基准日不再让人填）",
+        "pass": "stockDate" not in fbody,
+        "got": "还在" if "stockDate" in fbody else "已删",
     })
     data["cases"].append({
         "name": "「规格」「备注」两格没有 required（选填）",

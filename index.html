@@ -1028,15 +1028,14 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
           </div>
         </section>
 
+        <!-- 2026-10-28 用户要求：「添加药品里 这个余量是哪天的 这个给去掉 用不着显示这个」。
+             基准日不再让人填 —— 你数出来的数就是今天的，日期由程序自己定：
+             新的药 = 今天；编辑时没动这一格 = 原来的基准日原样留着（见 submitMed）。 -->
         <section class="wstep" data-wstep="stock" data-name="余量">
           <div class="sec-title">现在还剩多少</div>
           <label class="full"><span class="lb">余量<b class="req">*</b></span>
             <input name="stockBase" type="number" step="0.25" min="0" value="0" required data-wlabel="余量">
-          </label>
-          <label class="full"><span class="lb">这个余量是哪天的<b class="req">*</b></span>
-            <input name="stockDate" type="date" required data-wlabel="余量日期">
-            <span class="hintline" id="stockHint">默认今天。上面那格预填的是<b>按用法扣到今天</b>的推算值（和卡片一致）；
-              你数的数不一样就直接改上面那格，日期填<b>你数的那天</b>。这两个都不动就不会改掉原来的基准</span>
+            <span class="hintline" id="stockHint">填的是<b>今天</b>还剩多少</span>
           </label>
         </section>
 
@@ -3016,11 +3015,9 @@ function openEditor(id){
     editAnchor = {
       base: m.stockBase != null ? m.stockBase : 0,
       date: m.stockDate || todayStr(),
-      pre: String(preQty),
-      preDate: todayStr()
+      pre: String(preQty)
     };
     f.stockBase.value = preQty;
-    f.stockDate.value = todayStr();
     // 「一次最多能开几天」现在是必填，所以老存档里 rxMax=0（旧的「不限」）要留空让人补填，
     // 并换一句 placeholder 说明为什么这格是空的 —— 不然看着像 bug。
     // 备用药用不上这一格（它不按天数补货），留着空即可。
@@ -3045,7 +3042,6 @@ function openEditor(id){
     f.cycleDays.value = 1;
     f.timesPerCycle.value = 1;
     f.stockBase.value = 0;
-    f.stockDate.value = todayStr();
     f.rxMax.value = '';
     f.rxMax.placeholder = '如 30';
     f.ins.value = 'self';
@@ -3080,15 +3076,14 @@ function syncKindUI(){
     ? '备用药只记<b>一次吃多少</b>和还剩多少，<b>不按天数推算</b>'
     : '单位可填 片 / 粒 / ml / 支 / 袋 —— <b>这一行四格都是必填</b>';
   $('#reqLegend').innerHTML = prn
-    ? '<b class="req">*</b> 为必填；备用药只要<b>名称</b>、<b>单位</b>、<b>余量</b>、<b>余量日期</b>'
+    ? '<b class="req">*</b> 为必填；备用药只要<b>名称</b>、<b>单位</b>、<b>余量</b>'
     : '<b class="req">*</b> 为必填；只有<b>规格</b>、<b>备注</b>两格可以留空。';
-  // 余量日期下面那句解释必须跟着类型换：备用药不按天数扣，还写「按用法扣到今天的推算值」
-  // 会让人以为程序在倒计时，也会让人以为这格填错了。
+  // 日期不再让人填了，这句只要说清「这格问的是今天还剩多少」。
+  // 编辑时这格是**按用法扣到今天**预填好的 —— 不点破的话，看见 13 片会以为自己填错了；
+  // 备用药那句要跟着类型换：它不按天数扣，别说「往下扣」，会让人以为在倒计时。
   $('#stockHint').innerHTML = prn
-    ? '默认今天。备用药<b>不按天数扣</b>，这格只记「上面那个数是哪天数的」；'
-      + '数字和日期都不动就不会改掉原来的基准'
-    : '默认今天。上面那格预填的是<b>按用法扣到今天</b>的推算值（和卡片一致）；'
-      + '你数的数不一样就直接改上面那格，日期填<b>你数的那天</b>。这两个都不动就不会改掉原来的基准';
+    ? '填的是<b>今天</b>还剩多少。备用药<b>不按天数扣</b>，这只是个数字'
+    : '填的是<b>今天</b>还剩多少 —— 这格已经按用法扣到今天预填好了，数出来不一样就直接改';
 
   // 必填开关：两套校验（HTML required + submitMed 里的 JS）都要跟着切，
   // 否则备用药会被那几格空的「每几天」卡住保存不了。
@@ -3216,13 +3211,12 @@ async function submitMed(e){
   }
   // 余量可以填 0（刚好吃完），但不能空着
   if((f.stockBase.value || '').trim() === '' || !(stockBase >= 0)) miss.push('余量（填 0 可以，但不能空）');
-  if(!f.stockDate.value) miss.push('余量日期');
   if(!prn && !(rxMax > 0)) miss.push('一次最多能开几天（要大于 0）');
   if(miss.length){
     await askAlert({
       title: '还有几项没填',
       sub: '· ' + miss.join('\n· ') + '\n\n（' + (prn
-        ? '备用药只要 名称 / 单位 / 余量 / 余量日期，规格和备注选填'
+        ? '备用药只要 名称 / 单位 / 余量，规格和备注选填'
         : '只有「规格」和「备注」可以留空') + '）'
     });
     return;
@@ -3238,7 +3232,9 @@ async function submitMed(e){
     cycleDays: prn ? 1 : Math.max(1, Math.round(cycleDays) || 1),
     timesPerCycle: prn ? 0 : timesPerCycle,
     stockBase: Math.max(0, stockBase),
-    stockDate: f.stockDate.value || todayStr(),
+    // 基准日不让人填了：填进来的余量就是「今天数出来的」，所以基准日就是今天。
+    // 编辑时若这一格没被动过，下面会连基准日一起换回原来那天的（见下面的 editAnchor 分支）。
+    stockDate: todayStr(),
     // ★ rxMax 存的是**天数**，rxMaxDay 这个标记就是「它是天数」的凭证。
     //   老存档没有这个标记 → 读的时候按老口径（数量）用，不动它。
     rxMax: prn ? 0 : rxMax,
@@ -3261,13 +3257,12 @@ async function submitMed(e){
       //   备用药 → 每天吃：照旧基准写回，会拿一个"很久以前数的数"重新按天扣，直接扣成 0。
       //   两条方向都不是用户要的 —— 换口径时，**屏幕上那个数就是新的起点**。
       const kindChanged = kindOf(meds[i]) !== kind;
-      // ★ 「余量 / 日期」两格没被动过 → 把**原来的基准**原样写回。
-      //   为什么必须这样：那两格预填的是「扣到今天」的推算值，直接存下去会顺带把基准日滚到今天，
+      // ★ 「余量」那一格没被动过 → 把**原来的基准**原样写回。
+      //   为什么必须这样：那格预填的是「扣到今天」的推算值，直接存下来会顺带把基准日滚到今天，
       //   不满一天的零头会被抹掉，间隔用药的相位（每 14 天一次该从哪天算）也会整体平移。
-      //   只在「你确实改了余量或日期」时才按你填的存。
+      //   只在「你确实改了余量」时才按你填的存（那也正说明你今天数过数了）。
       if(!kindChanged && editAnchor
-         && Math.abs(num(f.stockBase.value) - num(editAnchor.pre)) < 1e-9
-         && (f.stockDate.value || todayStr()) === editAnchor.preDate){
+         && Math.abs(num(f.stockBase.value) - num(editAnchor.pre)) < 1e-9){
         next.stockBase = editAnchor.base;
         next.stockDate = editAnchor.date;
       }

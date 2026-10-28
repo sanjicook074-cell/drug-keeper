@@ -155,7 +155,6 @@ PROBE = r"""
 
   /* ================= 5. 一路走到最后一步，存下来的东西要对 ================= */
   f.stockBase.value = '20';
-  f.stockDate.value = todayStr2();
   tapNext('formMed');
   ck('走到「开药限制」', stepOf('formMed') === 'limit', stepOf('formMed'));
   f.rxMax.value = '30';
@@ -207,12 +206,49 @@ PROBE = r"""
   ck('上次留下的红字没有跟进来', errTxt('formMed') === '(没有红字)', errTxt('formMed'));
   q('#dlgMed').close();
 
+  /* ========== 7.5 「余量是哪天的」不再让人填（2026-10-28 用户要求） ========== */
+  function agoD(n){ var d = new Date(); d.setDate(d.getDate() - n); return fmtDate(d); }
+  ck('★ 表单里没有「余量是哪天的」那一格了',
+     qa('#formMed input[name=stockDate]').length === 0
+       && qa('#formMed .wstep[data-wstep=stock] input').length === 1,
+     qa('#formMed input[name=stockDate]').length + ' 格');
+  ck('★ 整个弹窗里也不再出现「余量日期」「哪天的」这些字',
+     txt(q('#formMed')).indexOf('余量日期') < 0 && txt(q('#formMed')).indexOf('哪天的') < 0,
+     txt(q('#formMed')).slice(0, 40));
+  ck('「还剩多少」那一步只剩一个输入框，进度条照样 8 段',
+     dots('formMed').length === 8, bar('formMed'));
+
+  // 造一味「10 天前数了 30 片、每天 1 片」的老药 —— 今天推算出来是 20 片
+  var oldMed = { id: 'wizold', kind: 'daily', name: '旧基准片', spec: '', perDose: 1, unit: '片',
+                 cycleDays: 1, timesPerCycle: 1, stockBase: 30, stockDate: agoD(10),
+                 rxMax: 30, rxMaxDay: 1, note: '' };
+  meds.push(oldMed);
+  openEditor(oldMed.id);
+  ck('编辑老药时，预填的仍然是「扣到今天」的数（不是 30）',
+     num(f.stockBase.value) === 20, f.stockBase.value);
+  f.spec.value = '3mg';                        // 只改别的项，一概不碰余量
+  await submitMed({ preventDefault: function(){} });
+  var a1 = byName('旧基准片');
+  ck('★ 没动余量 → 原来的基准（30 片 / 10 天前）原样留着，不因为点了保存就滚到今天',
+     a1.stockBase === 30 && a1.stockDate === agoD(10), a1.stockBase + ' / ' + a1.stockDate);
+  ck('顺手改的规格确实存进去了', a1.spec === '3mg', a1.spec);
+
+  openEditor(oldMed.id);
+  f.stockBase.value = '15';                    // 今天真数了一遍：15 片
+  await submitMed({ preventDefault: function(){} });
+  var a2 = byName('旧基准片');
+  ck('★ 改了余量 → 按「今天数出来的」存，基准日就是今天（不用再问是哪天）',
+     a2.stockBase === 15 && a2.stockDate === todayStr2(), a2.stockBase + ' / ' + a2.stockDate);
+  ck('改完这个基准，卡片上的天数也跟着变',
+     Math.abs(daysLeft(a2) - 15) < 1e-9, daysLeft(a2));
+  q('#dlgMed').close();
+
   /* ================= 8. 又买了药：先问数量，再问来路 ================= */
   openEditor(null);
   f.name.value = '补货引导片';
   f.kind.value = 'daily'; syncKindUI();
   f.perDose.value = 1; f.unit.value = '片'; f.cycleDays.value = 1; f.timesPerCycle.value = 1;
-  f.stockBase.value = 4; f.stockDate.value = todayStr2();
+  f.stockBase.value = 4;
   f.rxMax.value = 30; f.ins.value = 'self'; f.note.value = '';
   await submitMed({ preventDefault: function(){} });
   var rest = byName('补货引导片');
@@ -276,12 +312,12 @@ PROBE = r"""
 
   /* ================= 11. 字段一个没少、name 一个没改 ================= */
   var wantInputs = ['name', 'spec', 'perDose', 'unit', 'cycleDays', 'timesPerCycle',
-                    'stockBase', 'stockDate', 'rxMax', 'miStart', 'note'];
+                    'stockBase', 'rxMax', 'miStart', 'note'];
   var missIn = wantInputs.filter(function(n){
     return qa('#formMed input[name="' + n + '"]').length !== 1;
   });
-  ck('★ 添加药品那 11 个输入框一个没少、也没重复（引导式没造第二套字段）',
-     missIn.length === 0, missIn.join(',') || '11/11');
+  ck('★ 添加药品那 10 个输入框一个没少、也没重复（引导式没造第二套字段）',
+     missIn.length === 0, missIn.join(',') || '10/10');
   ck('单选组 kind / ins 也各只有一组',
      qa('#formMed input[name=kind]').length === 2 && qa('#formMed input[name=ins]').length === 2,
      qa('#formMed input[name=kind]').length + ' / ' + qa('#formMed input[name=ins]').length);

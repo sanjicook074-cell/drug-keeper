@@ -271,7 +271,6 @@ PROBE = r"""
   fmed.cycleDays.value = '';          // ★ 故意空着：每天吃的这时会被拦
   fmed.timesPerCycle.value = '';      // ★ 同上
   fmed.stockBase.value = 12;
-  fmed.stockDate.value = todayStr();
   fmed.rxMax.value = '';              // 备用药用不上这格
   ck('备用药表单在「每几天 / 几次 / 开药上限」都空着时仍然合法（浏览器那一关）',
      q('#formMed').checkValidity() === true, q('#formMed').checkValidity());
@@ -299,7 +298,6 @@ PROBE = r"""
   fmed.name.value = '';
   fmed.unit.value = '片';
   fmed.stockBase.value = 1;
-  fmed.stockDate.value = todayStr();
   var n2 = meds.length, al1 = R.alerts.length;
   submitMed({ preventDefault: function(){} });
   ck('备用药名称空着 → 被拦下', meds.length === n2, meds.length - n2);
@@ -317,7 +315,6 @@ PROBE = r"""
   fmed.cycleDays.value = 1;
   fmed.timesPerCycle.value = 1;
   fmed.stockBase.value = 1;
-  fmed.stockDate.value = todayStr();
   fmed.rxMax.value = '';
   var n3 = meds.length, al2 = R.alerts.length;
   submitMed({ preventDefault: function(){} });
