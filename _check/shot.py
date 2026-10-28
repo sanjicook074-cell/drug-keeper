@@ -26,11 +26,16 @@ DEMO_JS = r"""
        编辑那张截图拍的就是葡萄糖酸钙：30 天 × 每天 2 片 ＝ 60 片，
        正好把「按天填、程序自己换算」这件事摆在图上。 */
     { name:'维生素C片', spec:'100mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
-      stockBase:14, stockDate:agoD(13), rxMax:7, rxMaxDay:1, note:'早饭后服' },
+      stockBase:14, stockDate:agoD(13), rxMax:7, rxMaxDay:1, note:'早饭后服',
+      /* ★ 2026-10-28 起「医保开的」会上锁。主图上摆两味正好对照：
+         C 片 10 天前用医保开的 → 锁还挂着（🔒 + 「锁到几号」）；
+         钙片 40 天前开的 → 早就解锁（绿色「医保」+「已经可以再开」）。 */
+      ins:'mi', miStart:agoD(10) },
     { name:'维生素B2片', spec:'5mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
       stockBase:21, stockDate:agoD(18), rxMax:14, rxMaxDay:1, note:'晚饭后服' },
     { name:'葡萄糖酸钙片', spec:'0.5g', perDose:1, unit:'片', cycleDays:1, timesPerCycle:2,
-      stockBase:60, stockDate:agoD(20), rxMax:30, rxMaxDay:1, note:'随餐服' },
+      stockBase:60, stockDate:agoD(20), rxMax:30, rxMaxDay:1, note:'随餐服',
+      ins:'mi', miStart:agoD(40) },
     { name:'健胃消食片', spec:'0.8g', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
       stockBase:90, stockDate:agoD(10), rxMax:30, rxMaxDay:1, note:'空腹服' },
     /* 每 2 周 1 支：限 30 天 → 2 支（28 天），药拆不开不能给 2.14 支 */
@@ -95,6 +100,26 @@ HOOKS = {
            " ] };"
            " people.push(mom); save(); render(); openFam();",
     "disp": "openDisp();",
+    # ★ 医保锁特写（2026-10-28）：只留药品列表，摆三味对照 ——
+    #   锁着的（今天医保开的）/ 已解锁的（40 天前开的）/ 自费的（不挂标）。
+    #   为什么不从主图上裁：同 box 那张的理由，裁坐标一改内边距就歪。
+    "milock": "var d2 = ["
+              " { name:'维生素C片', spec:'100mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,"
+              "   stockBase:4, stockDate:todayStr(), rxMax:30, rxMaxDay:1, note:'早饭后服',"
+              "   ins:'mi', miStart:todayStr() },"
+              " { name:'葡萄糖酸钙片', spec:'0.5g', perDose:1, unit:'片', cycleDays:1, timesPerCycle:2,"
+              "   stockBase:30, stockDate:todayStr(), rxMax:30, rxMaxDay:1, note:'随餐服',"
+              "   ins:'mi', miStart:agoD(40) },"
+              " { name:'维生素B2片', spec:'5mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,"
+              "   stockBase:21, stockDate:todayStr(), rxMax:14, rxMaxDay:1, note:'晚饭后服' }"
+              " ];"
+              " d2.forEach(function(d){ d.id = uid(); });"
+              " setMeds(d2); save(); render();"
+              " var st = document.createElement('style');"
+              " st.textContent = '.top,.people,.stats,#warn,.panel-h,#box,.col-side,.foot-sig{display:none !important}'"
+              " + '.cols{grid-template-columns:1fr}';"
+              " document.head.appendChild(st);"
+              " renderList();",
     # ★ 全家汇总（2026-10-27 新增）：跨人按药名合并的那一页。
     #   演示数据里只有「我」一个人，这里临时加一位「妈妈」，故意让三件事都出现在图上：
     #     · 葡萄糖酸钙片：两人都有，我 10 天 / 妈妈 20 天 → 写「天数不一（10 / 20）」，
@@ -231,10 +256,12 @@ HOOKS = {
 # box 特写和 main 都要跟着加高，否则清单那条会被裁在画面外。
 SIZE = {"rx": "1240,1340", "rxparsed": "1240,1430",
         "rxaudit": "1240,1420", "rxuse": "1240,1320",
-        "main": "1240,2030", "bulk": "1240,1560", "edit": "1240,1300",
+        "main": "1240,2160", "bulk": "1240,1560", "edit": "1240,1300",
         "prnedit": "1240,1140", "box": "820,372", "fam": "1240,1010",
         # 全家汇总：8 行（合并后 8 种）× 约 78px + 头尾，1040 会把脚注切掉
         "all": "1240,1180",
+        # 医保锁特写：3 张卡片（约 165px）+ 两栏标题
+        "milock": "820,760",
         "delconfirm": "820,470", "slotname": "820,430", "tip": "820,400",
         "choicemode": "820,480",
         # 手机版三张：390×844 = 窄屏真实尺寸，正好落在 ≤640px 断点里面

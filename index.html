@@ -145,6 +145,17 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 .tag.na{background:#f1f3f6;color:#6b7280}
 .tag.prn{background:#ccfbf1;color:#0f766e}
 
+/* ---------- 医保锁 ----------
+   医保开过这味药之后，政策上「这么多天内不能再开」，所以药名旁边挂一把锁；
+   到「下次能开之前 N 天」这把锁自己开（N 在设置里填）。
+   ★ 锁着用石板灰（不是红/黄）—— 它不代表药有问题，只代表「这一趟用医保拿不了」；
+     开了用绿，和「充足」同一个绿，读起来就是「行了」。 */
+.tag.ins-lock{background:#e2e8f0;color:#334155}
+.tag.ins-open{background:#dcfce7;color:#15803d}
+.mi-when{font-variant-numeric:tabular-nums}
+.mi-when.lock{color:#475569}
+.mi-when.open{color:#15803d}
+
 /* ---------- 清单分组：每天吃的药 / 备用药 ----------
    ★ 这两类是**两套口径**：上面按天数推算、会提醒续方；下面只记还剩多少。
      混在一个列表里，一眼分不清哪个数字是「天」哪个是「片」，所以拿标题隔开。 */
@@ -339,6 +350,10 @@ body.dragging .med:hover,body.dragging .chip:hover{box-shadow:none}
 .refill.empty-txt{color:var(--faint);font-family:inherit;font-size:13px;line-height:1.7;
   background:#fbfcfd;text-align:center;padding:32px 16px}
 .side-actions{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+/* 「这几味还锁着」的提醒：摆在药名清单下面，因为它改的是"这一趟能不能开"的判断 */
+.ins-tip{margin-top:9px;padding:9px 11px;border-radius:9px;background:#f1f5f9;
+  border:1px solid #e2e8f0;font-size:12px;line-height:1.65;color:#334155}
+.ins-tip[hidden]{display:none}
 
 /* ---------- 侧栏两块：上=可编辑的情况，下=只要药名的清单 ---------- */
 .blk{margin-bottom:18px}
@@ -481,6 +496,14 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 .bulk-days{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:#4b5563;margin-bottom:14px}
 .bulk-days input{font:inherit;padding:8px 11px;border:1px solid var(--line);border-radius:8px;width:130px}
 .bulk-days input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+/* 「又买了药」里那句「自费 / 医保」 */
+.num-ins{display:flex;flex-wrap:wrap;align-items:center;gap:7px 16px;font-size:13px;
+  padding-top:12px;border-top:1px dashed var(--line-2)}
+.num-ins[hidden]{display:none}
+.num-ins .lt{color:var(--muted);font-size:12.5px}
+.num-ins label{display:flex;align-items:center;gap:5px;cursor:pointer}
+.num-ins input{accent-color:var(--brand);margin:0}
+.num-ins .hintline{flex-basis:100%;font-size:12px;color:var(--faint);line-height:1.5}
 .bulk-days .hintline{font-size:11.5px;color:var(--faint)}
 .bulk-list{display:flex;flex-direction:column;gap:8px;max-height:44vh;overflow:auto}
 .bulk-after{flex:none;text-align:right;font-size:11.5px;color:var(--muted);line-height:1.5}
@@ -574,6 +597,13 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
 .rx-row[data-dup="1"]{border-left-color:var(--line);background:#fafbfc}
 .rx-row .rx-duptag{flex:none;font-size:10.5px;font-weight:650;color:var(--muted);
   border:1px solid var(--line);border-radius:5px;padding:1px 5px;background:#f3f4f6;white-space:nowrap}
+/* 行上「医保 / 自费」小标：点一下就把这一味翻过来（不改别的行） */
+.rx-insbar{margin:12px 0 2px;border-top:1px solid var(--line-2)}
+.rx-row .rx-insb{flex:none;font:inherit;font-size:10.5px;font-weight:650;line-height:1.6;
+  padding:1px 7px;border-radius:5px;cursor:pointer;white-space:nowrap;
+  border:1px solid var(--line-2);background:#f1f3f6;color:#6b7280}
+.rx-row .rx-insb.mi{background:#e2e8f0;color:#334155;border-color:#cbd5e1}
+.rx-row .rx-insb:hover{border-color:#94a3b8}
 .rx-act{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:13px 0 0;
   padding-top:13px;border-top:1px solid var(--line-2);font-size:12.5px;color:var(--muted)}
 .rx-act .sp{flex:1}
@@ -817,6 +847,7 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
             <span class="blk-tip" id="drugTip"></span>
           </div>
           <pre class="refill" id="refillText"></pre>
+          <div class="ins-tip" id="insTip" hidden></div>
         </div>
 
         <div class="side-actions">
@@ -945,6 +976,27 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
             它决定一次挂号能拿多少、要跑几趟，不能空着。拿不准就照上次开的那几天填。</span>
         </label>
 
+        <!-- 2026-10-28 用户要求：每个「加药」的入口都要能分出这味药是自费还是医保开的。
+             医保开的上一把锁（天数在设置里），到「能再开之前 N 天」锁才开。 -->
+        <div class="sec-title" id="secIns">这笔药怎么来的</div>
+        <div class="kinds" id="insRow">
+          <label class="kind on" data-ins="self">
+            <input type="radio" name="ins" value="self" checked>
+            <span><span class="kt">自费买的</span>
+              <span class="ks">药店、自费门诊都算 —— 不上锁，随时能加</span></span>
+          </label>
+          <label class="kind" data-ins="mi">
+            <input type="radio" name="ins" value="mi">
+            <span><span class="kt">医保开的</span>
+              <span class="ks" id="miKindTip">会上一把锁，到能再开之前才解开</span></span>
+          </label>
+        </div>
+        <label class="full" id="miWrap">
+          <span class="lb">医保开药是哪天</span>
+          <input name="miStart" type="date">
+          <span class="hintline" id="miHint">默认今天</span>
+        </label>
+
         <label class="full"><span class="lb">备注<span class="opt">选填</span></span>
           <input name="note" autocomplete="off" placeholder="如 晚饭后服 / 冰箱冷藏">
         </label>
@@ -1009,6 +1061,15 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
           <button type="button" class="btn ghost sm" id="btnRxUse">批量填用法 / 天数</button>
         </div>
         <div class="rx-note" id="rxNote"></div>
+      </div>
+
+      <!-- 这批药是医保开的还是自费买的（2026-10-28）。这里是**默认值**，
+           单独哪一味不一样，点那行药名后面的小标就能翻过来。 -->
+      <div class="num-ins rx-insbar" id="rxInsBar">
+        <span class="lt">这批药是</span>
+        <label><input type="radio" name="rxIns" value="mi" checked> 医保开的</label>
+        <label><input type="radio" name="rxIns" value="self"> 自费买的</label>
+        <span class="hintline" id="rxInsTip"></span>
       </div>
 
       <div class="rx-list" id="rxList"></div>
@@ -1214,6 +1275,19 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
         </label>
       </div>
       <div class="grid2" style="margin-top:16px">
+        <div class="sec-title">医保开药</div>
+        <label>医保开药间隔（天）
+          <input name="miDays" type="number" step="1" min="1">
+          <span class="hintline">用医保开过一味药之后，这么多天内<b>不能再开同一味</b>。各地政策不一样，按医院说的填。
+            它只影响标记成<b>「医保开的」</b>的药，自费买的药不上锁</span>
+        </label>
+        <label>提前几天解锁
+          <input name="miEarly" type="number" step="1" min="0">
+          <span class="hintline">离「能再开」还剩这么多天时，锁先打开 —— 好让你提前挂号线。
+            填 0 就是到期当天才解锁；不能大过上面的间隔</span>
+        </label>
+      </div>
+      <div class="grid2" style="margin-top:16px">
         <div class="sec-title">家庭成员</div>
         <div class="full" id="peopleMgr"></div>
         <div class="full hintline" style="margin-top:2px">每个人的药箱彼此独立，清单也分开出。</div>
@@ -1236,6 +1310,14 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
       <p id="dispSub">一次挂号只能开一次药：每个药按「一次最多能开几天」换算出数量入库，没填天数的就补满到目标天数。确认即更新药库。</p>
     </div>
     <div class="dlg-b">
+      <!-- 2026-10-28：这一趟是医保还是自费。默认医保 —— 「已经开药」本来就是去医院开的动作，
+           真想记自费买药的人才去改。 -->
+      <div class="num-ins" id="dispIns" style="border-top:0;padding-top:0;margin-bottom:12px">
+        <span class="lt">这批是</span>
+        <label><input type="radio" name="dispIns" value="mi" checked> 医保开的</label>
+        <label><input type="radio" name="dispIns" value="self"> 自费买的</label>
+        <span class="hintline" id="dispInsTip"></span>
+      </div>
       <div class="disp-list" id="dispList"></div>
       <div class="disp-sum" id="dispSum"></div>
     </div>
@@ -1257,7 +1339,8 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
       <label class="bulk-days">按「够吃多少天」换算
         <input name="days" id="bulkDays" type="number" step="1" min="1" value="7">
         <span class="hintline">用每味药自己的用法把「天」换成数量：每天 1 片的，7 天就是 7 片；
-          每 14 天 1 支的，7 天就是 0.5 支。</span>
+          每 14 天 1 支的，7 天就是 0.5 支。<br>
+          这一页只是把库存数字改对，<b>不算一次开药</b> —— 医保锁不会动。</span>
       </label>
       <div class="bulk-pick">
         <button type="button" class="btn ghost sm" id="btnBulkAll">全选</button>
@@ -1330,6 +1413,14 @@ dialog::backdrop{background:rgba(15,23,42,.36)}
         <input name="val" id="numVal" type="number" step="1" min="0" autocomplete="off">
         <span class="hintline" id="numHint"></span>
       </label>
+      <!-- 「又买了药」时问一句这笔是自费还是医保（2026-10-28）。
+           「校准余量」不是一次买药，不开这一块 —— 那是在把数字改对，不该动锁。 -->
+      <div class="num-ins" id="numIns" hidden>
+        <span class="lt">这笔是</span>
+        <label><input type="radio" name="numIns" value="self" checked> 自费买的</label>
+        <label><input type="radio" name="numIns" value="mi"> 医保开的</label>
+        <span class="hintline" id="numInsTip"></span>
+      </div>
     </div>
     <div class="dlg-f">
       <button type="button" class="btn ghost" id="btnNumCancel">取消</button>
@@ -1368,7 +1459,8 @@ const LS_DATA = 'medkeeper.data.v1';
 const LS_SET  = 'medkeeper.settings.v1';
 
 // 只有一条线：偏少线。默认「剩余 ≤ 14 天」算偏少，同时就是该续方的信号。
-const DEFAULT_SETTINGS = { alertDays: 14, targetDays: 30 };
+// miDays / miEarly 是医保锁的两个参数（见「医保锁」那一节）：开药间隔、提前几天解锁。
+const DEFAULT_SETTINGS = { alertDays: 14, targetDays: 30, miDays: 30, miEarly: 7 };
 
 let settings = Object.assign({}, DEFAULT_SETTINGS);
 
@@ -1556,8 +1648,8 @@ function load(){
   if(raw2){
     try {
       const s = JSON.parse(raw2);
-      ['alertDays','targetDays'].forEach(function(k){
-        if(isFinite(Number(s[k]))) settings[k] = Number(s[k]);
+      ['alertDays','targetDays','miDays','miEarly'].forEach(function(k){
+        if(s[k] != null && isFinite(Number(s[k]))) settings[k] = Number(s[k]);
       });
     } catch(e){}
   }
@@ -1653,6 +1745,79 @@ function inRefill(m){
   const dl = daysLeft(m);
   return isFinite(dl) && dl <= settings.alertDays;
 }
+
+/* -------------------- 医保锁（2026-10-28 用户要求） --------------------
+   场景（用户原话）：「如果是走医保开的药，那一段时间内这个药品是不能重复用医保开的」。
+   所以每味药要记住「这批是医保开的还是自费买的」；医保开的那天起上一把锁，
+   到「下次能开之前 N 天」锁自己打开，表示又可以挂号开药了。
+
+   ★ 两个数都在**设置**里填，不挂在药上 —— 换地方、政策变了，改一次全局生效：
+       settings.miDays   医保开药间隔（默认 30 天）：开过之后这么多天内不能重复开
+       settings.miEarly  提前几天解锁（默认 7 天）：离能开还剩这么多天时锁先开
+     「下次能开」= 开药日 + miDays；「解锁日」= 下次能开 − miEarly。
+
+   ★ 只认 `ins === 'mi'`（医保）。老存档没有这个字段的一律当**自费**——
+     不给历史数据凭空上锁，那会让人一打开页面发现整箱药都不能开了。
+   ★ 锁是**算出来的**，不存「锁没锁」这个状态：只存 miStart（哪天开的）。
+     日期一过就自己开，不需要每天跑什么定时任务，也不会因为某天没打开页面而漏解。
+   ★ 「自费买」永远不碰锁：自费补货不动 miStart，原来那把医保锁还在（本来就还在）。
+   ★ 校准余量、批量调存量也不碰锁 —— 那两处是「把数字改对」，不是「又开了一次药」。 */
+
+function miDays(){ return Math.max(1, Math.round(num(settings.miDays, 30)) || 30); }
+function miEarly(){
+  const e = Math.max(0, Math.round(num(settings.miEarly, 7)));
+  return Math.min(e, miDays());            // 提前量不能大过间隔，否则等于「开完就解锁」
+}
+function miIsMI(m){ return !!(m && m.ins === 'mi'); }
+function miStartOf(m){ return miIsMI(m) ? (m.miStart || '') : ''; }
+
+// 从「开药日」算解锁日：开药日 + 间隔 − 提前量。两个参数都在设置里。
+// ★ 界面上只认这一个日期，不另外区分「解锁」和「到期」——
+//   用户的原话就是「锁解开 = 可以再去医院开药了」，摆两个日期只会让人对着日历算。
+function miUnlockFrom(startStr){
+  const d = parseDate(startStr);
+  if(!d) return '';
+  d.setDate(d.getDate() + miDays() - miEarly());
+  return fmtDate(d);
+}
+// 这味药的解锁日（没标成医保、或没记开药日 → ''）
+function miUnlockDate(m){ return miUnlockFrom(miStartOf(m)); }
+// 现在锁着吗（锁着 = 这一趟不能用医保开它）
+function miLocked(m){
+  const u = miUnlockDate(m);
+  return !!u && todayStr() < u;
+}
+// 还有几天解锁（0 = 已经开了）
+function miDaysToUnlock(untilStr){
+  const d = parseDate(untilStr);
+  if(!d) return 0;
+  return Math.max(0, Math.round((d - startOfToday()) / 86400000));
+}
+// 日期 → 「11月20日」。卡片上不写年份 —— 锁最多几个月，写年份反而更长。
+function fmtMD(s){
+  const d = parseDate(s);
+  return d ? (d.getMonth() + 1) + '月' + d.getDate() + '日' : '';
+}
+
+// 卡片上药名旁边那枚小标：医保开的才有（自费是默认状态，多一枚标只会变成噪音）。
+function miBadge(m){
+  if(!miIsMI(m)) return '';
+  return miLocked(m)
+    ? ' <span class="tag ins-lock" title="医保开的，还在锁定期 —— 这之前不能用医保再开">🔒 医保</span>'
+    : ' <span class="tag ins-open" title="医保开的，已经可以再开了">医保</span>';
+}
+// 卡片 meta 行里那句「锁到几号」。
+// ★ 只在锁着的时候写日期：已经解锁了还写「锁到 10月3日」会让人以为还锁着。
+function miMeta(m){
+  if(!miIsMI(m)) return '';
+  const u = miUnlockDate(m);
+  if(!u) return '';
+  const left = miDaysToUnlock(u);
+  return left > 0
+    ? '<span class="mi-when lock">医保锁到 <b>' + fmtMD(u) + '</b>（还有 ' + left + ' 天）</span>'
+    : '<span class="mi-when open">医保 · 已经可以再开</span>';
+}
+
 // 要补多少（单位数）：把用量补到「够吃 targetDays 天」所需的量，向上取整
 // —— 不经过「盒」这一层：各厂家每盒片数不一样，知道总量就够了
 function needUnits(m){
@@ -2359,7 +2524,7 @@ function cardHTML(m){
   +   '<div class="med-top">'
   +     '<div style="min-width:0">'
   +       '<div class="med-name">' + esc(m.name)
-  +         ' <span class="tag ' + lv + '">' + LEVEL_LABEL[lv] + '</span></div>'
+  +         ' <span class="tag ' + lv + '">' + LEVEL_LABEL[lv] + '</span>' + miBadge(m) + '</div>'
   +       (m.spec ? '<div class="med-spec">' + esc(m.spec) + '</div>' : '')
   +     '</div>'
   +     '<div class="days" data-lv="' + lv + '">'
@@ -2371,6 +2536,7 @@ function cardHTML(m){
   +   '<div class="med-meta">'
   +     (d > 0 ? '<span>' + freqText(m) + '</span>' : '')
   +     '<span>余量约 <b>' + fmtNum(st) + '</b> ' + esc(unit) + '</span>'
+  +     miMeta(m)
   +   '</div>'
   +   (m.note ? '<div class="med-note">' + esc(m.note) + '</div>' : '')
   +   medFootHTML(m)
@@ -2391,7 +2557,7 @@ function prnCardHTML(m){
   +   '<div class="med-top">'
   +     '<div style="min-width:0">'
   +       '<div class="med-name">' + esc(m.name)
-  +         ' <span class="tag prn">备用药</span></div>'
+  +         ' <span class="tag prn">备用药</span>' + miBadge(m) + '</div>'
   +       (m.spec ? '<div class="med-spec">' + esc(m.spec) + '</div>' : '')
   +     '</div>'
   +     '<div class="days" data-lv="prn">'
@@ -2402,6 +2568,7 @@ function prnCardHTML(m){
   +   '<div class="med-meta">'
   +     (pd > 0 ? '<span>每次 <b>' + fmtNum(pd) + '</b> ' + esc(unit) + '</span>' : '')
   +     '<span>' + (empty ? '空了，记得补' : '需要时再吃，不按天算') + '</span>'
+  +     miMeta(m)
   +   '</div>'
   +   (m.note ? '<div class="med-note">' + esc(m.note) + '</div>' : '')
   +   medFootHTML(m)
@@ -2455,6 +2622,26 @@ function renderRefill(){
   $('#btnCopy').disabled = !hasOut;
   $('#btnDownload').disabled = !hasOut;
   $('#drugTip').textContent = cnt ? cnt + ' 种' : '';
+
+  // 医保锁：这几味虽然该开了，但还在锁定期 —— 这一趟用医保开不出来，得先说清楚，
+  // 否则人跑一趟医院才发现开不了。只提示**这条清单里的**，锁着但不缺的药不占版面。
+  const locked = refillItems().filter(miLocked);
+  const itip = $('#insTip');
+  if(itip){
+    if(locked.length){
+      const show = locked.slice(0, 3);
+      itip.hidden = false;
+      itip.innerHTML = '🔒 这 <b>' + locked.length + '</b> 味还在医保锁定期，这一趟用医保开不了：'
+        + show.map(function(m){
+            return esc(m.name) + '（' + fmtMD(miUnlockDate(m)) + ' 解锁）';
+          }).join('、')
+        + (locked.length > show.length ? ' 等' : '')
+        + '<br>要么自费买，要么等解锁了再去。';
+    } else {
+      itip.hidden = true;
+      itip.innerHTML = '';
+    }
+  }
 
   // 「已经开药」跟着清单走：没有需要补的药就禁用
   const dn = dispItems().length;
@@ -2526,6 +2713,8 @@ function openEditor(id){
       f.rxMax.placeholder = isPrn(m) ? '备用药用不上这格' : '原来是不限，请填一个上限';
     }
     f.note.value = m.note || '';
+    f.ins.value = miIsMI(m) ? 'mi' : 'self';
+    f.miStart.value = m.miStart || todayStr();
   } else {
     $('#dlgTitle').textContent = '添加药品';
     f.perDose.value = 1;
@@ -2536,8 +2725,11 @@ function openEditor(id){
     f.stockDate.value = todayStr();
     f.rxMax.value = '';
     f.rxMax.placeholder = '如 30';
+    f.ins.value = 'self';
+    f.miStart.value = todayStr();
   }
   syncKindUI();
+  syncInsUI();
   $('#dlgMed').showModal();
   setTimeout(function(){ f.name.focus(); }, 30);
 }
@@ -2586,6 +2778,27 @@ function syncKindUI(){
 
   syncRxConv();
   syncDosePreview();
+}
+
+/* 医保 / 自费 那一节 —— 选「医保开的」时才要填开药日、才显示解锁日。
+   ★ 备用药也照样可能是医保开的（医院给开的常备药），所以这一节不跟着「每天吃 / 备用药」隐藏。
+   ★ 文案里的天数全从设置里算，不在界面上写死 30 / 7 —— 用户改了设置，这里要跟着变。 */
+function syncInsUI(){
+  const f = $('#formMed');
+  const mi = !!(f.ins && f.ins.value === 'mi');
+  $$('#insRow .kind').forEach(function(el){
+    el.classList.toggle('on', el.getAttribute('data-ins') === (mi ? 'mi' : 'self'));
+  });
+  $('#miWrap').style.display = mi ? '' : 'none';
+  $('#miKindTip').textContent = '开完后 ' + (miDays() - miEarly()) + ' 天内不能用医保再开';
+  if(!mi) return;
+  const un = miUnlockFrom(f.miStart.value || todayStr());
+  const hint = $('#miHint');
+  if(!un){ hint.textContent = '先选这一天是哪天'; return; }
+  const left = miDaysToUnlock(un);
+  hint.innerHTML = left > 0
+    ? '这一天开的锁到 <b>' + fmtMD(un) + '</b>（还有 ' + left + ' 天）—— 这之前不能用医保再开这味。'
+    : '<b>' + fmtMD(un) + '</b> 就已经解锁了，现在就能再用医保开这味。';
 }
 
 // 「开药限制」那格填的是**天数**，旁边实时把那句换算写出来：
@@ -2705,6 +2918,10 @@ async function submitMed(e){
     //   老存档没有这个标记 → 读的时候按老口径（数量）用，不动它。
     rxMax: prn ? 0 : rxMax,
     rxMaxDay: 1,
+    // 2026-10-28：这批药是自费还是医保。自费（'') 不带锁；医保记下开药日，锁由日期算出来。
+    // ★ 空字符串而不是 'self' —— 老存档没有这个字段，读出来就该是"没标"，别再分一档。
+    ins: (f.ins && f.ins.value === 'mi') ? 'mi' : '',
+    miStart: (f.ins && f.ins.value === 'mi') ? (f.miStart.value || todayStr()) : '',
     note: (f.note.value || '').trim()
   };
 
@@ -2886,6 +3103,16 @@ function renderPeopleMgr(){
 //   ⚠️ 以后别再把它加回来 —— 用户明确嫌它啰嗦（和编辑弹窗那行蓝字同一次评审里砍掉的）。
 let numCtx = null;
 
+// 「这笔是自费还是医保」那行的小字：选医保就说清楚会锁到哪天，选自费就说清不动锁。
+function syncNumIns(){
+  const tip = $('#numInsTip');
+  if(!tip) return;
+  const el = document.querySelector('#formNum input[name=numIns]:checked');
+  tip.textContent = (el && el.value === 'mi')
+    ? '会上一把锁：' + fmtMD(miUnlockFrom(todayStr())) + ' 之后才能再用医保开这味'
+    : '自费补货不动医保锁，原来锁着的还是锁着';
+}
+
 function openNumDialog(o){
   numCtx = o;                                   // { mode, onOk }（cur/unit 已不再参与显示）
   $('#numTitle').textContent = o.title;
@@ -2895,6 +3122,14 @@ function openNumDialog(o){
   const inp = $('#numVal');
   inp.value = (o.value == null) ? '' : String(o.value);
   inp.min   = (o.min == null) ? 0 : o.min;
+  // 「又买了药」才问来源；「校准余量」不开这一块（那不是一次买药）
+  const insBox = $('#numIns');
+  if(insBox){
+    insBox.hidden = !o.insPick;
+    const self = document.querySelector('#formNum input[name=numIns][value=self]');
+    if(self) self.checked = true;
+    syncNumIns();
+  }
   const ok = $('#btnNumOk');
   ok.textContent = o.okText || '确定';
   ok.className   = 'btn ' + (o.danger ? 'danger' : 'primary');
@@ -2924,8 +3159,15 @@ async function submitNum(e){
     $('#numVal').focus();
     return;
   }
-  numCtx.onOk(round2(v));
+  numCtx.onOk(round2(v), numInsPicked());
   $('#dlgNum').close();
+}
+
+// 这次「又买了药」是自费还是医保：返回 'mi' 或 ''（默认自费）
+function numInsPicked(){
+  if(!numCtx || !numCtx.insPick) return '';
+  const el = document.querySelector('#formNum input[name=numIns]:checked');
+  return (el && el.value === 'mi') ? 'mi' : '';
 }
 
 /* -------------------- 通用弹窗：确认 / 提示 / 输入 -------------------- */
@@ -3083,12 +3325,20 @@ function restockMed(id){
   const cur = stockNow(m);
   openNumDialog({
     mode: 'add',
+    insPick: true,                       // ★ 只有这个入口问「自费 / 医保」
     title: '又买了药',
     sub: '新买的数量会加到「今天推算出的余量」上，基准日一并滚到今天 —— 和「批量调存量」同一套算法。',
     label: '又买了多少 ' + unit,
     hint: '按包装上的数填（1 盒 28 ' + unit + ' 就填 28）',
     okText: '加到库存',
-    onOk: function(v){ m.stockBase = round2(cur + v); m.stockDate = todayStr(); save(); render(); }
+    onOk: function(v, ins){
+      m.stockBase = round2(cur + v);
+      m.stockDate = todayStr();
+      // 医保开的 = 又用医保拿了一次 → 锁从今天重新算。
+      // 自费买的什么都不动：既不给它贴「医保」标，也不解开原来那把锁（那锁本来就还在）。
+      if(ins === 'mi'){ m.ins = 'mi'; m.miStart = todayStr(); }
+      save(); render();
+    }
   });
 }
 
@@ -3101,7 +3351,8 @@ function calibMed(id){
   openNumDialog({
     mode: 'set', value: cur, min: 0,
     title: '校准余量',
-    sub: '按你今天实际数出来的数量填，程序以它为准重新往下推算（漏服、多吃、数错了都用它对齐）。',
+    sub: '按你今天实际数出来的数量填，程序以它为准重新往下推算（漏服、多吃、数错了都用它对齐）。'
+      + '这一格只是把数字改对，不算一次开药 —— 医保锁不动。',
     label: '今天实际还剩多少 ' + unit,
     hint: '按整数 ' + unit + ' 填；填 0 也可以（等于已用完），基准日一并滚到今天',
     okText: '校准',
@@ -3180,17 +3431,37 @@ async function openDisp(){
         ? '，其中 <b>' + still + '</b> 种受单次上限限制、开完仍在清单里（可以再点一次「已经开药」）'
         : '，入库后就都够吃了');
 
+  // 默认按医保记（这本来就是去医院开的动作），用户想记自费可以改
+  const mi = document.querySelector('#formDisp input[name=dispIns][value=mi]');
+  if(mi) mi.checked = true;
+  syncDispIns(plan.length);
+
   $('#dlgDisp').showModal();
+}
+
+// 「这批是医保还是自费」那行小字：医保就说清锁到哪天，自费就说清不动锁。
+function syncDispIns(n){
+  const tip = $('#dispInsTip');
+  if(!tip) return;
+  const el = document.querySelector('#formDisp input[name=dispIns]:checked');
+  const cnt = (n == null) ? dispPlan().length : n;
+  tip.textContent = (el && el.value === 'mi')
+    ? '这 ' + cnt + ' 味都会上锁，' + fmtMD(miUnlockFrom(todayStr())) + ' 之后才能再用医保开'
+    : '自费的不上锁；原来锁着的也不动';
 }
 
 async function submitDisp(e){
   e.preventDefault();
   const plan = dispPlan();          // 必须改数据之前先算好
   if(!plan.length){ $('#dlgDisp').close(); return; }
+  const insEl = document.querySelector('#formDisp input[name=dispIns]:checked');
+  const ins = (insEl && insEl.value === 'mi') ? 'mi' : '';
   plan.forEach(function(p){
     // 在今天推算出的余量上加，基准日滚到今天——和「又买了药」同一套口径
     p.m.stockBase = round2(stockNow(p.m) + p.qty);
     p.m.stockDate = todayStr();
+    // 医保开的：从今天重新上锁。自费买的：锁原样不动（不是"解锁"，是压根没发生过医保开药）。
+    if(ins === 'mi'){ p.m.ins = 'mi'; p.m.miStart = todayStr(); }
   });
   save(); render();
   $('#dlgDisp').close();
@@ -3289,9 +3560,11 @@ function famRowHTML(x){
   return '<div class="disp-row" data-lv="' + x.lv + '">'
     +   '<div class="disp-info">'
     +     '<div class="disp-name"><span class="fam-mn">' + esc(m.name) + '</span>'
-    +       '<span class="tag ' + x.lv + '">' + LEVEL_LABEL[x.lv] + '</span></div>'
+    +       '<span class="tag ' + x.lv + '">' + LEVEL_LABEL[x.lv] + '</span>' + miBadge(m) + '</div>'
     +     '<div class="disp-meta">余量 <b>' + fmtNum(stockNow(m)) + '</b> ' + esc(unit)
     +       (freq ? '<span class="disp-src">　' + freq + '</span>' : '')
+    +       (miLocked(m) ? '<span class="disp-src mi-when lock">　医保锁到 '
+              + fmtMD(miUnlockDate(m)) + '</span>' : '')
     +     '</div>'
     +   '</div>'
     +   '<div class="fam-day" data-lv="' + x.lv + '">' + day + '</div>'
@@ -3333,8 +3606,11 @@ function renderFam(){
       + '</div>';
   }).join('');
 
+  let miN = 0;
+  r.groups.forEach(function(g){ g.rows.forEach(function(x){ if(miLocked(x.m)) miN++; }); });
   note.textContent = '备用药不按天吃，没有「偏少」这回事，所以不列在这里；'
     + '没填用法的药也算不出天数，同样漏掉 —— 要一起看的话，先在各自的药箱里把用法补上。'
+    + (miN ? '带 🔒 的 ' + miN + ' 味还在医保锁定期，这一趟用医保开不了，得等解锁或自费买。' : '')
     + '点「复制药名」可把这页压成一段文字，直接粘到微信里。';
 }
 
@@ -3351,7 +3627,9 @@ function famCopyText(){
     if(multi) L.push('【' + g.p.name + '】');
     g.rows.forEach(function(x, i){
       const tail = (x.lv === 'out') ? '已用完' : ('还剩 ' + fmtDays(x.dl) + ' 天');
-      L.push((i + 1) + '. ' + x.m.name + '（' + tail + '）');
+      // 锁着的顺带说一句「医保锁到几号」—— 收消息的人照着买/照着开时，这条最要紧
+      const lock = miLocked(x.m) ? ('，医保锁到 ' + fmtMD(miUnlockDate(x.m))) : '';
+      L.push((i + 1) + '. ' + x.m.name + '（' + tail + lock + '）');
     });
   });
   return L.join('\n');
@@ -3774,6 +4052,9 @@ async function applyBulk(sign){
 
 let rxRows = [];        // 弹窗里正在确认的行
 let rxSeq = 0;          // 行序号（key 用，和数据库里的 id 无关）
+// 这批药默认是医保还是自费（2026-10-28）。顶上一个总开关，每行还能单独翻过来 ——
+// 一张底方上混着「医保开的」和「自费药房买的」是有的，所以总开关只当默认值。
+let rxInsMode = 'mi';
 
 // 常用频次。底方的「频次」列就是这几个词，所以直接用下拉选项——比让人填两个数字靠谱。
 // 值编码成「每几天_几天几次」，跟 med 里的 cycleDays / timesPerCycle 一一对应。
@@ -3806,7 +4087,10 @@ function rxNewRow(o){
     // 「药箱里已有」—— 去重标记（见 rxMarkExisting）。只影响默认勾选和那枚角标，
     // 用户想勾还是能勾。★ 它不是"这行错了"，别拿它当校验失败用。
     existing: !!o.existing,
-    picked: o.picked !== false
+    picked: o.picked !== false,
+    // 这味是医保开的（'mi'）还是自费买的（''）。
+    // ★ 只认这两个值：`#rx=` 链接里带了别的、或者没带，一律当"跟总开关走"。
+    ins: (o.ins === 'mi' || o.ins === 'self') ? (o.ins === 'mi' ? 'mi' : '') : rxInsMode
   };
 }
 
@@ -4108,6 +4392,9 @@ function rxRowHTML(r){
     +     '<input type="checkbox" class="bulk-ck rx-ck"' + (r.picked ? ' checked' : '') + '>'
     +     '<input type="text" class="rx-name" autocomplete="off" placeholder="药品名称" value="' + esc(r.name) + '">'
     +     '<input type="text" class="rx-spec" autocomplete="off" placeholder="规格" value="' + esc(r.spec) + '">'
+    +     '<button type="button" class="rx-insb' + (r.ins === 'mi' ? ' mi' : '') + '"'
+    +       ' title="点一下切换：这味是医保开的还是自费买的">'
+    +       (r.ins === 'mi' ? '医保' : '自费') + '</button>'
     +     (r.existing ? '<span class="rx-duptag" title="这个人药箱里已经有这味药，默认不重复入库">药箱里已有</span>' : '')
     +     '<button type="button" class="rx-del" title="删掉这一行">×</button>'
     +   '</div>'
@@ -4140,12 +4427,29 @@ function renderRx(){
       + '让它把药名和用量打成文字，粘到上面的框里点「解析成药品」，药就摆在这儿了；'
       + '也可以直接「＋ 手动加一味」。</div>';
     list.scrollTop = 0;
+    syncRxInsBar();
     rxSyncFoot();
     return;
   }
   list.innerHTML = rxRows.map(rxRowHTML).join('');
   list.scrollTop = keep;              // 别让人改一格就被弹回顶部
+  syncRxInsBar();
   rxSyncFoot();
+}
+
+/* 「这批药是医保还是自费」那条：radio 跟着 rxInsMode 走（关掉弹窗再打开会回到默认的医保），
+   后面那行小字按当前勾了几味医保算解锁日 —— 光写「会上锁」，人不知道锁到哪天。 */
+function syncRxInsBar(){
+  if(!$('#rxInsBar')) return;
+  const w = document.querySelector('#rxInsBar input[name=rxIns][value="'
+    + (rxInsMode === 'mi' ? 'mi' : 'self') + '"]');
+  if(w) w.checked = true;
+  const tip = $('#rxInsTip');
+  if(!tip) return;
+  const cnt = rxRows.filter(function(r){ return r.ins === 'mi'; }).length;
+  tip.textContent = (rxInsMode === 'mi')
+    ? '勾着的 ' + cnt + ' 味会一起上锁，' + fmtMD(miUnlockFrom(todayStr())) + ' 之后才解锁'
+    : '自费的都不上锁；单独哪味是医保开的，点那行药名后面的小标翻过来';
 }
 
 // 底部汇总：勾了几味、加入后会是什么档位（和卡片同一套判断）
@@ -4316,6 +4620,7 @@ function openUse(){
 
 function rxReset(){
   rxRows = [];
+  rxInsMode = 'mi';          // 下次打开回到「医保开的」这个默认（医院开的药大概率走医保）
   rxSay('');
   const wh = $('#rxWho');
   if(wh){ wh.innerHTML = ''; wh.hidden = true; }
@@ -4520,16 +4825,23 @@ async function submitRx(e){
       stockBase: round2(Math.max(0, num(r.total))),   // 这次开回来的量 = 今天的余量
       stockDate: todayStr(),
       rxMax: 0,
+      // 医保 / 自费（2026-10-28）：医保开的从今天起上锁。
+      // ★ 底方录入没有「开药日」这一格 —— 底方就是今天开的那张，基准日已经是今天了。
+      ins: (r.ins === 'mi') ? 'mi' : '',
+      miStart: (r.ins === 'mi') ? todayStr() : '',
       note: (r.note || '').trim()
     });
   });
   save(); render();
   $('#dlgRx').close();
   const who = curPerson();
+  const miN = picked.filter(function(r){ return r.ins === 'mi'; }).length;
   await askAlert({
     title: '已加入 ' + picked.length + ' 味药',
     sub: (who ? '记到「' + who.name + '」的药箱里。' : '')
       + '\n\n「余量」记的是这次开回来的量，基准日是今天；卡片上的「剩 N 天」按你确认的天数走，之后每天自动往下扣。'
+      + (miN ? '\n\n其中 ' + miN + ' 味按「医保开的」记：'
+          + fmtMD(miUnlockFrom(todayStr())) + ' 之后才解锁，那之前不能用医保再开这几味。' : '')
   });
   rxReset();
 }
@@ -4663,7 +4975,7 @@ function importJSON(file){
       const incoming = Array.isArray(obj) ? obj : (obj && obj.meds);
       if(!Array.isArray(incoming)) throw new Error('格式不对');
       const clean = incoming.filter(function(m){ return m && m.name; }).map(function(m){
-        return {
+        const out = {
           id: m.id || uid(),
           name: String(m.name),
           spec: m.spec ? String(m.spec) : '',
@@ -4679,6 +4991,14 @@ function importJSON(file){
           rxMaxDay: m.rxMaxDay ? 1 : 0,
           note: m.note ? String(m.note) : ''
         };
+        // 医保 / 自费：**只有备份里真的带了才搬**。
+        // 老备份（加这个字段之前导出的）里根本没有 ins —— 硬写一个空值进去，
+        // 合并那一支就会拿它把现有的锁抹掉，等于悄悄给人解了锁。
+        if(m.ins === 'mi' || m.ins === 'self' || m.miStart){
+          out.ins = (m.ins === 'mi') ? 'mi' : '';
+          out.miStart = (m.ins === 'mi') ? String(m.miStart || '') : '';
+        }
+        return out;
       });
       if(!clean.length) throw new Error('没有可导入的药品');
       // ★ 原来是 confirm 的「确定 = 合并 / 取消 = 覆盖」—— 这等于把"取消"当成"覆盖"，
@@ -4728,16 +5048,32 @@ function openSettings(){
   const f = $('#formSet');
   f.alertDays.value = settings.alertDays;
   f.targetDays.value = settings.targetDays;
+  f.miDays.value = miDays();
+  f.miEarly.value = miEarly();
   renderPeopleMgr();
   $('#dlgSet').showModal();
 }
-function submitSettings(e){
+async function submitSettings(e){
   e.preventDefault();
   const f = $('#formSet');
   const a = Math.max(0, num(f.alertDays.value, 14));
   const t = Math.max(1, num(f.targetDays.value, 30));
+  const md = Math.max(1, Math.round(num(f.miDays.value, 30)) || 30);
+  let me = Math.max(0, Math.round(num(f.miEarly.value, 7)) || 0);
+  // 提前量一旦大过间隔，解锁日就早于开药日 —— 那把锁等于不存在。
+  // 不静默改数字：告诉人被夹成了多少，否则下次打开设置会发现填的数和存的不一样。
+  if(me > md){
+    await askAlert({
+      title: '提前解锁填得太多了',
+      sub: '提前解锁 ' + me + ' 天，比开药间隔 ' + md + ' 天还长 ——\n'
+        + '那样一开完就解锁，锁就没用了。\n\n已经按 ' + md + ' 天记下，想留一点就填小一点（比如 7）。'
+    });
+    me = md;
+  }
   settings.alertDays = a;      // 唯一的一条线：统计栏、清单、卡片文字全看它
   settings.targetDays = t;
+  settings.miDays = md;
+  settings.miEarly = me;
   saveSettings(); render();
   $('#dlgSet').close();
 }
@@ -4762,6 +5098,7 @@ $('#formMed').addEventListener('submit', submitMed);
 $('#formMed').addEventListener('input', function(){
   syncRxConv();
   syncDosePreview();
+  syncInsUI();          // 改了医保开药日，下面那句「哪天解锁」要跟着变
 });
 // 「每天吃 / 备用药」一换，整张表单的字段和必填标记跟着换
 $('#kindRow').addEventListener('change', syncKindUI);
@@ -4771,6 +5108,15 @@ $('#kindRow').addEventListener('click', function(e){
   // 点卡片任意位置都能选中（不用非点那个小圆点）
   const r = card.querySelector('input[type=radio]');
   if(r && !r.checked){ r.checked = true; syncKindUI(); }
+});
+
+// 医保 / 自费 那张二选一：点卡片任意位置都能选中
+$('#insRow').addEventListener('change', syncInsUI);
+$('#insRow').addEventListener('click', function(e){
+  const card = e.target.closest('.kind');
+  if(!card) return;
+  const r = card.querySelector('input[type=radio]');
+  if(r && !r.checked){ r.checked = true; syncInsUI(); }
 });
 
 $('#btnDispense').addEventListener('click', openDisp);
@@ -4796,6 +5142,7 @@ $('#noteBox').addEventListener('input', function(){
 });
 $('#btnDispCancel').addEventListener('click', function(){ $('#dlgDisp').close(); });
 $('#formDisp').addEventListener('submit', submitDisp);
+$('#formDisp').addEventListener('change', function(){ syncDispIns(); });
 $('#btnSetCancel').addEventListener('click', function(){ $('#dlgSet').close(); });
 $('#formSet').addEventListener('submit', submitSettings);
 $('#btnCopy').addEventListener('click', copyRefill);
@@ -4944,10 +5291,30 @@ $('#rxList').addEventListener('change', function(e){
   rxSyncRow(r, row); rxSyncFoot();
 });
 $('#rxList').addEventListener('click', function(e){
+  // 「医保 / 自费」小标：只翻这一行。不重画整表 —— 重画会让正在打字的那格失焦。
+  const insb = e.target.closest ? e.target.closest('.rx-insb') : null;
+  if(insb){
+    const row = insb.closest('.rx-row');
+    const r = row ? rxByKey(row.getAttribute('data-key')) : null;
+    if(r){
+      r.ins = (r.ins === 'mi') ? '' : 'mi';
+      insb.className = 'rx-insb' + (r.ins === 'mi' ? ' mi' : '');
+      insb.textContent = (r.ins === 'mi') ? '医保' : '自费';
+      syncRxInsBar();
+    }
+    return;
+  }
   const del = e.target.closest ? e.target.closest('.rx-del') : null;
   if(!del) return;
   const row = del.closest('.rx-row');
   rxRows = rxRows.filter(function(x){ return x.key !== row.getAttribute('data-key'); });
+  renderRx();
+});
+// 顶上那个总开关：改的是"默认值"，把所有行一起翻过来（单行想不一样再点那行的小标）
+$('#rxInsBar').addEventListener('change', function(e){
+  if(!e.target || e.target.name !== 'rxIns') return;
+  rxInsMode = (e.target.value === 'mi') ? 'mi' : '';
+  rxRows.forEach(function(r){ r.ins = rxInsMode; });
   renderRx();
 });
 $('#btnRxCancel').addEventListener('click', function(){ $('#dlgRx').close(); });
@@ -5017,6 +5384,7 @@ $('#dlgUse').addEventListener('close', function(){ if($('#dlgRx').open) renderRx
 // 单个数字弹窗（又买了药 / 校准余量）—— 输入时不再有实时对照行要同步（2026-10-12 已删）
 $('#btnNumCancel').addEventListener('click', function(){ $('#dlgNum').close(); });
 $('#formNum').addEventListener('submit', submitNum);
+$('#formNum').addEventListener('change', syncNumIns);   // 自费 ↔ 医保 切换时换那句小字
 
 // 通用弹窗的三条收尾路径。★ 只挂 cancel 和处理遮罩的 click，不挂 close ——
 // close 事件是异步派发的，而 askSettle 自己就会 close，挂上去会自己 resolve 自己两次。
