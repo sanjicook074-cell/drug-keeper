@@ -396,10 +396,16 @@ body.dragging .med:hover,body.dragging .chip:hover{box-shadow:none}
 .refill.empty-txt{color:var(--faint);font-family:inherit;font-size:13px;line-height:1.7;
   background:#fbfcfd;text-align:center;padding:32px 16px}
 .side-actions{display:flex;flex-direction:column;gap:8px;margin-top:14px}
-/* 「这几味还锁着」的提醒：摆在药名清单下面，因为它改的是"这一趟能不能开"的判断 */
-.ins-tip{margin-top:9px;padding:9px 11px;border-radius:9px;background:#f1f5f9;
-  border:1px solid #e2e8f0;font-size:12px;line-height:1.65;color:#334155}
-.ins-tip[hidden]{display:none}
+/* 清单里带 ★ 的那味为什么判断不了：摆在药名下面，跟清单是一个整体
+   （2026-11-19 用户要求「在药品旁边加一个星，下面的那个是对这个星的解释」） */
+.rq-note{margin-top:9px;padding:9px 11px;border-radius:9px;background:#f8f9fb;
+  border:1px solid var(--line-2);font-size:12px;line-height:1.65;color:#4a5262}
+.rq-note[hidden]{display:none}
+.rq-note b{color:#334155;font-weight:650}
+/* 药名后面那个星：颜色要压得住灰底、字号别缩 —— 缩了在 12.5px 的等宽字体里就是一个小点，
+   等于没加（第一版试过 .92em + 上标，放大三倍才看得见） */
+.rstar{font-style:normal;color:#c2410c;font-weight:700;margin-left:3px;font-size:1em;
+  vertical-align:1px}
 
 /* ---------- 侧栏两块：上=可编辑的情况，下=只要药名的清单 ---------- */
 .blk{margin-bottom:18px}
@@ -952,7 +958,7 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
       <div class="logo">药</div>
       <div>
         <h1>药品管家</h1>
-        <p class="sub">记录库存 · 自动推算剩余天数 · 生成要开的药清单</p>
+        <p class="sub">记录库存 · 自动推算剩余天数 · 生成可以开的药清单</p>
       </div>
     </div>
     <div class="top-actions">
@@ -998,11 +1004,11 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 
         <div class="blk">
           <div class="blk-h">
-            <span class="blk-t">要开的药</span>
+            <span class="blk-t">可以开的药</span>
             <span class="blk-tip" id="drugTip"></span>
           </div>
           <pre class="refill" id="refillText"></pre>
-          <div class="ins-tip" id="insTip" hidden></div>
+          <div class="rq-note" id="refillStar" hidden></div>
         </div>
 
         <div class="side-actions">
@@ -1499,7 +1505,7 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
           <div class="sec-title">什么时候提醒你</div>
           <label class="full">偏少线（天）
             <input name="alertDays" type="number" step="1" min="0">
-            <span class="hintline">剩余天数 ≤ 这个值，就标<b>「偏少」</b>、卡片转黄，并进「要开的药」清单。上方统计里的「偏少（≤N天）」用的就是它——只有这一条线</span>
+            <span class="hintline">剩余天数 ≤ 这个值，就标<b>「偏少」</b>、卡片转黄。上方统计里的「偏少（≤N天）」用的就是它——只有这一条线。（右边那列「可以开的药」不走这条线，按每味药自己的上限算）</span>
           </label>
         </section>
 
@@ -3109,14 +3115,24 @@ function prnCardHTML(m){
   + '</div>';
 }
 
-// 要开的药清单：只有药名。
+/* 这味药有没有「一个周期」这把尺子。
+   没填「一次最多能开几天」→ rxCapDays 是 Infinity → 判不了这趟该不该开（见 shortNow 的兜底）。
+   界面上这类药名后面挂一个星号，清单下面解释为什么判不了（2026-11-19 用户要求）。
+   ★ 判据只认 rxCapDays：老存档没有 rxMaxDay 标记的那个数也能折成天数，同样算"有尺子"；
+     没填用法（dailyUse = 0）的老存档折不出来 → 当然也判不了，一起上星。 */
+function noCap(m){ return !isFinite(rxCapDays(m)); }
+
+// 可以开的药清单：只有药名。
 // ★ 这段会被直接粘进小程序的问诊框当话发出去，所以不放「就诊人：」「生成日期」「用法用量以医师处方为准」
 //   这类格式化的标签行——医生读的是一句人话，不是一个报表头。
 // ★ 末尾的「谢谢~」是用户点名要的口语收尾（2026-09-28），属于这句话的一部分，不要当成格式行删掉。
+// ★ 这里写「可以开的药清单：」，跟区块标题一个字都不差 —— 2026-11-19 用户原话
+//   「这个不是要开的药，而是可以开的药」。这块 <pre> 既是给人看的预览、也是复制出去的正本，
+//   两处叫法必须一样，否则人会以为框里那份和复制出去的不是一回事。
 function buildRefillText(){
   const items = refillItems();
   if(!items.length) return '';
-  const L = ['要开的药清单：'];
+  const L = ['可以开的药清单：'];
   items.forEach(function(m, i){ L.push((i + 1) + '. ' + m.name); });
   L.push('谢谢~');
   return L.join('\n');
@@ -3124,6 +3140,21 @@ function buildRefillText(){
 // 需要补的药，按剩余天数排序（越少越靠前）
 function refillItems(){
   return meds.filter(inRefill).sort(function(a, b){ return daysLeft(a) - daysLeft(b); });
+}
+
+// 显示用的清单（带星号）。复制/下载走 buildRefillText()，那条路永远不带星 ——
+// 星是给人自己看的记号，医生不知道那是什么，粘进问诊框只会多一个看不懂的符号。
+// ★ 用 innerHTML 而不是 textContent，是因为星要单独上色、还要能和药名区分开；
+//   药名必须先 esc —— 药名是用户自己敲的，里面完全可能有 < > &。
+function buildRefillHTML(){
+  const items = refillItems();
+  const L = ['可以开的药清单：'];
+  items.forEach(function(m, i){
+    L.push((i + 1) + '. ' + esc(m.name)
+      + (noCap(m) ? '<i class="rstar" title="没填「一次最多能开几天」，判不了该不该开">*</i>' : ''));
+  });
+  L.push('谢谢~');
+  return L.join('\n');
 }
 
 // 复制 / 下载用：情况 + 要开的药，合成一段可以直接粘进问诊框的话
@@ -3139,62 +3170,51 @@ function renderRefill(){
   const who = curPerson();
   $('#refillTitle').textContent = '就诊准备' + (who ? ' · ' + who.name : '');
 
-  const cnt = refillItems().length;
+  const items = refillItems();
+  const cnt = items.length;
   const txt = buildRefillText();
   // 有东西可输出就放开按钮：药名清单，或者只是写了「情况」
   const hasOut = !!txt || !!(who && who.note);
-  // 缺、但锁着 → 不在清单里（见 inRefill），所以"没有要开的药"得分两种说法：
-  // 「都还够吃」和「够该开了、可锁没开」完全是两件事，混成一句会让人以为药够用。
-  const held = meds.filter(function(m){ return miLocked(m) && shortNow(m); });
   const pre = $('#refillText');
-  if(!txt){
+  if(!cnt){
+    /* 空清单的两种说法：药还够吃 / 剩下的都锁着。
+       ★ 锁着的那句只说**事实**（还在锁定期、日期见卡片），不写「已经该开了」——
+         那是个判断，而程序在没录上限的药上根本判不了（2026-11-19 用户点名说它不成立）。 */
     pre.className = 'refill empty-txt';
     pre.textContent = meds.length
-      ? (held.length
-          ? '目前没有能开出来的药。\n（' + held.length + ' 味已经该开了，但还在医保锁定期 ——'
-            + ' 锁着的不列进清单，解锁日见下面那行）'
-          : '目前没有需要开的药。\n（剩的天数还够「一次最多能开几天」的，这趟开不下一个整周期，不列）')
-      : '这个人的药箱还是空的，\n添加药品后这里会自动列出该开的药。';
+      ? (meds.some(function(m){ return miLocked(m); })
+          ? '暂时没有可以开的药。\n（剩下的药还在医保锁定期，解锁日期见药品卡片）'
+          : '目前没有可以开的药。\n（剩的天数还够「一次最多能开几天」的，这趟开不下一个整周期）')
+      : '这个人的药箱还是空的，\n添加药品后这里会自动列出可以开的药。';
   } else {
     pre.className = 'refill';
-    pre.textContent = txt;
+    pre.innerHTML = buildRefillHTML();
   }
   $('#btnCopy').disabled = !hasOut;
   $('#btnDownload').disabled = !hasOut;
   // 标题右边那个数：清单里有几种。鼠标停上去能看见这条线是怎么画的
   const tipEl = $('#drugTip');
   tipEl.textContent = cnt ? cnt + ' 种' : '';
-  tipEl.title = '剩余天数少于「一次最多能开几天」的药会列在这里（这趟正好开够一个周期）；'
-    + '没填上限的按提醒天数（' + settings.alertDays + ' 天）算。'
+  tipEl.title = '剩的天数少于「一次最多能开几天」的药会列在这里（这趟正好开够一个周期）；'
+    + '没填上限的判不了，带上星号列出来让你自己看。'
     + '另外，医保锁没开的药不进清单 —— 那趟用医保开不出来。';
 
-  /* 医保锁：缺、但锁着 → **不进清单**（2026-11-19 用户要求），可也不能让它悄悄消失，
-     否则人会以为"药还够"。所以单独在清单下面点一句名，连解锁日一起给。
-     ★ 这里用的必须是 meds.filter(锁着 && 缺)，不能再写 refillItems().filter(锁着) ——
-       refillItems 已经不收锁着的了，那样筛出来永远是空的，整条提示会变成死代码。 */
-  const locked = meds.filter(function(m){ return miLocked(m) && shortNow(m); })
-    .sort(function(a, b){ return daysLeft(a) - daysLeft(b); });
-  const itip = $('#insTip');
-  if(itip){
-    if(locked.length){
-      const show = locked.slice(0, 3);
-      itip.hidden = false;
-      itip.innerHTML = '🔒 另外 <b>' + locked.length + '</b> 味已经该开了，但还在医保锁定期，'
-        + '所以<b>没列进上面这份清单</b>（这一趟用医保开不出来）：'
-        + show.map(function(m){
-            return esc(m.name) + '（' + fmtMD(miUnlockDate(m)) + ' 解锁）';
-          }).join('、')
-        + (locked.length > show.length ? ' 等' : '')
-        + '<br>要么自费买，要么等解锁了再去。';
-    } else {
-      itip.hidden = true;
-      itip.innerHTML = '';
-    }
+  /* 药名后面那个星是什么：紧贴在清单下面解释，不能让它自己漂着（2026-11-19 用户要求）。
+     ★ 只解释、不判断 —— 不说"该开了"，也不替用户拿主意。
+     ★ 星号只在界面上，复制/下载的文本里没有（见 buildRefillText）。 */
+  const starN = items.filter(noCap).length;
+  const sEl = $('#refillStar');
+  if(sEl){
+    sEl.hidden = !starN;
+    sEl.innerHTML = starN
+      ? '<i class="rstar">*</i> 带星号的 ' + starN + ' 味没填「一次最多能开几天」——'
+        + '程序算不出一个周期该开多少，<b>没法判断这趟该不该开</b>，剩多少你自己看一眼。'
+      : '';
   }
 
   /* 「已经开药」不再跟着清单走，而是跟着**勾选**走（2026-11-19 用户要求）：
-     清单回答"这一趟该开什么"，勾选回答"这一趟真的开到了什么"。两者可以不一样
-     —— 医保锁着的那几味就常出现"该开但这次没开成"。 */
+     清单回答"这一趟能开什么"，勾选回答"这一趟真的开到了什么"。两者可以不一样
+     —— 医保锁着的那几味就常出现"能开但这次没开成"。 */
   const dn = pickCount();
   const db = $('#btnDispense');
   db.disabled = (dn === 0);
@@ -3205,7 +3225,7 @@ function renderRefill(){
     hint.textContent = dn
       ? '勾了 ' + dn + ' 种 · 每种 +它自己的「一次最多能开几天」'
       : (cnt ? '还没勾药 —— 在药品卡片左上角打勾，勾上的才会入库'
-             : '现在没有要开的药，勾哪味就入库哪味');
+             : '现在没有可以开的药，勾哪味就入库哪味');
   }
   // 手机底部那个页签：勾了药才亮出数字（"去开药"在另一页，得有个地方提醒）
   const tb = $('#tabPick');

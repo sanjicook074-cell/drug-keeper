@@ -135,6 +135,18 @@ HOOKS = {
            " people.push(mom); save(); render(); openFam();",
     # ★ 2026-11-19 起「已经开药」只处理卡片上勾上的，先勾一遍再开弹窗
     "disp": "refillItems().forEach(function(m){ pickSet(m.id, true); }); render(); openDisp();",
+    # ★ 2026-11-19 新增：「可以开的药」这一栏的特写。拍它的原因有两个 ——
+    #   ① 用户当天把区块名从「要开的药」改成「可以开的药」，还要求给"没填上限、程序判不了"
+    #      的药挂星号并在下面解释，这两件事在整页图上字太小、根本看不出来；
+    #   ② 原来清单下面那条「另外 N 味已经该开了」被删掉了，README 里那句说明得换成这张图。
+    #   为了拍出星号：临时把「健胃消食片」的处方向上清空（rxMax = 0）并让它只剩 6 片 ——
+    #   演示数据本身不能动，别的图还要用它。剩 6 天 < 提醒天数，所以它会进清单、带星。
+    "refill": "meds[3].rxMax = 0; meds[3].stockBase = 6; meds[3].stockDate = todayStr();"
+              " save(); render();"
+              " var st9 = document.createElement('style');"
+              " st9.textContent = '.top,.people,.stats,#warn,.col-main,.foot-sig{display:none !important}'"
+              " + '.cols{grid-template-columns:1fr}.wrap{max-width:460px;padding:18px}';"
+              " document.head.appendChild(st9);",
     # ★ 医保锁特写（2026-10-28）：只留药品列表，摆三味对照 ——
     #   锁着的（今天医保开的）/ 已解锁的（40 天前开的）/ 自费的（不挂标）。
     #   为什么不从主图上裁：同 box 那张的理由，裁坐标一改内边距就歪。
@@ -328,6 +340,8 @@ SIZE = {"rx": "1240,1340", "rxparsed": "1240,1430",
         "all": "1240,1180",
         # 医保锁特写：3 张卡片（约 165px）+ 两栏标题
         "milock": "820,760",
+        # 「可以开的药」特写：只拍右栏，440 宽的栏 + 清单 + 星号解释 + 四个按钮
+        "refill": "720,740",
         "delconfirm": "820,470", "slotname": "820,430", "tip": "820,400",
         "choicemode": "820,480",
         # 手机版三张：390×844 = 窄屏真实尺寸，正好落在 ≤640px 断点里面

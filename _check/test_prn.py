@@ -118,7 +118,7 @@ PROBE = r"""
                   return r.length === 0; })(), '');
   ck('备用药卡片上没有勾选框（勾了也没意义）',
      !card('备用多片').querySelector('.med-pick'), '');
-  ck('「要开的药」那段文字里没有备用药',
+  ck('「可以开的药」那段文字里没有备用药',
      buildRefillText().indexOf('备用') < 0, buildRefillText().replace(/\n/g, ' / ') || '(空)');
 
   // ★ 关键：余量绝不自动往下扣（20 天前 / 60 天前数的，今天还是那个数）

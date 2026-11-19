@@ -111,7 +111,7 @@ PROBE = r"""
   await waitFor(function(){ return C.copy.length > 0; });
   var clip = C.copy[0] || '';
   ck('「复制给医生」走原生剪贴板', C.copy.length === 1, C.copy.length + ' 次');
-  ck('复制出去的是要开的药清单（非空且带药名）',
+  ck('复制出去的是可以开的药清单（非空且带药名）',
      clip.length > 8 && clip.indexOf('维生素C片') >= 0,
      clip.slice(0, 26).replace(/\n/g, ' '));
 
