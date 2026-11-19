@@ -587,7 +587,10 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
   font-variant-numeric:tabular-nums}
 .pk-prog.all{color:#15803d;font-weight:650}
 
-/* ---------- 「已经开药」批量入库 ---------- */
+/* ---------- 「已经开药」批量入库 ----------
+   比通用弹窗（560）宽一档：2026-11-19 起每一味多了一个「入库数量」输入框，
+   560 宽时那一行会挤成两行、右边「开完约够几天」也被压扁。 */
+#dlgDisp{width:min(620px,94vw)}
 .disp-list{display:flex;flex-direction:column;gap:10px;max-height:50vh;overflow:auto}
 .disp-row{display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--line);
   border-left-width:4px;border-radius:10px;background:#fff}
@@ -601,7 +604,22 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 .disp-name{font-weight:620;font-size:13.5px;word-break:break-word}
 .disp-meta{font-size:12px;color:var(--muted);margin-top:2px}
 .disp-meta b{color:#374151}
-.disp-src{color:var(--faint)}
+/* 入库数量可以改（2026-11-19 用户：「这个片数它是要用户可以自己编辑的，默认的是
+   最多开的片数，但用户可以编辑」）。做成行内小格，而不是另开一步 ——
+   默认值已经算好，绝大多数时候是"看着对就点确认"，改才是例外。
+   ★ 用 type=number + inputmode=decimal：手机上弹数字键盘，且能带小数（0.5 片）。 */
+.disp-qty{display:inline-flex;align-items:baseline;gap:4px}
+.disp-qty input{font:inherit;font-size:12.5px;font-weight:650;color:#1f2937;
+  width:64px;padding:2px 6px;border:1px solid var(--line);border-radius:6px;background:#fff;
+  text-align:right;font-variant-numeric:tabular-nums}
+.disp-qty input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.disp-qty .u{font-size:11.5px;color:var(--muted)}
+/* 填 0（或留空）的那一味：这一趟不入库。只用右边那格说清楚，不给药名变淡 ——
+   用户明确不喜欢"名册变灰"，见药盒那条注释（2026-11-19）。 */
+.disp-row[data-skip="1"] .disp-after{color:var(--faint)}
+/* 那句「默认值怎么来的」单独占一行：跟「现有 → 入库 [n]」挤在同一行时，
+   窄屏会在「（默」这种地方断掉，看着像坏了。 */
+.disp-src{display:block;color:var(--faint);margin-top:3px;line-height:1.5}
 .disp-after{flex:none;text-align:right;font-size:11.5px;color:var(--muted);line-height:1.5}
 .disp-after b{font-size:15px;font-weight:680;color:#374151}
 .disp-after.ok b{color:var(--ok)}
@@ -4226,12 +4244,74 @@ function dispItems(){
 // 这次的入库计划：不必手填——一次挂号只能开一次药，有单次上限就按上限开满，
 // 没设上限就补满目标天数。qty 统一走 dispQty，和卡片上的「需补」是同一个数。
 // capDays 一并带出去：界面要能说清「单次最多开 N 天」，光给片数等于让用户自己除。
+// ★ 这个 qty 只是**默认值**：弹窗里每一味都能改（2026-11-19 用户要求），
+//   真要入库的数量以 dispLivePlan() 读输入框为准，别拿这份当最终结果。
 function dispPlan(){
   return dispItems().map(function(m){
     const cap = rxCap(m);
     const byCap = isFinite(cap);
     return { m: m, qty: dispQty(m), byCap: byCap, capDays: rxCapDays(m) };
   });
+}
+
+/* 弹窗里**当前**填着的计划 —— 和 dispPlan() 只差一件事：qty 从输入框读。
+   为什么不把用户的改动记到变量里：输入框才是唯一真相，省掉"变量和界面不同步"这类账。
+   读不到框（比如还没渲染完）就退回默认值。 */
+function dispLivePlan(){
+  return dispItems().map(function(m){
+    const def = dispQty(m);
+    const inp = document.querySelector('#dispList input[data-disp="' + m.id + '"]');
+    let qty = def;
+    if(inp){
+      const v = parseFloat(inp.value);
+      // ★ 空着（还没打完）算默认，不算 0 —— 否则"清空重打"会静悄悄变成不入库。
+      //   想跳过某一味就明确填 0。
+      qty = (String(inp.value).trim() === '' || !isFinite(v) || v < 0) ? def : round2(v);
+    }
+    return { m: m, qty: qty, def: def, byCap: isFinite(rxCap(m)), capDays: rxCapDays(m) };
+  });
+}
+
+// 把「开完约够 N 天」和底下那行汇总按**当前输入**重算。
+// 改一个数就动这几处，不整块重画 —— 重画会把光标顶掉（人正打着字）。
+function refreshDispTotals(){
+  const plan = dispLivePlan();
+  let still = 0, skipped = 0, used = 0;
+  plan.forEach(function(p){
+    const m = p.m;
+    const unit = m.unit || '片';
+    const d = dailyUse(m);
+    const after = round2(stockNow(m) + p.qty);
+    const days = d > 0 ? after / d : Infinity;
+    const ok = !isFinite(days) || days >= refillLine(m);
+    const row = document.querySelector('#dispList .disp-row[data-med="' + m.id + '"]');
+    if(p.qty > 0){
+      used++;
+      if(!ok) still++;
+    }else{
+      skipped++;
+    }
+    if(row){
+      row.setAttribute('data-skip', p.qty > 0 ? '' : '1');
+      const cell = row.querySelector('.disp-after');
+      if(cell){
+        cell.className = 'disp-after' + (p.qty > 0 && ok ? ' ok' : '');
+        cell.innerHTML = p.qty > 0
+          ? '开完约够<br><b>' + (isFinite(days) ? fmtDays(days) : '—') + '</b> 天' + (ok ? ' ✓' : '')
+          : '这次<br><b>不入库</b>';
+      }
+    }
+  });
+
+  const sum = $('#dispSum');
+  if(sum){
+    sum.innerHTML = used
+      ? '这次将更新 <b>' + used + '</b> 种药'
+          + (still ? '，其中 <b>' + still + '</b> 种开完仍凑不满一个周期' : '，开完就都够一个周期了')
+          + (skipped ? '；另外 ' + skipped + ' 味填了 0，这次不动' : '')
+      : '每一味都填成 0 了 —— 这样确认下去什么都不会入库。改一个数，或者点「取消」。';
+  }
+  syncDispIns(used);
 }
 
 async function openDisp(){
@@ -4245,54 +4325,45 @@ async function openDisp(){
   }
 
   $('#dispSub').textContent = '勾上的这 ' + plan.length + ' 种，每种按它自己的「一次最多能开几天」'
-    + '换算出数量入库（开满一个周期）；没填天数的就补满到够吃 ' + settings.targetDays + ' 天。'
-    + '确认即更新药库。';
+    + '换算出默认数量（开满一个周期）；没填天数的就补满到够吃 ' + settings.targetDays + ' 天。'
+    + '数量可以逐味改（留空回到默认，填 0 就是这一趟不开它）。确认即更新药库。';
 
-  let still = 0;
   $('#dispList').innerHTML = plan.map(function(p){
     const m = p.m;
     const unit = m.unit || '片';
     const lv = level(m);
-    const d = dailyUse(m);
     const nu = needUnits(m);
-    const after = round2(stockNow(m) + p.qty);
-    const days = d > 0 ? after / d : Infinity;
-    // 「开完够不够一个周期」—— 和清单同一条线（refillLine），不是提醒天数
-    const ok = !isFinite(days) || days >= refillLine(m);
-    if(!ok) still++;
-    return '<div class="disp-row" data-lv="' + lv + '">'
+    return '<div class="disp-row" data-lv="' + lv + '" data-med="' + m.id + '">'
       +   '<div class="disp-info">'
       +     '<div class="disp-name">' + esc(m.name)
       +       ' <span class="tag ' + lv + '">' + LEVEL_LABEL[lv] + '</span></div>'
       +     '<div class="disp-meta">现有约 <b>' + fmtNum(stockNow(m)) + '</b> ' + esc(unit)
-      +       '　→　入库 <b>' + fmtNum(p.qty) + '</b> ' + esc(unit)
-      +       '<span class="disp-src">' + (p.byCap
-              ? '（' + (isFinite(p.capDays)
-                    ? '单次最多开 ' + fmtNum(p.capDays) + ' 天 ＝ ' + fmtNum(p.qty) + ' ' + esc(unit)
-                    : '单次限 ' + fmtNum(p.qty) + ' ' + esc(unit))
-                + '，一次挂号按上限开满'
-                + (p.qty < nu
-                    ? '，共需 ' + fmtNum(nu) + '，要开 ' + rxTrips(m) + ' 次'
-                    : '')
-                + '）'
-              : '（没填天数，补满 ' + settings.targetDays
-                + ' 天需 ' + fmtNum(nu) + ' ' + esc(unit) + '）') + '</span>'
+      +       '　→　入库 <span class="disp-qty">'
+      +         '<input type="number" class="dq" data-disp="' + m.id + '" inputmode="decimal"'
+      +           ' min="0" step="any" value="' + round2(p.qty) + '"'
+      +           ' aria-label="「' + esc(m.name) + '」这次入库多少' + esc(unit) + '">'
+      +         '<span class="u">' + esc(unit) + '</span></span>'
+      // 这一串只说清「这个默认值是怎么来的」—— 数字本身输入框里已经有了，不重复念一遍
+      +       '<span class="disp-src">（' + (p.byCap
+                  ? '默认按上限：' + (isFinite(p.capDays)
+                        ? '单次最多开 ' + fmtNum(p.capDays) + ' 天 ＝ ' + fmtNum(p.qty) + ' ' + esc(unit)
+                        : '单次限 ' + fmtNum(p.qty) + ' ' + esc(unit))
+                    + '，一次挂号按上限开满'
+                    + (p.qty < nu
+                        ? '，共需 ' + fmtNum(nu) + '，要开 ' + rxTrips(m) + ' 次'
+                        : '')
+                  : '没填上限，补满 ' + settings.targetDays
+                    + ' 天需 ' + fmtNum(nu) + ' ' + esc(unit)) + '）</span>'
       +     '</div>'
       +   '</div>'
-      +   '<div class="disp-after' + (ok ? ' ok' : '') + '">开完约够<br><b>'
-      +     (isFinite(days) ? fmtDays(days) : '—') + '</b> 天' + (ok ? ' ✓' : '') + '</div>'
+      +   '<div class="disp-after"></div>'
       + '</div>';
   }).join('');
-
-  $('#dispSum').innerHTML = '这次将更新 <b>' + plan.length + '</b> 种药'
-    + (still
-        ? '，其中 <b>' + still + '</b> 种开完仍凑不满一个周期'
-        : '，开完就都够一个周期了');
 
   // 默认按医保记（这本来就是去医院开的动作），用户想记自费可以改
   const mi = document.querySelector('#formDisp input[name=dispIns][value=mi]');
   if(mi) mi.checked = true;
-  syncDispIns(plan.length);
+  refreshDispTotals();
 
   $('#dlgDisp').showModal();
 }
@@ -4302,7 +4373,9 @@ function syncDispIns(n){
   const tip = $('#dispInsTip');
   if(!tip) return;
   const el = document.querySelector('#formDisp input[name=dispIns]:checked');
-  const cnt = (n == null) ? dispPlan().length : n;
+  const cnt = (n == null)
+    ? dispLivePlan().filter(function(p){ return p.qty > 0; }).length
+    : n;
   tip.textContent = (el && el.value === 'mi')
     ? '这 ' + cnt + ' 味都会上锁，' + fmtMD(miUnlockFrom(todayStr())) + ' 之后才能再用医保开'
     : '自费的不上锁；原来锁着的也不动';
@@ -4310,8 +4383,16 @@ function syncDispIns(n){
 
 async function submitDisp(e){
   e.preventDefault();
-  const plan = dispPlan();          // 必须改数据之前先算好
-  if(!plan.length){ $('#dlgDisp').close(); return; }
+  // 必须改数据之前先算好；数量以弹窗里**现在填的**为准（用户可能改过）
+  const live = dispLivePlan();
+  const plan = live.filter(function(p){ return p.qty > 0; });
+  if(!plan.length){
+    await askAlert({
+      title: '这次没有要入库的',
+      sub: '每一味的数量都填成了 0（留空或填 0 就是这一趟不入库）。改一个数再确认，或者直接取消。'
+    });
+    return;
+  }
   const insEl = document.querySelector('#formDisp input[name=dispIns]:checked');
   const ins = (insEl && insEl.value === 'mi') ? 'mi' : '';
   plan.forEach(function(p){
@@ -4328,11 +4409,13 @@ async function submitDisp(e){
   $('#dlgDisp').close();
 
   const short = plan.filter(function(p){ return inRefill(p.m); }).length;
+  const skipped = live.length - plan.length;
   await askAlert({
     title: '已入库 ' + plan.length + ' 种药',
-    sub: short
+    sub: (short
       ? '其中 ' + short + ' 种还没凑满一个周期，下次再补。'
-      : '这 ' + plan.length + ' 种都够一个周期了。'
+      : '这 ' + plan.length + ' 种都够一个周期了。')
+      + (skipped ? '（另外 ' + skipped + ' 味填的是 0，这次没动）' : '')
   });
 }
 
@@ -5846,6 +5929,23 @@ $('#noteBox').addEventListener('input', function(){
 $('#btnDispCancel').addEventListener('click', function(){ $('#dlgDisp').close(); });
 $('#formDisp').addEventListener('submit', submitDisp);
 $('#formDisp').addEventListener('change', function(){ syncDispIns(); });
+
+/* 入库数量是可编辑的（2026-11-19 用户要求）。
+   input：边打边重算右边「开完约够几天」和底下那行汇总；
+   focusout：清空后离开 → 把默认值填回去（空着不留白，免得看着像"这味不要了"）。 */
+$('#dispList').addEventListener('input', function(e){
+  const inp = e.target;
+  if(inp && inp.classList && inp.classList.contains('dq')) refreshDispTotals();
+});
+$('#dispList').addEventListener('focusout', function(e){
+  const inp = e.target;
+  if(!inp || !inp.classList || !inp.classList.contains('dq')) return;
+  if(String(inp.value).trim() === ''){
+    const m = findMed(inp.getAttribute('data-disp'));
+    if(m) inp.value = round2(dispQty(m));
+    refreshDispTotals();
+  }
+});
 $('#btnSetCancel').addEventListener('click', function(){ $('#dlgSet').close(); });
 $('#formSet').addEventListener('submit', submitSettings);
 $('#btnCopy').addEventListener('click', copyRefill);

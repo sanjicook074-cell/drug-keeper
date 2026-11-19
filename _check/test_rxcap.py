@@ -1080,6 +1080,103 @@ PROBE = r"""
     switchPerson(backTo2);      // 还原，别影响后面的断言
   })();
 
+  /* ================= 11. 入库数量可以逐味改（2026-11-19 用户要求） =================
+     用户原话：「已经开药，这里现在入库多少片，是根据单次最多开多少天来定的。
+               这个片数，它是要用户可以自己编辑的。默认的是用户输入的最多开的片数，
+               但用户可以编辑。」
+     守四件事：
+       ① 每一味都有一个数字输入框，**默认值 = 按单次上限换算出来的那个数**；
+       ② 改数之后右边「开完约够几天」和底下那行汇总当场跟着变（不用点确认）；
+       ③ 真提交时入库的是**改过的数**，不是默认数 —— 这是这条需求的全部意义；
+       ④ 留空 ≠ 0：留空回到默认，填 0 才是「这一趟不开它」。
+     ★ 别把 ③ 写成"调 dispPlan() 看 qty" —— 那就绕开了输入框，
+       用户改了却不生效的 bug 照样能过测。必须真改 DOM 再真提交。 */
+  await (async function(){
+    var e1 = mkRx({ name:'可编辑片', perDose:2, unit:'片', cycleDays:1, timesPerCycle:1,
+                    stockBase:3, stockDate: todayStr(), rxMax:7, rxMaxDay:1 });
+    // 每天 2 片 × 限 7 天 → 上限 14 片；现有 3 片
+    // 再配一味"根本不动它"的，用来证明没改的那几味照旧按默认入库
+    var e1b = mkRx({ name:'另一味片', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+                     stockBase:1, stockDate: todayStr(), rxMax:5, rxMaxDay:1 });
+    setMeds([e1, e1b]); save(); render();
+    pickSet(e1.id, true); pickSet(e1b.id, true); render();   // 两味都进这一趟的入库计划
+    ck('上限换算没变：每天 2 片 · 限 7 天 → 一次 14 片', rxCap(byName('可编辑片')) === 14,
+       rxCap(byName('可编辑片')));
+    await openDisp();
+
+    var inp = q('#dispList input.dq[data-disp="' + e1.id + '"]');
+    ck('★ 弹窗里每一味都有一个自己的入库数量输入框',
+       !!inp && document.querySelectorAll('#dispList input.dq').length === dispItems().length,
+       document.querySelectorAll('#dispList input.dq').length + ' 个 / ' + dispItems().length + ' 味');
+    ck('  它是数字框（手机上弹数字键盘，能打小数）',
+       !!inp && inp.getAttribute('type') === 'number' && inp.getAttribute('inputmode') === 'decimal',
+       inp ? inp.getAttribute('type') + ' / ' + inp.getAttribute('inputmode') : '没有');
+    ck('★ 默认值就是按「单次最多开几天」算出来的 14 片', !!inp && inp.value === '14',
+       inp ? inp.value : '没有');
+    ck('  行里那句话点明默认值怎么来的（数字在输入框里，不再重复念）',
+       /默认按上限[\s\S]*?＝\s*14\s*片/.test(q('#dispList').textContent.replace(/\s+/g, ' ')),
+       q('#dispList').textContent.replace(/\s+/g, ' ').slice(0, 120));
+
+    // ---- 改数：右边那一格和底下汇总要当场跟着变 ----
+    function after1(){ return q('#dispList .disp-row[data-med="' + e1.id + '"] .disp-after'); }
+    inp.value = '6';
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    ck('★ 改成 6 片 → 右边「开完约够」当场变成 4 天（(3+6)/2）',
+       /约够\s*4\s*天/.test(after1().textContent.replace(/\s+/g, ' ')),
+       after1().textContent.replace(/\s+/g, ' '));
+    ck('  输入框里的数没被重画冲掉', inp.value === '6', inp.value);
+
+    inp.value = '0';
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    ck('★ 填 0 → 那一行右边写「不入库」，并且整行标了 data-skip',
+       q('#dispList .disp-row[data-med="' + e1.id + '"]').getAttribute('data-skip') === '1'
+       && /不入库/.test(after1().textContent),
+       after1().textContent.replace(/\s+/g, ' '));
+    ck('  汇总改口说「另外 1 味填了 0，这次不动」（另一味还要入）',
+       /另外\s*1\s*味填了\s*0/.test(q('#dispSum').textContent), q('#dispSum').textContent);
+
+    // ---- 真提交：入库的必须是改过的 6，不是默认的 14 ----
+    inp.value = '6';
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    await submitDisp({ preventDefault: function(){} });
+    ck('★★ 提交后库存 = 3 + 6 = 9（按改过的数入库，不是默认的 14）',
+       byName('可编辑片').stockBase === 9, byName('可编辑片').stockBase);
+    ck('  没改过的那味照旧按默认入库（1 + 5 = 6）',
+       byName('另一味片').stockBase === 6, byName('另一味片').stockBase);
+
+    // ---- 留空 = 回到默认，不是 0 ----
+    var e2 = mkRx({ name:'留空片', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+                    stockBase:0, stockDate: todayStr(), rxMax:7, rxMaxDay:1 });
+    setMeds([e2]); save(); render();
+    pickSet(e2.id, true); render();
+    await openDisp();
+    var in2 = q('#dispList input.dq[data-disp="' + e2.id + '"]');
+    in2.value = '';
+    in2.dispatchEvent(new Event('input', { bubbles: true }));
+    await submitDisp({ preventDefault: function(){} });
+    ck('★ 输入框留空 → 按默认值入库（限 7 天 × 每天 1 片 = 7），不当作 0 跳过',
+       byName('留空片').stockBase === 7, byName('留空片').stockBase);
+
+    // ---- 全部填 0：不静默关窗，明确告诉用户什么都没动 ----
+    var e3 = mkRx({ name:'全零片', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+                    stockBase:5, stockDate: todayStr(), rxMax:7, rxMaxDay:1 });
+    setMeds([e3]); save(); render();
+    pickSet(e3.id, true); render();
+    await openDisp();
+    var in3 = q('#dispList input.dq[data-disp="' + e3.id + '"]');
+    in3.value = '0';
+    in3.dispatchEvent(new Event('input', { bubbles: true }));
+    await submitDisp({ preventDefault: function(){} });
+    ck('★ 全都填 0 → 一味都不入库（库存原样 5）', byName('全零片').stockBase === 5,
+       byName('全零片').stockBase);
+    ck('  并且明说「这次没有要入库的」，不装作成功',
+       /没有要入库/.test(R.alerts[R.alerts.length - 1] || ''),
+       R.alerts[R.alerts.length - 1]);
+    ck('  勾选也还留着（没入库就不该清掉勾）', pickCount() === 1, pickCount());
+    q('#dlgDisp').close();
+    pickClear(); render();
+  })();
+
   function rxFinish(){
     // ★ 用户 2026-10-23：「点删除之后 应该是弹窗来确认 而不是由页面默认方式来实现」。
     //   页面里已经一处原生 alert/confirm/prompt 都没有了（都走 askXxx → 页面内 <dialog>），
