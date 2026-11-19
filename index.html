@@ -238,6 +238,14 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 .chip .dose{flex:none;font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 .chip .x{flex:none;width:16px;height:16px;border:none;background:transparent;color:#aab2c0;
   cursor:pointer;border-radius:4px;font-size:13px;line-height:1;padding:0;display:grid;place-items:center}
+/* 分药时打的勾（2026-11-19 用户：「每个药的后边再加一个选择框，方便确定哪种药分完了」）。
+   只是这一屏的临时标记 —— 不存档、刷新就全清（见 boxDone）。
+   勾上之后整颗药变淡：一屏格子扫过去，深着的就是还没分的。
+   ★ 视觉用 scale 放大到 ~18px，但布局还是 16px —— 7 格时每格只剩 80px 内宽，
+     真给 20px 会把药名挤成两行。 */
+.chip .dk{flex:none;width:16px;height:16px;margin:0;align-self:center;
+  accent-color:var(--brand);cursor:pointer;transform:scale(1.15)}
+.chip.done{opacity:.5}
 .chip .x:hover{background:#e8edf5;color:var(--out)}
 .box-foot{margin-top:8px;font-size:11.5px;color:var(--faint)}
 
@@ -2221,6 +2229,24 @@ function findMed(id){
   return null;
 }
 
+/* 分药时打的那个勾：「这味分好了」。
+   ★ 只活在这一屏 —— 不进存档、刷新就全清（用户 2026-11-19：「这个就是临时的框，
+     刷新之后就不用再显示了」）。所以它是模块里的一个普通对象，不是 person 上的字段。
+   ★ 按**药**记，不按格子记：一味药常常同时在早/中/晚三格里，分完这一瓶
+     就该三处一起打勾，而不是勾三次。 */
+let boxDone = {};
+
+// 一味药的勾变了：只改它自己那几处（同一味药可能出现在好几格），不整块重画 ——
+// 重画会把格子上的落点高亮和滚动位置一起冲掉。
+function syncBoxDone(id){
+  $$('#box .chip').forEach(function(c){
+    if(c.getAttribute('data-med') !== id) return;
+    c.classList.toggle('done', !!boxDone[id]);
+    const ck = c.querySelector('input.dk');
+    if(ck) ck.checked = !!boxDone[id];
+  });
+}
+
 // 剂量写法：1 片 / 0.5 片 / 2 粒。0 的话不写（老存档里可能没有 perDose）
 function doseText(m){
   const d = num(m.perDose);
@@ -2232,10 +2258,14 @@ function chipDose(m){
 }
 
 function chipHTML(m, slotIdx){
-  return '<div class="chip" data-med="' + m.id + '" data-from="' + slotIdx + '"'
+  const done = !!boxDone[m.id];
+  return '<div class="chip' + (done ? ' done' : '') + '" data-med="' + m.id + '" data-from="' + slotIdx + '"'
     +   ' data-lv="' + level(m) + '" title="' + esc(m.name) + '（拖到别的格 = 搬过去）">'
     +   '<span class="nm">' + esc(m.name) + '</span>'
     +   (chipDose(m) ? '<span class="dose">' + chipDose(m) + '</span>' : '')
+    // 分药用的临时勾：勾上 = 这一味已经分进格子了（刷新就清空，不存档）
+    +   '<input type="checkbox" class="dk" data-done="' + m.id + '"' + (done ? ' checked' : '')
+    +     ' aria-label="「' + esc(m.name) + '」分好了" title="这味分好了（只是打个勾，刷新就清空）">'
     +   '<button class="x" data-del="' + slotIdx + '" data-id="' + m.id + '"'
     +     ' aria-label="从这一格拿出来" title="从这一格拿出来">×</button>'
     + '</div>';
@@ -2390,6 +2420,14 @@ function renderBox(){
       const d = ctl.getAttribute('data-box') === 'inc' ? 1 : -1;
       setSlotCount(curBox().slots.length + d);
     }
+  };
+  // 分药的勾：勾 / 取消勾。只记在内存里（见 boxDone），save() 都不会碰它。
+  el.onchange = function(e){
+    const ck = (e.target && e.target.closest) ? e.target.closest('input[data-done]') : null;
+    if(!ck) return;
+    const id = ck.getAttribute('data-done');
+    if(ck.checked) boxDone[id] = 1; else delete boxDone[id];
+    syncBoxDone(id);
   };
   el.ondblclick = function(e){
     const nm = e.target.closest('[data-slotname]');

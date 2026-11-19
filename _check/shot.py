@@ -83,6 +83,24 @@ HOOKS = {
            " document.head.appendChild(st);"
            " var bs = curStage(); if(bs.indexOf(meds[1].id) < 0) bs.push(meds[1].id);"
            " save(); renderBox();",
+    # ★ 2026-11-19：药盒里每味药多了个「分好了」的勾。这张挑一味**同时在两格**里的
+    #   （葡萄糖酸钙：午饭前 + 晚饭后）勾上 —— 一眼能看出勾是按药记的，两格一起变淡。
+    "boxdone": "var st2 = document.createElement('style');"
+               " st2.textContent = '.top,.people,.stats,#warn,.panel-h,#list,.col-side,.foot-sig{display:none !important}'"
+               " + '.cols{grid-template-columns:1fr}';"
+               " document.head.appendChild(st2);"
+               " save(); boxDone[meds[2].id] = 1; renderBox();",
+    # ★ 2026-11-19：最挤的情况 —— 390 宽手机 + 7 格，每格只剩 80px 内宽。
+    #   加了个勾选框之后药名会不会被挤成三行、或者框被挤出去，这张专门看这个。
+    "mbox7": "var st3 = document.createElement('style');"
+             " st3.textContent = '.top,.people,.stats,#warn,.panel-h,#list,.col-side,.foot-sig{display:none !important}'"
+             " + '.cols{grid-template-columns:1fr}';"
+             " document.head.appendChild(st3);"
+             " var b7 = curBox(); b7.slots = defaultSlots(7);"
+             " [0,1,2,3].forEach(function(k){ if(meds[k]) b7.slots[k].ids = [meds[k].id]; });"
+             " if(meds[2]) b7.slots[4].ids = [meds[2].id];"
+             " b7.slots[0].name = '早饭后'; b7.slots[1].name = '午饭前';"
+             " save(); renderBox();",
     # ★ 全家偏少（2026-10-23 新增）：跨人聚合页。演示数据里只有「我」一个人，
     #   这里临时加一位「妈妈」，好让「按人分组」这件事在图上看得见 ——
     #   只加在这一张里，主页那张（main）不受影响。
@@ -285,7 +303,7 @@ HOOKS = {
 SIZE = {"rx": "1240,1340", "rxparsed": "1240,1430",
         "rxaudit": "1240,1420", "rxuse": "1240,1320",
         "main": "1240,2160", "picked": "1240,1560", "io": "820,420", "edit": "820,700",
-        "prnedit": "820,700", "box": "820,372", "fam": "1240,1010",
+        "prnedit": "820,700", "box": "820,372", "boxdone": "820,372", "mbox7": "390,900", "fam": "1240,1010",
         # 引导式三张：一步只有一格，弹窗比原来矮多了（原来整张表要 1300 才装得下）
         "wiz1": "820,560", "wiz4": "820,660", "wizset": "820,600",
         "stockdays": "820,700",        # 全家汇总：8 行（合并后 8 种）× 约 78px + 头尾，1040 会把脚注切掉

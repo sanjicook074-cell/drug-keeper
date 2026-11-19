@@ -983,6 +983,57 @@ PROBE = r"""
     ck('收走台面不动已经摆好的那一格', nameIn(0, '晚饭后胶囊'), slotIds(0).length);
   })();
 
+  /* ---------------- 19. 分药时打的勾（2026-11-19 用户要求）----------------
+     原话：「药盒这里，每一个药的后边再加一个选择框，方便在分药的时候能够确定
+            哪种药已经分完了、哪种药还没有分。这个就是临时的框，刷新之后就不用再显示了」。
+     钉四件事：① 每颗药后面都有框；② 按**药**记 —— 一味药在两个格里，勾一处两处一起勾；
+               ③ 勾了不动库存、不带动别的药；④ 不进存档（重画还在、刷新就没）。 */
+  fixture();
+  var mEarly = byName('早饭前片'), mLate = byName('晚饭后胶囊');
+  curBox().slots[0].ids = [mEarly.id];                 // 早饭前片摆两格
+  curBox().slots[1].ids = [mEarly.id, mLate.id];       // 晚饭后胶囊摆一格
+  save(); render();
+
+  function doneChips(id){ return qa('#box .chip[data-med="' + id + '"]'); }
+  function doneCk(id){ return doneChips(id).map(function(c){ return c.querySelector('input.dk'); }); }
+
+  ck('每颗药后面都有一个勾选框（芯片数 = 框数）',
+     qa('#box .chip').length > 0 && qa('#box .chip').length === qa('#box .chip input.dk').length,
+     qa('#box .chip').length + ' 颗 / ' + qa('#box .chip input.dk').length + ' 个框');
+  ck('刚打开时一个都没勾（临时标记不该自己亮）',
+     qa('#box .chip input.dk:checked').length === 0, qa('#box .chip input.dk:checked').length);
+
+  var dk0 = doneCk(mEarly.id)[0];
+  dk0.checked = true;
+  dk0.dispatchEvent(new Event('change', { bubbles: true }));
+  ck('勾一处 → 这味药在两格里都变淡（按药记，不是按格子记）',
+     doneChips(mEarly.id).length === 2
+       && doneChips(mEarly.id).every(function(c){ return c.classList.contains('done'); }),
+     doneChips(mEarly.id).map(function(c){ return c.className; }).join(' | '));
+  ck('另一格的框也跟着勾上了（不然会以为是两件事）',
+     doneCk(mEarly.id).every(function(c){ return c.checked; }), '');
+  ck('别的药没被带上', !doneChips(mLate.id)[0].classList.contains('done'),
+     doneChips(mLate.id)[0].className);
+  ck('勾一下不动库存', byName('早饭前片').stockBase === 30, byName('早饭前片').stockBase);
+  ck('勾着的时候重画页面，勾还在（说明它是内存态、不是画一次就丢的）',
+     (function(){ render(); return doneChips(mEarly.id).every(function(c){
+        return c.classList.contains('done'); }); })(), '');
+
+  var dk1 = doneCk(mEarly.id)[1];
+  dk1.checked = false;
+  dk1.dispatchEvent(new Event('change', { bubbles: true }));
+  ck('再点一次就取消，两格一起恢复',
+     doneChips(mEarly.id).every(function(c){ return !c.classList.contains('done'); }), '');
+
+  // 不进存档：勾上是"这一屏的事"，换设备 / 刷新都不该带着
+  doneCk(mEarly.id)[0].checked = true;
+  doneCk(mEarly.id)[0].dispatchEvent(new Event('change', { bubbles: true }));
+  save();
+  var rawSave = localStorage.getItem(LS_DATA) || '';
+  ck('★ 勾选中不进存档（刷新就清空）',
+     rawSave.indexOf('boxDone') < 0 && JSON.stringify(people).indexOf('boxDone') < 0,
+     '存档 ' + rawSave.length + ' 字符里没有 boxDone');
+
   /* ---------------- 20. 通用弹窗本身 ---------------- */
   // 用户 2026-10-23 原话：「点删除之后 应该是弹窗来确认 而不是由页面默认方式来实现
   //   所有的类似的确认弹窗 都应该是独立的弹窗而不是默认」。
