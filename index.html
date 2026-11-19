@@ -402,6 +402,18 @@ body.dragging .med:hover,body.dragging .chip:hover{box-shadow:none}
   border:1px solid var(--line-2);font-size:12px;line-height:1.65;color:#4a5262}
 .rq-note[hidden]{display:none}
 .rq-note b{color:#334155;font-weight:650}
+/* 清单里的每一行：序号 / 药名 …… 依据。依据靠右、用正文字体，别跟等宽的药名抢 */
+.refill .rq-line{display:flex;align-items:baseline;gap:6px;padding:1px 0}
+.refill .rq-n{color:var(--faint);min-width:17px;flex:none}
+.refill .rq-name{flex:1;min-width:0;word-break:break-word}
+.refill .rq-why{margin-left:auto;font-style:normal;white-space:nowrap;flex:none;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:11.5px;color:var(--faint);padding-left:8px}
+.refill .rq-head{color:var(--muted)}
+/* 窄屏放不下"剩 X 天 · 上限 Y 天"就换到下一行，别把药名挤成一列 */
+@media (max-width:420px){
+  .refill .rq-why{white-space:normal;font-size:11px}
+}
 /* 药名后面那个星：颜色要压得住灰底、字号别缩 —— 缩了在 12.5px 的等宽字体里就是一个小点，
    等于没加（第一版试过 .92em + 上标，放大三倍才看得见） */
 .rstar{font-style:normal;color:#c2410c;font-weight:700;margin-left:3px;font-size:1em;
@@ -1192,12 +1204,13 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 
         <section class="wstep" data-wstep="limit" data-name="开药天数">
           <div class="sec-title" id="secRxLimit">开药限制</div>
-          <label class="full" id="rxMaxLabel"><span class="lb">一次最多能开几天<b class="req">*</b></span>
-            <input name="rxMax" type="number" step="1" min="1" autocomplete="off" placeholder="如 30"
-                   required data-wlabel="一次最多能开几天" data-wmin="1" data-wmsg="一次能开几天，至少填 1">
+          <label class="full" id="rxMaxLabel"><span class="lb">一次最多能开几天<span class="opt">选填</span></span>
+            <input name="rxMax" type="number" step="1" min="1" autocomplete="off" placeholder="不填就判不了"
+                   data-wlabel="一次最多能开几天" data-wmin="1" data-wmsg="一次能开几天，至少填 1">
             <span class="hintline">医生单次处方最多能给几天 —— 填<b>天数</b>，不填片数；
               程序按你填的用法换算成数量：<b id="rxConv">—</b>。
-              它决定一次挂号能拿多少、要跑几趟，不能空着。拿不准就照上次开的那几天填。</span>
+              <b>自购药一般没有这一项，可以留空</b> —— 留空时程序算不出"一个周期"该开多少，
+              就<b>判断不了这趟该不该开</b>，清单里给这味挂个星，剩多少你自己看一眼。</span>
           </label>
         </section>
 
@@ -3064,6 +3077,14 @@ function cardHTML(m){
         : '<span class="med-pick" aria-hidden="true"></span>')
   +     '<div style="min-width:0;flex:1">'
   +       '<div class="med-name">' + esc(m.name)
+  /* ★ 2026-11-19 追加：没填上限的药，卡片药名后面也挂这个星。
+     起因是用户打开线上只看到"提示没了"，星号一个都没见着 —— 因为星原本只长在清单里，
+     而这类药一旦被医保锁着就根本不在清单上，星自然落不到它身上。
+     卡片是这页最显眼的地方，挂在这儿"哪个药判不了"一眼就能扫出来。
+     ★ 备用药不挂（它本来就没有"一个周期"这回事，挂上等于说它缺信息）。 */
+  +         (!isPrn(m) && noCap(m)
+              ? '<i class="rstar" title="没填「一次最多能开几天」——程序算不出一个周期该开多少，判不了这趟该不该开">*</i>'
+              : '')
   +         ' <span class="tag ' + lv + '">' + LEVEL_LABEL[lv] + '</span>' + miBadge(m) + '</div>'
   +       (m.spec ? '<div class="med-spec">' + esc(m.spec) + '</div>' : '')
   +     '</div>'
@@ -3115,12 +3136,17 @@ function prnCardHTML(m){
   + '</div>';
 }
 
-/* 这味药有没有「一个周期」这把尺子。
-   没填「一次最多能开几天」→ rxCapDays 是 Infinity → 判不了这趟该不该开（见 shortNow 的兜底）。
-   界面上这类药名后面挂一个星号，清单下面解释为什么判不了（2026-11-19 用户要求）。
-   ★ 判据只认 rxCapDays：老存档没有 rxMaxDay 标记的那个数也能折成天数，同样算"有尺子"；
-     没填用法（dailyUse = 0）的老存档折不出来 → 当然也判不了，一起上星。 */
-function noCap(m){ return !isFinite(rxCapDays(m)); }
+/* 这味药有没有「一个周期」这把尺子 —— 没有就判不了这趟该不该开，界面上挂星号。
+   两种算"没有"：
+     ① 压根没填（rxMax = 0）→ rxCapDays 是 Infinity。自购药基本都是这种，
+        用户 2026-11-19 原话：「这个一次最多能开几天，这个它不是必选项。特别是对于这个自己
+        购买的。那就没有这一个属性嘛」—— 所以这一格已经从必填改成选填。
+     ② 老存档里那个数是**片数**（没有 rxMaxDay 标记）。程序能拿它 ÷ 每天用量折成天数，
+        但那是算出来的、不是填进去的：每天用量一改（或当初就填错），这个"上限"跟着错。
+        这种也不算"有尺子"。⚠️ 编辑页会把折算结果填进那格给人看 —— 看见 30 不代表填过 30 天。
+   没填用法（dailyUse = 0）的老存档折不出来，同理判不了，一起上星。
+   ★ 备用药永远 rxMax = 0，但它压根不进清单；卡片上单独排除（见 cardHTML）。 */
+function noCap(m){ return !isFinite(rxCapDays(m)) || !rxMaxIsDay(m); }
 
 // 可以开的药清单：只有药名。
 // ★ 这段会被直接粘进小程序的问诊框当话发出去，所以不放「就诊人：」「生成日期」「用法用量以医师处方为准」
@@ -3142,19 +3168,37 @@ function refillItems(){
   return meds.filter(inRefill).sort(function(a, b){ return daysLeft(a) - daysLeft(b); });
 }
 
-// 显示用的清单（带星号）。复制/下载走 buildRefillText()，那条路永远不带星 ——
-// 星是给人自己看的记号，医生不知道那是什么，粘进问诊框只会多一个看不懂的符号。
-// ★ 用 innerHTML 而不是 textContent，是因为星要单独上色、还要能和药名区分开；
+// 清单里每味后面那句"为什么它在清单里"。
+// 2026-11-19 加：用户拿他自己的备份数据问「这两味是解释不了的」——
+// 卡片上写着「充足」、右边清单里却列着它，两处对不上，界面上没有一句话交代得清。
+// 把依据摆出来（剩几天 / 上限几天），"剩 28 天 < 上限 30 天"自己就说明白了。
+function refillWhy(m){
+  const dl = fmtDays(daysLeft(m));
+  // 判不了的那档写「上限不明」，不写折算出来的天数 —— 否则同一行里"上限 30 天"和星号
+  // 说的"没这个数"自相矛盾，比不写更糟。
+  return '剩 ' + dl + ' 天 · ' + (noCap(m) ? '上限不明' : '上限 ' + fmtDays(rxCapDays(m)) + ' 天');
+}
+
+// 显示用的清单。复制/下载走 buildRefillText()，那条路只有药名 ——
+// 星号和依据都是给人自己看的，医生不知道那是什么，粘进问诊框只会多两个看不懂的符号。
+// ★ 用 innerHTML 而不是 textContent：星要单独上色、依据要靠右对齐，纯文本做不到。
 //   药名必须先 esc —— 药名是用户自己敲的，里面完全可能有 < > &。
 function buildRefillHTML(){
   const items = refillItems();
-  const L = ['可以开的药清单：'];
+  const L = ['<div class="rq-head">可以开的药清单：</div>'];
   items.forEach(function(m, i){
-    L.push((i + 1) + '. ' + esc(m.name)
-      + (noCap(m) ? '<i class="rstar" title="没填「一次最多能开几天」，判不了该不该开">*</i>' : ''));
+    L.push('<div class="rq-line">'
+      + '<span class="rq-n">' + (i + 1) + '.</span>'
+      + '<span class="rq-name">' + esc(m.name)
+      +   (noCap(m)
+            ? '<i class="rstar" title="没有「一次最多能开几天」这个数，程序判不了该不该开">*</i>'
+            : '')
+      + '</span>'
+      + '<em class="rq-why">' + refillWhy(m) + '</em>'
+      + '</div>');
   });
-  L.push('谢谢~');
-  return L.join('\n');
+  L.push('<div class="rq-foot">谢谢~</div>');
+  return L.join('');
 }
 
 // 复制 / 下载用：情况 + 要开的药，合成一段可以直接粘进问诊框的话
@@ -3207,8 +3251,8 @@ function renderRefill(){
   if(sEl){
     sEl.hidden = !starN;
     sEl.innerHTML = starN
-      ? '<i class="rstar">*</i> 带星号的 ' + starN + ' 味没填「一次最多能开几天」——'
-        + '程序算不出一个周期该开多少，<b>没法判断这趟该不该开</b>，剩多少你自己看一眼。'
+      ? '<i class="rstar">*</i> 带星号的 ' + starN + ' 味没有「一次最多能开几天」这个数'
+        + '（没填，或者填的是片数）——<b>程序判断不了这趟该不该开</b>，剩多少你自己看一眼。'
       : '';
   }
 
@@ -3575,19 +3619,21 @@ function openEditor(id){
       pre: String(preQty)
     };
     f.stockBase.value = preQty;
-    // 「一次最多能开几天」现在是必填，所以老存档里 rxMax=0（旧的「不限」）要留空让人补填，
-    // 并换一句 placeholder 说明为什么这格是空的 —— 不然看着像 bug。
-    // 备用药用不上这一格（它不按天数补货），留着空即可。
+    // 「一次最多能开几天」2026-11-19 起是**选填**（自购药本来就没这一项），空着是正常状态，
+    // 不再用 placeholder 喊"请填一个上限"。
+    // 备用药用不上这一格（它不按天数补货）。
     // ★ 老存档那个数是**数量**（没有 rxMaxDay 标记），这格现在按天显示 → 当场换算给人看，
     //   不写回存档。换算除不尽就取整，反正保存时落在用户眼前这个数上。
+    //   ⚠️ 但换算出来的只是"给人看的参考值"：判不判得了看的是 rxMaxIsDay（见 noCap），
+    //   这里显示 30 不代表"用户填过 30 天"。
     const rxv = num(m.rxMax);
     if(rxv > 0){
       const pd = dailyUse(m);
       f.rxMax.value = (rxMaxIsDay(m) || !(pd > 0)) ? rxv : Math.max(1, Math.round(rxv / pd));
-      f.rxMax.placeholder = '如 30';
+      f.rxMax.placeholder = rxMaxIsDay(m) ? '如 30' : '旧数据：折成天数显示';
     } else {
       f.rxMax.value = '';
-      f.rxMax.placeholder = isPrn(m) ? '备用药用不上这格' : '原来是不限，请填一个上限';
+      f.rxMax.placeholder = isPrn(m) ? '备用药用不上这格' : '不填就判不了';
     }
     f.note.value = m.note || '';
     f.ins.value = miIsMI(m) ? 'mi' : 'self';
@@ -3638,7 +3684,7 @@ function syncKindUI(){
     : '单位可填 片 / 粒 / ml / 支 / 袋 —— <b>这一行四格都是必填</b>';
   $('#reqLegend').innerHTML = prn
     ? '<b class="req">*</b> 为必填；备用药只要<b>名称</b>、<b>单位</b>、<b>余量</b>'
-    : '<b class="req">*</b> 为必填；只有<b>规格</b>、<b>备注</b>两格可以留空。';
+    : '<b class="req">*</b> 为必填；<b>规格</b>、<b>备注</b>、<b>一次最多能开几天</b>可以留空。';
   // 日期不再让人填了，这句只要说清「这格问的是今天还剩多少」。
   // 编辑时这格是**按用法扣到今天**预填好的 —— 不点破的话，看见 13 片会以为自己填错了。
   // ★ 2026-11-19：这行文案改由 syncStockConv() 按「按数量 / 按天数」和当前用法生成，
@@ -3649,7 +3695,10 @@ function syncKindUI(){
   f.perDose.required = !prn;
   f.cycleDays.required = !prn;
   f.timesPerCycle.required = !prn;
-  f.rxMax.required = !prn;
+  // ★ 2026-11-19 用户原话：「这个一次最多能开几天，这个它不是必选项。特别是对于这个自己
+  //   购买的。那就没有这一个属性嘛」—— 自购药本来就不受处方限量约束，所以这一格改成选填。
+  //   留空（存 0）就让 rxCapDays 返回 Infinity，清单里给这味挂星 + 明说判不了（见 noCap）。
+  f.rxMax.required = false;
 
   // 备用药用不上「一次最多能开几天」，那一步干脆整步跳过 ——
   // 不然走到那儿是一格灰的、还要人点「下一步」才放行。
@@ -3774,7 +3823,6 @@ async function submitMed(e){
   }
   // 余量可以填 0（刚好吃完），但不能空着
   if((f.stockBase.value || '').trim() === '' || !(stockBase >= 0)) miss.push('余量（填 0 可以，但不能空）');
-  if(!prn && !(rxMax > 0)) miss.push('一次最多能开几天（要大于 0）');
   if(miss.length){
     await askAlert({
       title: '还有几项没填',

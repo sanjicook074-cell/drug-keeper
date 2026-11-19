@@ -257,10 +257,14 @@ PROBE = r"""
   fmed.kind.value = 'daily'; syncKindUI();
   ck('切回「每天吃」→ 那几格重新显示', q('#doseCycleWrap').style.display === 'contents',
      q('#doseCycleWrap').style.display);
-  ck('切回「每天吃」→ 开药限制那格重新显示并要求必填',
-     q('#rxMaxLabel').style.display !== 'none' && fmed.rxMax.required === true,
+  // ★ 2026-11-19：上限改成选填（自购药没有这一项），所以这里只验"那格回来了"，
+  //   不再要求 required —— 断言跟着改，别让它变成"必须必填"的回潮守卫。
+  ck('切回「每天吃」→ 开药限制那格重新显示（但已是选填）',
+     q('#rxMaxLabel').style.display !== 'none' && fmed.rxMax.required === false,
      q('#rxMaxLabel').style.display + ' / ' + fmed.rxMax.required);
-  ck('切回「每天吃」→ 必填说明也切回去', /只有/.test(q('#reqLegend').textContent),
+  ck('切回「每天吃」→ 说明里点明上限可以留空',
+     /一次最多能开几天/.test(q('#reqLegend').textContent)
+       && /留空/.test(q('#reqLegend').textContent),
      q('#reqLegend').textContent);
   q('#dlgMed').close();
 
@@ -309,10 +313,10 @@ PROBE = r"""
      R.alerts[R.alerts.length - 1]);
   q('#dlgMed').close();
 
-  // ---- 7. 回归：每天吃的药那条必填口径一点没松 ----
+  // ---- 7. 每天吃的那几格：用法仍必填，上限已经改成选填 ----
   openEditor(null);
-  ck('新增（默认每天吃）→ 整表不合法（开药上限空着）',
-     q('#formMed').checkValidity() === false, q('#formMed').checkValidity());
+  ck('新增（默认每天吃）→ 开药上限那格已经不是 required',
+     fmed.rxMax.required === false, String(fmed.rxMax.required));
   fmed.name.value = '回归用片';
   fmed.unit.value = '片';
   fmed.perDose.value = 1;
@@ -320,19 +324,29 @@ PROBE = r"""
   fmed.timesPerCycle.value = 1;
   fmed.stockBase.value = 1;
   fmed.rxMax.value = '';
-  var n3 = meds.length, al2 = R.alerts.length;
-  submitMed({ preventDefault: function(){} });
-  ck('每天吃的缺开药上限 → 仍被拦下', meds.length === n3, meds.length - n3);
-  ck('提示仍是「一次最多能开几天」（2026-10-27 改成按天填）',
-     /一次最多能开几天/.test(R.alerts.slice(al2).join(' | ')), R.alerts[R.alerts.length - 1]);
-  // 每周期几次填 0（= 没设用法）→ 仍拦
+  // 其它格全填齐、上限留空 → 整表合法（原来会卡在"一次最多能开几天"）
+  ck('  其它格填齐 + 上限留空 → 整表合法', q('#formMed').checkValidity() === true,
+     q('#formMed').checkValidity());
   fmed.rxMax.value = '30';
+  // 每周期几次填 0（= 没设用法）→ 仍拦（这一条跟上限无关，口径没松）
   fmed.timesPerCycle.value = 0;
-  var al3 = R.alerts.length;
+  var n3 = meds.length, al3 = R.alerts.length;
   submitMed({ preventDefault: function(){} });
   ck('每天吃的「每周期几次」填 0 → 仍被拦下', meds.length === n3, meds.length - n3);
   ck('提示仍是「每周期几次（要大于 0）」',
      /每周期几次（要大于 0）/.test(R.alerts.slice(al3).join(' | ')), R.alerts[R.alerts.length - 1]);
+
+  // ★ 2026-11-19 用户原话：「这个一次最多能开几天，这个它不是必选项。特别是对于这个自己购买的。
+  //   那就没有这一个属性嘛」—— 上限空着能存，存成 0（＝没填），这味从此判不了、清单里带星。
+  fmed.timesPerCycle.value = 1;
+  fmed.rxMax.value = '';
+  submitMed({ preventDefault: function(){} });
+  ck('★ 开药上限空着也能存（已改成选填）', meds.length === n3 + 1, meds.length - n3);
+  var lastMed = meds[meds.length - 1];
+  ck('  存下去 rxMax = 0（就是"没填"，没替人补默认值）', lastMed.rxMax === 0, lastMed.rxMax);
+  ck('  这味从此判不了（noCap 为真）', noCap(lastMed) === true, String(noCap(lastMed)));
+  ck('  提示语里点出它"判不了"，不是当成填好了', /没填|判不了|不明/.test(
+       q('#refillText').textContent + q('#refillStar').textContent), '');
   q('#dlgMed').close();
 
   // ---- 8. 改类型：每天吃 → 备用药，同一味药换套口径 ----

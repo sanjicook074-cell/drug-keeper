@@ -686,9 +686,9 @@ PROBE = r"""
      q('#refillText').parentNode.querySelector('.blk-t').textContent);
   ck('★ 没填上限的那味药名后面挂了星', /没填上限片<i class="rstar"/.test(rHtml), rHtml.replace(/\n/g, ' / '));
   ck('  填了上限的那味不带星', rHtml.indexOf('填了上限片<i') < 0, rHtml.replace(/\n/g, ' / '));
-  ck('★ 星下面有解释，说清"没录上限 → 判不了该不该开"',
-     sBox.hidden === false && /没填「一次最多能开几天」/.test(sBox.textContent)
-       && /没法判断/.test(sBox.textContent),
+  ck('★ 星下面有解释，说清"没有这个数 → 判不了该不该开"',
+     sBox.hidden === false && /没有「一次最多能开几天」这个数/.test(sBox.textContent)
+       && /判断不了/.test(sBox.textContent),
      sBox.textContent.replace(/\s+/g, ' '));
   ck('  解释里点了星的数量（1 味）', /1\s*味/.test(sBox.textContent),
      sBox.textContent.replace(/\s+/g, ' '));
