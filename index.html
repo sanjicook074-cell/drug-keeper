@@ -2023,11 +2023,26 @@ function refillLine(m){
   const cap = rxCapDays(m);
   return isFinite(cap) ? cap : settings.alertDays;
 }
-function inRefill(m){
+
+/* 「这味现在真的缺」—— 只看数量/天数这一条，**不看医保锁**。
+   dl < 上限天数和「剩余片数 < 一次能开的片数」是同一个不等式（dl = 余量 ÷ 每天用量），
+   所以这里用天数比，跟卡片上那句「剩 N 天」是同一把尺子。
+   ★ 它和 inRefill 必须分开：锁着所以"不进清单" ≠ 锁着所以"不缺"。
+     入库后那句「有几种还没凑满一个周期」问的是后者，用错就把锁着的药从账里抹掉了。 */
+function shortNow(m){
   const dl = daysLeft(m);
   if(!isFinite(dl)) return false;
   const cap = rxCapDays(m);
   return isFinite(cap) ? dl < cap : dl <= settings.alertDays;
+}
+
+/* 进「要开的药」清单 = **缺** 且 **医保锁已经开了**。
+   用户 2026-11-19 原话：「这个要开的药的这个清单啊，一定是在这个医保锁已经解锁之后，
+   然后呢这个药品的这个剩余的数量小于这个一次能开的这个药量之后，才会显示在这个清单里。」
+   道理：锁着的时候这一趟用医保根本开不出来，列进去只会让人白跑一趟医院。
+   ★ 自费药 miLocked() 恒为 false —— 只有前半条在起作用，行为一点没变。 */
+function inRefill(m){
+  return shortNow(m) && !miLocked(m);
 }
 
 /* -------------------- 医保锁（2026-10-28 用户要求） --------------------
@@ -2202,7 +2217,10 @@ function sortedMeds(){
 function renderPeople(){
   const box = $('#people');
   box.innerHTML = people.map(function(p){
-    const need = p.meds.filter(inRefill).length;      // 该人有几种药该开了
+    // 该人有几种药该开了。★ 这里故意用 shortNow（缺就算），不用 inRefill：
+    // 清单不收医保锁着的药，但这个人**确实有药要处理**（自费买 / 等解锁），
+    // 提醒不该跟着清单一起消失 —— 那样锁着的那几味会一直没人管。
+    const need = p.meds.filter(shortNow).length;
     const active = (p.id === currentId);
     return '<button class="ptab' + (active ? ' active' : '') + '" data-pid="' + p.id + '"'
       + ' title="' + esc(p.name) + '（' + p.meds.length + ' 种药）">'
@@ -3107,11 +3125,17 @@ function renderRefill(){
   const txt = buildRefillText();
   // 有东西可输出就放开按钮：药名清单，或者只是写了「情况」
   const hasOut = !!txt || !!(who && who.note);
+  // 缺、但锁着 → 不在清单里（见 inRefill），所以"没有要开的药"得分两种说法：
+  // 「都还够吃」和「够该开了、可锁没开」完全是两件事，混成一句会让人以为药够用。
+  const held = meds.filter(function(m){ return miLocked(m) && shortNow(m); });
   const pre = $('#refillText');
   if(!txt){
     pre.className = 'refill empty-txt';
     pre.textContent = meds.length
-      ? '目前没有需要开的药。\n（剩的天数还够「一次最多能开几天」的，这趟开不下一个整周期，不列）'
+      ? (held.length
+          ? '目前没有能开出来的药。\n（' + held.length + ' 味已经该开了，但还在医保锁定期 ——'
+            + ' 锁着的不列进清单，解锁日见下面那行）'
+          : '目前没有需要开的药。\n（剩的天数还够「一次最多能开几天」的，这趟开不下一个整周期，不列）')
       : '这个人的药箱还是空的，\n添加药品后这里会自动列出该开的药。';
   } else {
     pre.className = 'refill';
@@ -3123,17 +3147,22 @@ function renderRefill(){
   const tipEl = $('#drugTip');
   tipEl.textContent = cnt ? cnt + ' 种' : '';
   tipEl.title = '剩余天数少于「一次最多能开几天」的药会列在这里（这趟正好开够一个周期）；'
-    + '没填上限的按提醒天数（' + settings.alertDays + ' 天）算。';
+    + '没填上限的按提醒天数（' + settings.alertDays + ' 天）算。'
+    + '另外，医保锁没开的药不进清单 —— 那趟用医保开不出来。';
 
-  // 医保锁：这几味虽然该开了，但还在锁定期 —— 这一趟用医保开不出来，得先说清楚，
-  // 否则人跑一趟医院才发现开不了。只提示**这条清单里的**，锁着但不缺的药不占版面。
-  const locked = refillItems().filter(miLocked);
+  /* 医保锁：缺、但锁着 → **不进清单**（2026-11-19 用户要求），可也不能让它悄悄消失，
+     否则人会以为"药还够"。所以单独在清单下面点一句名，连解锁日一起给。
+     ★ 这里用的必须是 meds.filter(锁着 && 缺)，不能再写 refillItems().filter(锁着) ——
+       refillItems 已经不收锁着的了，那样筛出来永远是空的，整条提示会变成死代码。 */
+  const locked = meds.filter(function(m){ return miLocked(m) && shortNow(m); })
+    .sort(function(a, b){ return daysLeft(a) - daysLeft(b); });
   const itip = $('#insTip');
   if(itip){
     if(locked.length){
       const show = locked.slice(0, 3);
       itip.hidden = false;
-      itip.innerHTML = '🔒 这 <b>' + locked.length + '</b> 味还在医保锁定期，这一趟用医保开不了：'
+      itip.innerHTML = '🔒 另外 <b>' + locked.length + '</b> 味已经该开了，但还在医保锁定期，'
+        + '所以<b>没列进上面这份清单</b>（这一趟用医保开不出来）：'
         + show.map(function(m){
             return esc(m.name) + '（' + fmtMD(miUnlockDate(m)) + ' 解锁）';
           }).join('、')
@@ -4439,7 +4468,9 @@ async function submitDisp(e){
   save(); render();
   $('#dlgDisp').close();
 
-  const short = plan.filter(function(p){ return inRefill(p.m); }).length;
+  // ★ 这里问的是「补完之后还差多少」—— 用 shortNow，不是 inRefill：
+  //   刚入完库的药可能又上了医保锁，那不代表它"不差"（锁只管能不能再开，不管够不够吃）。
+  const short = plan.filter(function(p){ return shortNow(p.m); }).length;
   const skipped = live.length - plan.length;
   await askAlert({
     title: '已入库 ' + plan.length + ' 种药',

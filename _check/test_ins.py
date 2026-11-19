@@ -524,6 +524,89 @@ PROBE = r"""
   ck('  这一段的条数是 1 种', /1\s*种/.test(subText(0)), subText(0));
   reset();
 
+  /* ========= 12.5 清单只收「锁已开 + 数量确实不够」的（2026-11-19）=========
+     用户原话：「这个要开的药的这个清单啊，一定是在这个医保锁已经解锁之后，然后呢这个
+               药品的这个剩余的数量小于这个一次能开的这个药量之后，才会显示在这个清单里。」
+     两个条件都得满足，缺一不进；反过来说：
+       ① 医保锁着（离解锁日还早）、但确实快吃完了 → **不进**清单，
+          可也不能凭空消失：清单下面那行得点名 + 给解锁日，并且明说"没列进清单"；
+       ② 同样的药，只把开药日往前挪到解锁之后 → **自动进**清单（没有任何"手动加回"的动作，
+          因为锁是算出来的）；
+       ③ 自费药没有锁，行为一点不变（够该开就进）；
+       ④ 缺的都锁着时，空文案要说"没有能开出来的药"，不能写成"药还够"。
+     ★ 别改成"用 refillItems().filter(miLocked) 找提示对象"—— refillItems 已经不收锁着的了，
+       那样筛出来永远是空的，整条 🔒 提示会静默变成死代码（这条断言就是来拦这个的）。 */
+  reset();
+  var lockShort = mk({ name: '锁着且缺片', ins: 'mi', miStart: todayStr(), stock: 3 });
+  var selfShort = mk({ name: '自费且缺片', stock: 3 });
+  var poolOk    = mk({ name: '锁着但不缺片', ins: 'mi', miStart: todayStr(), stock: 200 });
+  render();
+
+  ck('★ 医保锁着、只剩 3 天的药不进「要开的药」清单',
+     refillItems().map(function(m){ return m.name; }).indexOf('锁着且缺片') < 0,
+     refillItems().map(function(m){ return m.name; }).join(' / ') || '(空)');
+  ck('  清单里只有自费那味（2 味缺、只收 1 味）',
+     refillItems().length === 1 && refillItems()[0].name === '自费且缺片',
+     refillItems().map(function(m){ return m.name; }).join(' / '));
+  ck('★ 复制/下载那段文字里也没有它（不然粘进问诊框还是白写）',
+     buildRefillText().indexOf('锁着且缺片') < 0 && buildRefillText().indexOf('自费且缺片') >= 0,
+     buildRefillText().replace(/\n/g, ' / '));
+  ck('  标题右边那个数也跟着只数 1 种', q('#drugTip').textContent === '1 种',
+     q('#drugTip').textContent);
+  ck('★ 锁着的这味在清单下面被点了名，还写了解锁日（不许静默消失）',
+     q('#insTip').hidden === false
+       && /锁着且缺片/.test(q('#insTip').textContent)
+       && /解锁/.test(q('#insTip').textContent),
+     q('#insTip').textContent.replace(/\s+/g, ' '));
+  ck('  那句提示明说「没列进上面这份清单」', /没列进上面这份清单/.test(q('#insTip').textContent),
+     q('#insTip').textContent.replace(/\s+/g, ' '));
+  ck('  锁着但不缺的那味两边都不出现（清单里没有、提示里也没有）',
+     buildRefillText().indexOf('锁着但不缺片') < 0
+       && (q('#insTip').textContent || '').indexOf('锁着但不缺片') < 0, '');
+  ck('  提示语里只数缺的（1 味，不含锁着但不缺的那味）',
+     /另外\s*1\s*味/.test(q('#insTip').textContent),
+     q('#insTip').textContent.replace(/\s+/g, ' '));
+
+  // ---- ② 只把开药日往前挪：锁自己开，清单自己收 ----
+  lockShort.miStart = agoD(30);           // 30 天前开的 → 解锁日已过
+  save(); render();
+  ck('★ 开药日挪到 30 天前 → 锁自己开了，这味自动进清单（没有"手动加回"这一步）',
+     !miLocked(byName('锁着且缺片'))
+       && refillItems().length === 2
+       && refillItems().map(function(m){ return m.name; }).indexOf('锁着且缺片') >= 0,
+     'locked=' + miLocked(byName('锁着且缺片'))
+       + ' / ' + refillItems().map(function(m){ return m.name; }).join(' / '));
+  ck('  进了清单，下面那条 🔒 提示也没了', q('#insTip').hidden === true,
+     String(q('#insTip').hidden));
+
+  // ---- ③ 自费药不受影响：锁对它恒为 false ----
+  ck('★ 自费药一直在清单里（它没有锁，规则只作用于医保）',
+     !miLocked(byName('自费且缺片'))
+       && refillItems().map(function(m){ return m.name; }).indexOf('自费且缺片') >= 0, '');
+
+  // ---- ④ 缺的都锁着：空文案得说清是"开不出来"，不是"药还够" ----
+  reset();
+  mk({ name: '全锁着片', ins: 'mi', miStart: todayStr(), stock: 2 });
+  render();
+  ck('全都锁着时清单是空的', refillItems().length === 0, refillItems().length);
+  ck('★ 但空文案说的是「没有能开出来的药」，并点明是医保锁的事',
+     /没有能开出来的药/.test(q('#refillText').textContent)
+       && /医保锁定期/.test(q('#refillText').textContent),
+     q('#refillText').textContent.replace(/\s+/g, ' '));
+  ck('  不会错写成「没有需要开的药」（那句会让人以为药还够）',
+     !/没有需要开的药/.test(q('#refillText').textContent),
+     q('#refillText').textContent.replace(/\s+/g, ' '));
+
+  // ---- 全都不缺时，仍然是那句"都还够吃" ----
+  reset();
+  mk({ name: '够吃片', stock: 200 });
+  render();
+  ck('药都够吃时回到原来那句（两个原因不能混为一谈）',
+     /没有需要开的药/.test(q('#refillText').textContent)
+       && !/没有能开出来的药/.test(q('#refillText').textContent),
+     q('#refillText').textContent.replace(/\s+/g, ' '));
+  reset();
+
   /* ================= 13. 全程不许走原生弹窗 ================= */
   ck('★ 整个过程一次都没走浏览器原生 alert / confirm / prompt',
      R.natives.length === 0, R.natives.join(' | ') || '(一次都没有)');
