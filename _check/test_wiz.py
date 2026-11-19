@@ -100,9 +100,27 @@ PROBE = r"""
   ck('图形是 8 段、亮在第 1 段', bar('formMed') === '8:1', bar('formMed'));
   ck('进度条分 8 段，第一段是当前段', dots('formMed').length === 8
      && dots('formMed')[0].className === 'now', dots('formMed').length + ' / ' + (dots('formMed')[0] || {}).className);
-  ck('第一步不显示「上一步」（但位置留着，按钮不乱挪）',
-     !prevB('formMed').classList.contains('can') && prevB('formMed').disabled === true,
-     prevB('formMed').className);
+  // ★ 2026-11-19 用户：「取消和后边那个确定，它中间空的距离太大了」。
+  //   病根是「上一步」用 visibility:hidden 占着位 —— 第一步只有两颗按钮，
+  //   中间却空出一整格。现在改成 display:none，两个可见按钮之间只剩 9px 的 gap。
+  var pb0 = prevB('formMed');
+  ck('第一步「上一步」不显示，而且是彻底不占位（display:none）',
+     !pb0.classList.contains('can') && getComputedStyle(pb0).display === 'none'
+       && pb0.disabled === true,
+     getComputedStyle(pb0).display + ' / ' + pb0.className);
+  ck('★ 第一步「取消」和「下一步」之间只剩 9px，没有隐形按钮撑开一大片',
+     (function(){
+       var cb = q('#formMed #btnCancel');
+       if(!cb) return false;
+       var gap = Math.round(nextB('formMed').getBoundingClientRect().left
+                          - cb.getBoundingClientRect().right);
+       return gap >= 0 && gap <= 14;
+     })(),
+     (function(){
+       var cb = q('#formMed #btnCancel');
+       return cb ? String(Math.round(nextB('formMed').getBoundingClientRect().left
+                                     - cb.getBoundingClientRect().right)) + 'px' : '没找到取消';
+     })());
   // 别的步骤是真的不在眼里，不是"挪到下面去了"
   ck('第二步那组单选此刻看不见', !visible(q('#kindRow')), String(visible(q('#kindRow'))));
   ck('「开药限制」那格此刻看不见', !visible(f.rxMax), String(visible(f.rxMax)));
@@ -353,6 +371,20 @@ PROBE = r"""
      stepOf('formNum') + ' / ' + bar('formNum'));
   ck('弹窗里只有数量那一格露着（自费/医保还没问）', visible(q('#numVal')) && !visible(q('#numIns')),
      visible(q('#numVal')) + ' / ' + visible(q('#numIns')));
+  // ★ 2026-11-19：这个弹窗第一步同样不该被隐形的「上一步」撑开
+  ck('★ 「又买了药」第一步：取消和「下一步」贴在一起（≤14px）',
+     (function(){
+       var cb = q('#btnNumCancel');
+       if(!cb) return false;
+       var gap = Math.round(nextB('formNum').getBoundingClientRect().left
+                          - cb.getBoundingClientRect().right);
+       return gap >= 0 && gap <= 14;
+     })(),
+     (function(){
+       var cb = q('#btnNumCancel');
+       return cb ? String(Math.round(nextB('formNum').getBoundingClientRect().left
+                                     - cb.getBoundingClientRect().right)) + 'px' : '没找到取消';
+     })());
   q('#numVal').value = '';
   tapNext('formNum');
   ck('数量空着点「下一步」→ 拦住并说明', stepOf('formNum') === 'val' && /先填/.test(errTxt('formNum')),

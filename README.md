@@ -884,7 +884,7 @@ android/AndroidManifest.xml  清单：连 INTERNET 权限都没有
 android/src/com/xiaotuji/drugkeeper/MainActivity.java  WebView + 返回键 + 剪贴板 + 写文件
 android/make_icon.py     画 App 图标（PIL 生成，不是手放的图）
 _check/test_app.py        Android 壳补丁的自检 —— 26 条（假造一个 window.AndroidApp，把「导出落盘 / 复制进剪贴板 / 返回键先关弹窗」这三条只有装了 App 才走的路真跑一遍；顺带验「导入导出」一个入口两项、顶栏那三个旧按钮确实没了；反面再验「没有 AndroidApp 时补丁整段不生效」）
-_check/test_wiz.py        引导式填写的自检 —— 91 条（三张表各自几步、一打开只露一步、进度栏只有图形与段数、「余量是哪天的」那格已删且**没动余量时基准不被改写**、**点哪段跳哪段**、这一格没填对就不让过且是就地红字不是弹窗、**回车 = 下一步而不是提交整张表**、备用药跳过「开药限制」、只有一格时进度栏不出现、走完 8 步存下来的每个字段、**「按数量 / 按天数」二选一填一个另一个当场算出来且只切 tab 不动值**、以及"字段一个没少 / name 一个没改"）
+_check/test_wiz.py        引导式填写的自检 —— 93 条（三张表各自几步、一打开只露一步、进度栏只有图形与段数、「余量是哪天的」那格已删且**没动余量时基准不被改写**、**点哪段跳哪段**、这一格没填对就不让过且是就地红字不是弹窗、**回车 = 下一步而不是提交整张表**、备用药跳过「开药限制」、只有一格时进度栏不出现、走完 8 步存下来的每个字段、**「按数量 / 按天数」二选一填一个另一个当场算出来且只切 tab 不动值**、**第一步「取消」和「下一步」之间只剩 9px 且隐形的「上一步」不再占位**、以及"字段一个没少 / name 一个没改"）
 _check/shot.py            重新生成 docs/ 里的截图（含 390×844 的手机版四张）
 docs/                     README 用的截图（每张都在上面被引用；没有没人看的图）
 LICENSE                   MIT，署名「人间小土鸡」
@@ -899,14 +899,14 @@ LICENSE                   MIT，署名「人间小土鸡」
 
 ```bash
 python _check/test_rxcap.py       # 网页本体：296 项
-python _check/test_prn.py         # 备用药那一类：91 项
+python _check/test_prn.py         # 备用药那一类：84 项
 python _check/test_box.py         # 药盒 + 未入清单 + 摆药台 + 拖拽 + 折行 + 单格删除 + 弹窗：191 项
 python _check/test_all.py         # 全家汇总（按药名合并 + 调总量补给余量最少的人）：74 项
 python _check/test_app.py         # Android 壳补丁（导出/复制/返回键）：26 项
 python _check/test_fam.py         # 全家偏少聚合页：50 项
 python _check/test_rx_tpl.py      # 底方提示词 + 只擦不解析的服药时间：60 项
 python _check/test_rx_local.py    # 本地解析工具：67 项（纯函数，跑得快）
-python _check/test_wiz.py         # 引导式填写（一次只问一件事）：91 项
+python _check/test_wiz.py         # 引导式填写（一次只问一件事）：93 项
 ```
 
 前者会用无头 Chrome 打开一份临时副本（数据由脚本临时注入，不会写回 `index.html`），

@@ -475,8 +475,14 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 /* 底部：进度栏在上，三个按钮在下 */
 .wizfoot{flex-direction:column;align-items:stretch;gap:11px}
 .wizbtns{display:flex;justify-content:flex-end;gap:9px}
-.wizbtns .btn[data-wiz=prev]{visibility:hidden}
-.wizbtns .btn[data-wiz=prev].can{visibility:visible}
+/* 第一步没有「上一步」，这个按钮就不该占位。
+   ★ 原来是 visibility:hidden —— 它把按钮位置稳住、免得第二步时按钮左右跳，
+     但代价是第一步的「取消」和「确定」中间空出一整格（2026-11-19 用户：
+     「取消和后边那个确定，它中间空的距离太大了」）。按这一下不跳，
+     不如少一块莫名其妙的空白 —— 改成 display:none，连带手机上的 flex:1
+     也只剩两个可见按钮均分，不会留一个空槽。 */
+.wizbtns .btn[data-wiz=prev]{display:none}
+.wizbtns .btn[data-wiz=prev].can{display:block}
 /* 进度栏只有图形，不写「第 3 步 / 共 8 步」——数是哪一步这件事，一段亮着的方块
    比一句话更快看懂，还省掉弹窗里的一整行高度。 */
 /* 进度条本身就是「点得动」的：一格一段，点哪段跳哪步 ——
@@ -2971,8 +2977,11 @@ function wizRender(w){
   w.all.forEach(function(s){ s.classList.toggle('on', s === cur); });
 
   w.dots.hidden = (n < 2);   // 只有一步时不画条：一整段全亮，什么也没说
-  // 第一步不显示「上一步」，但**留着位置**（visibility 而不是 hidden）：
-  // 否则底下按钮会左右挪一下，连点两下很容易点空。
+  // 第一步不显示「上一步」，而且**不占位置**（display:none，见 .wizbtns 那条注释）。
+  // 原来用的是 visibility:hidden，为的是按钮不左右挪 —— 但代价是第一步
+  // 「取消」和「下一步」中间空出一整格（2026-11-19 用户：「中间空的距离太大了」）。
+  // 其实主按钮本来就不会挪：.wizbtns 是 justify-content:flex-end，
+  // 最右那颗永远贴着右边缘，左边多出一颗「上一步」只是把「取消」往里挤。
   w.prev.classList.toggle('can', w.i > 0);
   w.prev.disabled = (w.i === 0);
   w.next.textContent = last ? (w.okText || '保存') : '下一步';
