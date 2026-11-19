@@ -171,6 +171,12 @@ HOOKS = {
     "wiz1": "openEditor(meds[2].id);",
     "wiz4": "openEditor(meds[2].id); wizGo(WIZ.formMed, 3);",
     "wizset": "openSettings();",
+    # ★ 2026-11-19 新增：余量改成「按数量 / 按天数」二选一。edit 那张拍的是默认的「按数量」，
+    #   这张切到「按天数」并填 30 天，把「填天数 → 数量当场算出来」的样子钉在图上。
+    "stockdays": "openEditor(meds[2].id); wizGo(WIZ.formMed, 4);"
+                 " document.querySelector('#stockPick .vpick-tab[data-vpick=days]').click();"
+                 " document.querySelector('#stockDays').value = '30';"
+                 " document.querySelector('#stockDays').dispatchEvent(new Event('input', { bubbles: true }));",
     # ★ 删除确认弹窗（2026-10-23 新增）。用户原话：「点删除之后 应该是弹窗来确认
     #   而不是由页面默认方式来实现 所有的类似的确认弹窗 都应该是独立的弹窗而不是默认」。
     #   拍这个是为了把三件东西钉在图上：
@@ -209,7 +215,8 @@ HOOKS = {
     #   2026-10-12 用户要求把那行实时对照删掉，所以这里只填数、不再调 renderNumCalc。
     #   顺手把输入框填成 28，拍的是「标题 + 说明 + 输入框 + 按钮」的干净形态。
     "restock": "restockMed(meds[2].id);"
-               " document.querySelector('#numVal').value = '28';",
+               " var _nv = document.querySelector('#numVal'); _nv.value = '28';"
+               " _nv.dispatchEvent(new Event('input', { bubbles: true }));",
     # ★ 校准余量：同一个弹窗的另一种模式，同样已无实时对照行（2026-10-12）。
     #   拍它是因为用户就是在这个弹窗里提的「不用 0.25 这一档」——留一张可核 step=1。
     "calib": "calibMed(meds[2].id);",
@@ -276,7 +283,7 @@ SIZE = {"rx": "1240,1340", "rxparsed": "1240,1430",
         "prnedit": "820,700", "box": "820,372", "fam": "1240,1010",
         # 引导式三张：一步只有一格，弹窗比原来矮多了（原来整张表要 1300 才装得下）
         "wiz1": "820,560", "wiz4": "820,660", "wizset": "820,600",
-        # 全家汇总：8 行（合并后 8 种）× 约 78px + 头尾，1040 会把脚注切掉
+        "stockdays": "820,700",        # 全家汇总：8 行（合并后 8 种）× 约 78px + 头尾，1040 会把脚注切掉
         "all": "1240,1180",
         # 医保锁特写：3 张卡片（约 165px）+ 两栏标题
         "milock": "820,760",

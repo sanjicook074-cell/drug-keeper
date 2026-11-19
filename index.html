@@ -547,6 +547,17 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 .num-ins input{accent-color:var(--brand);margin:0}
 .num-ins .hintline{flex-basis:100%;font-size:12px;color:var(--faint);line-height:1.5}
 .bulk-days .hintline{font-size:11.5px;color:var(--faint)}
+/* ---------- 余量：按数量 / 按天数 二选一（2026-11-19 用户要求） ----------
+   「编辑药品 / 又买了药 / 校准余量」三处共用这一套。填一个，另一个当场算出来。 */
+.vpick-tabs{display:flex;gap:6px;margin:0 0 12px}
+.vpick-tab{font:inherit;font-size:12.5px;line-height:1;padding:7px 13px;border-radius:999px;
+  border:1px solid var(--line);background:#fff;color:var(--muted);cursor:pointer}
+.vpick-tab:hover{border-color:#c7d2e5;color:#374151}
+.vpick-tab.on{border-color:var(--brand);background:rgba(37,99,235,.07);color:var(--brand);font-weight:600}
+.vpick-tab[hidden]{display:none}
+.vpick-f[hidden]{display:none}
+.vpick-f .hintline{font-size:11.5px;color:var(--faint);line-height:1.55}
+.vpick-f .hintline b{color:#374151;font-weight:680}
 .bulk-list{display:flex;flex-direction:column;gap:8px;max-height:44vh;overflow:auto}
 .bulk-after{flex:none;text-align:right;font-size:11.5px;color:var(--muted);line-height:1.5}
 .bulk-after b{font-size:14px;font-weight:660;color:#374151}
@@ -1030,13 +1041,29 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 
         <!-- 2026-10-28 用户要求：「添加药品里 这个余量是哪天的 这个给去掉 用不着显示这个」。
              基准日不再让人填 —— 你数出来的数就是今天的，日期由程序自己定：
-             新的药 = 今天；编辑时没动这一格 = 原来的基准日原样留着（见 submitMed）。 -->
+             新的药 = 今天；编辑时没动这一格 = 原来的基准日原样留着（见 submitMed）。
+             ★ 2026-11-19 用户要求：这一格改成**二选一** —— 要么填还剩多少片，
+               要么填还能吃几天，填了一个另一个当场算出来（见 setStockMode / syncStockConv）。
+               备用药不按天算，天数那一页对它整个隐藏。 -->
         <section class="wstep" data-wstep="stock" data-name="余量">
           <div class="sec-title">现在还剩多少</div>
-          <label class="full"><span class="lb">余量<b class="req">*</b></span>
-            <input name="stockBase" type="number" step="0.25" min="0" value="0" required data-wlabel="余量">
-            <span class="hintline" id="stockHint">填的是<b>今天</b>还剩多少</span>
-          </label>
+          <div class="vpick" id="stockPick">
+            <div class="vpick-tabs">
+              <button type="button" class="vpick-tab on" data-vpick="unit">按数量填</button>
+              <button type="button" class="vpick-tab" data-vpick="days" id="stockTabDays">按天数填</button>
+            </div>
+            <label class="full vpick-f" data-vpick-f="unit">
+              <span class="lb">今天还剩多少<b class="req">*</b></span>
+              <input name="stockBase" type="number" step="0.25" min="0" value="0" required data-wlabel="余量">
+              <span class="hintline" id="stockHint">填的是<b>今天</b>还剩多少</span>
+            </label>
+            <label class="full vpick-f" data-vpick-f="days" style="display:none">
+              <span class="lb">还能吃几天<b class="req">*</b></span>
+              <input name="stockDays" id="stockDays" type="number" step="0.1" min="0"
+                     autocomplete="off" disabled data-wlabel="天数">
+              <span class="hintline" id="stockDaysHint">按现在的用法换算成数量</span>
+            </label>
+          </div>
         </section>
 
         <section class="wstep" data-wstep="limit" data-name="开药天数">
@@ -1517,11 +1544,22 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
            先填数量，填完点「下一步」再问这笔的来路。
            校准余量只有一格，那一步就直接是最后一步，进度条也不出现（见 wizRender）。 -->
       <section class="wstep" data-wstep="val" data-name="数量">
-        <label class="bulk-days">
-          <span id="numLabel">数量</span>
-          <input name="val" id="numVal" type="number" step="1" min="0" autocomplete="off">
-          <span class="hintline" id="numHint"></span>
-        </label>
+        <div class="vpick" id="numPick">
+          <div class="vpick-tabs" id="numPickTabs">
+            <button type="button" class="vpick-tab on" data-npick="unit">按数量填</button>
+            <button type="button" class="vpick-tab" data-npick="days" id="numTabDays">按天数填</button>
+          </div>
+          <label class="bulk-days vpick-f" data-npick-f="unit">
+            <span id="numLabel">数量</span>
+            <input name="val" id="numVal" type="number" step="1" min="0" autocomplete="off">
+            <span class="hintline" id="numHint"></span>
+          </label>
+          <label class="bulk-days vpick-f" data-npick-f="days" style="display:none">
+            <span id="numDaysLabel">天数</span>
+            <input name="valDays" id="numDays" type="number" step="0.1" min="0" autocomplete="off" disabled>
+            <span class="hintline" id="numDaysHint"></span>
+          </label>
+        </div>
       </section>
       <!-- 「又买了药」时问一句这笔是自费还是医保（2026-10-28）。
            「校准余量」不是一次买药，不开这一块 —— 那是在把数字改对，不该动锁。 -->
@@ -2986,6 +3024,94 @@ function wizSkip(w, name, on){
   wizRender(w);
 }
 
+/* -------------------- 余量：按数量 / 按天数 二选一（2026-11-19 用户要求） --------------------
+   「编辑药品 / 又买了药 / 校准余量」原来都只能填数量（多少片）。用户要求改成二选一：
+   要么填还剩多少片，要么填还能吃几天，**填一个另一个当场算出来**。
+   ★ 换算只走一个口径：数量 = 天数 × 每天用量（dailyUse）。和卡片上「够吃几天」同一个数，
+     两边不会打架。
+   ★ 每天用量 <= 0 的药（备用药、或用法还没填完整）**没有天数这一档** ——
+     硬给备用药算「还能吃几天」，算出来是假的（项目简介里那句就是为这个写的）。
+   ★ 天数是平均口径，不是日历：每 14 天 1 支的药，3 支 = 42 天。
+   ⚠️ 两格永远同步着，界面只显示一格。`stockSrc / numSrc` 记的是
+     「你最后真正在哪个格里打了字」—— 提交时以它为准。这样「点一下 tab 看看天数、
+     什么也没改就提交」不会因为两次四舍五入把库存改掉（差 0.01 片也不行）。 */
+function qtyOfDays(days, rate){ return rate > 0 ? round2(Math.max(0, num(days)) * rate) : 0; }
+function daysOfQty(qty, rate){ return rate > 0 ? round2(Math.max(0, num(qty)) / rate) : 0; }
+
+/* ---- 编辑药品：余量那一节 ---- */
+let stockSrc = 'unit';           // 'unit' = 以数量为准，'days' = 以天数为准
+
+// 表单里「现在」的每天用量：跟着「怎么吃」那几格实时变，用的是屏幕上填的，不是存档里的
+function formRate(){
+  const f = $('#formMed');
+  if(f.kind && f.kind.value === 'prn') return 0;
+  return dailyUse({
+    kind: 'daily',
+    perDose: num(f.perDose.value, 1),
+    timesPerCycle: num(f.timesPerCycle.value, 1),
+    cycleDays: Math.max(1, Math.round(num(f.cycleDays.value, 1)) || 1)
+  });
+}
+
+// 切「按数量 / 按天数」：只换显示和必填归属，**不重算值**（两格本来就是同步的）
+function setStockMode(mode){
+  const f = $('#formMed');
+  const pick = $('#stockPick');
+  if(!pick || !f.stockBase || !f.stockDays) return;
+  const prn = f.kind && f.kind.value === 'prn';
+  if(prn){ mode = 'unit'; stockSrc = 'unit'; }   // 备用药只有数量这一档
+  $$('.vpick-tab', pick).forEach(function(b){
+    b.classList.toggle('on', b.getAttribute('data-vpick') === mode);
+  });
+  $$('.vpick-f', pick).forEach(function(el){
+    el.style.display = (el.getAttribute('data-vpick-f') === mode) ? '' : 'none';
+  });
+  // required 必须跟着走：两格在同一个 wstep 里，wizCheck 会把 required 的空格全部拦下。
+  // 不在场的那一格干脆 disabled —— 既不参与校验，也不会被浏览器当成空必填。
+  f.stockBase.disabled = (mode !== 'unit');
+  f.stockBase.required = (mode === 'unit');
+  f.stockDays.disabled = (mode !== 'days');
+  f.stockDays.required = (mode === 'days');
+}
+
+// 按 stockSrc 把另一格算出来，并在 hint 里写出换算结果
+function syncStockConv(){
+  const f = $('#formMed');
+  const pick = $('#stockPick');
+  if(!pick || !f.stockBase || !f.stockDays) return;
+  const prn = f.kind && f.kind.value === 'prn';
+  const rate = formRate();
+  const u = (f.unit.value || '').trim() || '片';
+  const hU = $('#stockHint'), hD = $('#stockDaysHint');
+  const rawU = String(f.stockBase.value == null ? '' : f.stockBase.value).trim();
+  const rawD = String(f.stockDays.value == null ? '' : f.stockDays.value).trim();
+
+  if(prn){
+    $('#stockTabDays').hidden = true;
+    if(hU) hU.innerHTML = '填的是<b>今天</b>还剩多少。备用药<b>不按天数扣</b>，这只是个数字';
+    if(hD) hD.textContent = '';
+    return;
+  }
+  $('#stockTabDays').hidden = false;
+
+  if(!(rate > 0)){
+    if(hU) hU.innerHTML = '填的是<b>今天</b>还剩多少 —— <b>用法还没填完整</b>，暂时算不出天数';
+    if(hD) hD.innerHTML = '用法还没填完整，先回去把「怎么吃」那几格填上';
+    return;
+  }
+  if(stockSrc === 'days'){
+    if(rawD !== '') f.stockBase.value = String(qtyOfDays(rawD, rate));
+  } else {
+    if(rawU !== '') f.stockDays.value = String(daysOfQty(rawU, rate));
+  }
+  const q = num(f.stockBase.value), dd = num(f.stockDays.value);
+  // 这两句必须短：hint 的宽度跟着输入框走（约 280px），太长会折成两行、第二行只剩半截。
+  if(hU) hU.innerHTML = '数出来是多少就填多少'
+    + (rawU !== '' || rawD !== '' ? '　·　够吃约 <b>' + fmtNum(dd) + '</b> 天' : '');
+  if(hD) hD.innerHTML = '＝ <b>' + fmtNum(q) + ' ' + esc(u) + '</b>　·　每天 <b>'
+    + fmtNum(rate) + '</b> ' + esc(u);
+}
+
 /* -------------------- 操作 -------------------- */
 // 打开编辑时记下「原来的基准」和「预填进去的值」，保存时用来判断你动没动这一节（见 submitMed）
 let editAnchor = null;
@@ -3049,6 +3175,10 @@ function openEditor(id){
   }
   syncKindUI();
   syncInsUI();
+  // 余量那一节：每次打开都从「按数量填」开始，两格的换算当场对齐一次
+  stockSrc = 'unit';
+  setStockMode('unit');
+  syncStockConv();
   wizReset(WIZ.formMed);        // 每次打开都从第一步开始（编辑也是），红字一并清掉
   $('#dlgMed').showModal();
   setTimeout(function(){ f.name.focus(); }, 30);
@@ -3079,11 +3209,9 @@ function syncKindUI(){
     ? '<b class="req">*</b> 为必填；备用药只要<b>名称</b>、<b>单位</b>、<b>余量</b>'
     : '<b class="req">*</b> 为必填；只有<b>规格</b>、<b>备注</b>两格可以留空。';
   // 日期不再让人填了，这句只要说清「这格问的是今天还剩多少」。
-  // 编辑时这格是**按用法扣到今天**预填好的 —— 不点破的话，看见 13 片会以为自己填错了；
-  // 备用药那句要跟着类型换：它不按天数扣，别说「往下扣」，会让人以为在倒计时。
-  $('#stockHint').innerHTML = prn
-    ? '填的是<b>今天</b>还剩多少。备用药<b>不按天数扣</b>，这只是个数字'
-    : '填的是<b>今天</b>还剩多少 —— 这格已经按用法扣到今天预填好了，数出来不一样就直接改';
+  // 编辑时这格是**按用法扣到今天**预填好的 —— 不点破的话，看见 13 片会以为自己填错了。
+  // ★ 2026-11-19：这行文案改由 syncStockConv() 按「按数量 / 按天数」和当前用法生成，
+  //   这里不再写死 —— 不然切到天数那一页时，底下还留着一句讲数量的旧话。
 
   // 必填开关：两套校验（HTML required + submitMed 里的 JS）都要跟着切，
   // 否则备用药会被那几格空的「每几天」卡住保存不了。
@@ -3095,6 +3223,10 @@ function syncKindUI(){
   // 备用药用不上「一次最多能开几天」，那一步干脆整步跳过 ——
   // 不然走到那儿是一格灰的、还要人点「下一步」才放行。
   wizSkip(WIZ.formMed, 'limit', prn);
+
+  // 备用药没有「还能吃几天」这一档 —— 换成备用药时把余量那节强制拉回「按数量」
+  setStockMode(stockSrc);
+  syncStockConv();
 
   syncRxConv();
   syncDosePreview();
@@ -3422,6 +3554,54 @@ function renderPeopleMgr(){
 //   **整行删掉**，只留标题/说明/输入框/按钮。所以下面不再有 renderNumCalc / #numCalc。
 //   ⚠️ 以后别再把它加回来 —— 用户明确嫌它啰嗦（和编辑弹窗那行蓝字同一次评审里砍掉的）。
 let numCtx = null;
+let numRate = 0;        // 这味药每天的用量（0 = 备用药、或用法没填全 → 没有天数这一档）
+let numSrc  = 'unit';   // 你最后真正在哪个格里打了字 —— 提交时以它为准
+
+// 切「按数量 / 按天数」。★ 只换显示和必填归属，**不改 src**：
+// 「点开天数看一眼、什么也没填就确定」时，仍按数量（精确值）提交，不会被两次四舍五入改掉。
+function setNumMode(mode){
+  const pick = $('#numPick');
+  if(!pick || !numCtx) return;
+  if(!(numRate > 0)){ mode = 'unit'; numSrc = 'unit'; }
+  $$('.vpick-tab', pick).forEach(function(b){
+    b.classList.toggle('on', b.getAttribute('data-npick') === mode);
+  });
+  $$('.vpick-f', pick).forEach(function(el){
+    el.style.display = (el.getAttribute('data-npick-f') === mode) ? '' : 'none';
+  });
+  const u = $('#numVal'), d = $('#numDays');
+  u.disabled = (mode !== 'unit');
+  u.required = (mode === 'unit');
+  d.disabled = (mode !== 'days');
+  d.required = (mode === 'days');
+}
+
+// 按 numSrc 把另一格算出来，并把换算写在 hint 里
+function syncNumConv(){
+  const u = $('#numVal'), d = $('#numDays');
+  if(!u || !d || !numCtx) return;
+  const unit = numCtx.unit || '片';
+  const base = numCtx.hint || '';
+  const rawU = String(u.value == null ? '' : u.value).trim();
+  const rawD = String(d.value == null ? '' : d.value).trim();
+  const hU = $('#numHint'), hD = $('#numDaysHint');
+
+  if(!(numRate > 0)){
+    if(hU) hU.textContent = base ? base + '　·　备用药不按天数算' : '备用药不按天数算，只记数量';
+    if(hD) hD.textContent = '';
+    return;
+  }
+  if(numSrc === 'days'){
+    if(rawD !== '') u.value = String(qtyOfDays(rawD, numRate));
+  } else {
+    if(rawU !== '') d.value = String(daysOfQty(rawU, numRate));
+  }
+  const q = num(u.value), dd = num(d.value);
+  const has = (rawU !== '' || rawD !== '');
+  if(hU) hU.textContent = base + (has ? '　·　≈ 够吃 ' + fmtNum(dd) + ' 天' : '');
+  if(hD) hD.textContent = '每天 ' + fmtNum(numRate) + ' ' + unit
+    + (has ? '　·　＝ ' + fmtNum(q) + ' ' + unit : '');
+}
 
 // 「这笔是自费还是医保」那行的小字：选医保就说清楚会锁到哪天，选自费就说清不动锁。
 function syncNumIns(){
@@ -3434,25 +3614,37 @@ function syncNumIns(){
 }
 
 function openNumDialog(o){
-  numCtx = o;                                   // { mode, onOk }（cur/unit 已不再参与显示）
+  numCtx  = o;                                  // { mode, unit, rate, hint, onOk }
+  numRate = num(o.rate);
+  numSrc  = 'unit';
   $('#numTitle').textContent = o.title;
   $('#numSub').textContent   = o.sub;
   $('#numLabel').textContent = o.label;
-  $('#numHint').textContent  = o.hint || '';
-  const inp = $('#numVal');
-  inp.value = (o.value == null) ? '' : String(o.value);
-  inp.min   = (o.min == null) ? 0 : o.min;
+  $('#numDaysLabel').textContent = o.daysLabel || '天数';
+  const inp  = $('#numVal');
+  const dinp = $('#numDays');
+  const v0   = (o.value == null || o.value === '') ? '' : String(o.value);
+  inp.value  = v0;
+  inp.min    = (o.min == null) ? 0 : o.min;
+  dinp.value = (v0 !== '' && numRate > 0) ? String(daysOfQty(v0, numRate)) : '';
+  dinp.min   = 0;
   // 引导式：这一格没填就点「下一步」→ 就地红字，不用等提交时才说。
   // 「又买了多少」还必须大于 0（下限用 data-wmin，因为 min="0" 只挡负数）。
-  inp.required = true;
   inp.setAttribute('data-wlabel', o.label);
+  dinp.setAttribute('data-wlabel', o.daysLabel || '天数');
   if(o.mode === 'add'){
     inp.setAttribute('data-wmin', '0.001');
     inp.setAttribute('data-wmsg', '要填一个大于 0 的数量');
+    dinp.setAttribute('data-wmin', '0.001');
+    dinp.setAttribute('data-wmsg', '要填一个大于 0 的天数');
   } else {
-    inp.removeAttribute('data-wmin');
-    inp.removeAttribute('data-wmsg');
+    inp.removeAttribute('data-wmin');  inp.removeAttribute('data-wmsg');
+    dinp.removeAttribute('data-wmin'); dinp.removeAttribute('data-wmsg');
   }
+  // 备用药 / 用法没填全 → 没有天数这一档，整颗 tab 都不摆
+  $('#numTabDays').hidden = !(numRate > 0);
+  setNumMode('unit');
+  syncNumConv();
   // 「又买了药」才问来源；「校准余量」不开这一块（那不是一次买药）
   const insBox = $('#numIns');
   if(insBox){
@@ -3478,18 +3670,26 @@ function openNumDialog(o){
 async function submitNum(e){
   e.preventDefault();
   if(!numCtx) return;
-  const v = Number($('#numVal').value);
-  if(!isFinite(v) || String($('#numVal').value).trim() === ''){
+  // 读「你最后打字的那一格」；天数模式当场按这味药的用法折成数量再交给调用方 ——
+  // 所以 restockMed / calibMed 那边完全不用知道用户是按天数填的。
+  const src = (numSrc === 'days' && numRate > 0) ? 'days' : 'unit';
+  const el  = (src === 'days') ? $('#numDays') : $('#numVal');
+  const raw = String(el.value == null ? '' : el.value).trim();
+  const shown = Number(raw.replace(',', '.'));
+  if(raw === '' || !isFinite(shown)){
     await askAlert({ title: '还没填数', sub: '这一格要填一个数字。' });
-    $('#numVal').focus();
+    el.focus();
     return;
   }
+  const v = (src === 'days') ? qtyOfDays(shown, numRate) : shown;
   if(numCtx.mode === 'add' ? v <= 0 : v < 0){
     await askAlert({
       title: '这个数不对',
-      sub: numCtx.mode === 'add' ? '又买了多少 —— 要填一个大于 0 的数量。' : '余量不能是负数，最少填 0。'
+      sub: numCtx.mode === 'add'
+        ? (src === 'days' ? '又买了多少 —— 天数要大于 0。' : '又买了多少 —— 要填一个大于 0 的数量。')
+        : (src === 'days' ? '天数不能是负数，最少填 0。' : '余量不能是负数，最少填 0。')
     });
-    $('#numVal').focus();
+    el.focus();
     return;
   }
   numCtx.onOk(round2(v), numInsPicked());
@@ -3659,9 +3859,12 @@ function restockMed(id){
   openNumDialog({
     mode: 'add',
     insPick: true,                       // ★ 只有这个入口问「自费 / 医保」
+    unit: unit,
+    rate: dailyUse(m),                   // 备用药 = 0 → 天数那一档自动不出现
     title: '又买了药',
     sub: '新买的数量会加到「今天推算出的余量」上，基准日一并滚到今天 —— 和「批量调存量」同一套算法。',
     label: '又买了多少 ' + unit,
+    daysLabel: '这批够吃几天',
     hint: '按包装上的数填（1 盒 28 ' + unit + ' 就填 28）',
     okText: '加到库存',
     onOk: function(v, ins){
@@ -3683,10 +3886,13 @@ function calibMed(id){
   const cur = stockNow(m);
   openNumDialog({
     mode: 'set', value: cur, min: 0,
+    unit: unit,
+    rate: dailyUse(m),                   // 同上：备用药没有天数这一档
     title: '校准余量',
     sub: '按你今天实际数出来的数量填，程序以它为准重新往下推算（漏服、多吃、数错了都用它对齐）。'
       + '这一格只是把数字改对，不算一次开药 —— 医保锁不动。',
     label: '今天实际还剩多少 ' + unit,
+    daysLabel: '还能吃几天',
     hint: '按整数 ' + unit + ' 填；填 0 也可以（等于已用完），基准日一并滚到今天',
     okText: '校准',
     onOk: function(v){ m.stockBase = round2(v); m.stockDate = todayStr(); save(); render(); }
@@ -5435,10 +5641,38 @@ $('#peopleMgr').addEventListener('input', function(e){
 $('#btnCancel').addEventListener('click', function(){ $('#dlgMed').close(); });
 $('#formMed').addEventListener('submit', submitMed);
 // 天数 / 用法 / 单位一改，「开药限制」旁边那句换算和下面那行白话预览都要跟着变
-$('#formMed').addEventListener('input', function(){
+$('#formMed').addEventListener('input', function(e){
+  // 余量那两个框（按数量 / 按天数）：谁在打字，谁就是这次的准，另一格当场换算过去
+  const f = $('#formMed');
+  if(e.target === f.stockBase) stockSrc = 'unit';
+  else if(e.target === f.stockDays) stockSrc = 'days';
   syncRxConv();
   syncDosePreview();
   syncInsUI();          // 改了医保开药日，下面那句「哪天解锁」要跟着变
+  syncStockConv();      // 用法 / 单位一改，「≈ 够吃几天」那行也得跟着重算
+});
+
+// 余量：点「按数量 / 按天数」只换显示，**值不重算**（两格本来就是同步的，
+// src 只认「你最后真正打字的那一格」—— 光切换看一眼不会把库存改掉）
+$('#stockPick').addEventListener('click', function(e){
+  const b = e.target.closest('.vpick-tab');
+  if(!b) return;
+  setStockMode(b.getAttribute('data-vpick'));
+  syncStockConv();
+});
+
+// 「又买了药 / 校准余量」共用同一套二选一
+$('#numPickTabs').addEventListener('click', function(e){
+  const b = e.target.closest('.vpick-tab');
+  if(!b) return;
+  setNumMode(b.getAttribute('data-npick'));
+  syncNumConv();
+});
+$('#numPick').addEventListener('input', function(e){
+  if(e.target === $('#numVal')) numSrc = 'unit';
+  else if(e.target === $('#numDays')) numSrc = 'days';
+  else return;
+  syncNumConv();
 });
 // 「每天吃 / 备用药」一换，整张表单的字段和必填标记跟着换
 $('#kindRow').addEventListener('change', syncKindUI);

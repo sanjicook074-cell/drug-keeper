@@ -210,7 +210,8 @@ PROBE = r"""
   function agoD(n){ var d = new Date(); d.setDate(d.getDate() - n); return fmtDate(d); }
   ck('★ 表单里没有「余量是哪天的」那一格了',
      qa('#formMed input[name=stockDate]').length === 0
-       && qa('#formMed .wstep[data-wstep=stock] input').length === 1,
+       // 2026-11-19 起这一节是「按数量 / 按天数」二选一，两格（不是多出来的第二套字段）
+       && qa('#formMed .wstep[data-wstep=stock] input').length === 2,
      qa('#formMed input[name=stockDate]').length + ' 格');
   ck('★ 整个弹窗里也不再出现「余量日期」「哪天的」这些字',
      txt(q('#formMed')).indexOf('余量日期') < 0 && txt(q('#formMed')).indexOf('哪天的') < 0,
@@ -242,6 +243,98 @@ PROBE = r"""
   ck('改完这个基准，卡片上的天数也跟着变',
      Math.abs(daysLeft(a2) - 15) < 1e-9, daysLeft(a2));
   q('#dlgMed').close();
+
+  /* ========== 7.6 余量改成「按数量 / 按天数」二选一（2026-11-19 用户要求） ==========
+     用户原话：「现在是只能输入买了多少片……应该改成二选一，要不然填余量还有多少片药，
+               要不然填剩余天数，这两个只要填了一个，另外一个就自动算出来」。 */
+  var m6 = byName('旧基准片');               // 每天 1 片、此刻 15 片
+  openEditor(m6.id);
+  var tabU = q('#stockPick .vpick-tab[data-vpick=unit]');
+  var tabD = q('#stockPick .vpick-tab[data-vpick=days]');
+  var boxU = q('#stockPick .vpick-f[data-vpick-f=unit]');
+  var boxD = q('#stockPick .vpick-f[data-vpick-f=days]');
+  ck('★ 余量默认按数量填，天数那一格收着',
+     tabU.classList.contains('on') && boxU.style.display !== 'none'
+       && boxD.style.display === 'none' && f.stockDays.disabled === true,
+     boxU.style.display + ' / ' + boxD.style.display + ' / ' + f.stockDays.disabled);
+  ck('天数那格已经预填好对应的天数（15 片 ÷ 每天 1 片 = 15 天）',
+     num(f.stockBase.value) === 15 && num(f.stockDays.value) === 15,
+     f.stockBase.value + ' / ' + f.stockDays.value);
+
+  tabD.click();
+  ck('切到「按天数」→ 天数露出来、数量收起',
+     boxD.style.display !== 'none' && boxU.style.display === 'none'
+       && f.stockDays.disabled === false && f.stockBase.disabled === true,
+     boxD.style.display + ' / ' + f.stockBase.disabled);
+  ck('★ 只切 tab、一个字没打 → 数量没被重算（不会因为四舍五入偷改库存）',
+     num(f.stockBase.value) === 15, f.stockBase.value);
+
+  f.stockDays.value = '7';
+  f.stockDays.dispatchEvent(new Event('input', { bubbles: true }));
+  ck('★ 填「够吃 7 天」→ 数量当场算出 7（每天 1 片）',
+     num(f.stockBase.value) === 7, f.stockBase.value);
+  ck('天数那格底下把换算写成了一句话',
+     /7/.test(txt(q('#stockDaysHint'))), txt(q('#stockDaysHint')));
+
+  await submitMed({ preventDefault: function(){} });
+  var a6 = byName('旧基准片');
+  ck('★ 按天数填的，存下来就是换算后的数量', a6.stockBase === 7, String(a6.stockBase));
+
+  openEditor(a6.id);
+  f.stockBase.value = '12';                  // 反过来：在数量里打字
+  f.stockBase.dispatchEvent(new Event('input', { bubbles: true }));
+  ck('★ 改数量 → 天数跟着算出 12', num(f.stockDays.value) === 12, f.stockDays.value);
+
+  f.kind.value = 'prn'; syncKindUI();
+  ck('★ 备用药没有「按天数」这一档（硬算「还能吃几天」是假的）',
+     q('#stockTabDays').hidden === true, String(q('#stockTabDays').hidden));
+  f.kind.value = 'daily'; syncKindUI();
+  ck('切回「每天吃」→ 这一档又出来', q('#stockTabDays').hidden === false, String(q('#stockTabDays').hidden));
+  q('#dlgMed').close();
+
+  /* ========== 7.7 「又买了药 / 校准余量」共用同一套二选一 ========== */
+  q('#dlgNum').close();
+  var m7 = byName('旧基准片');               // 每天 1 片、此刻 7 片
+  restockMed(m7.id);
+  await null;
+  ck('「又买了药」默认按数量，天数那一档在',
+     q('#numPick .vpick-tab[data-npick=unit]').classList.contains('on')
+       && q('#numTabDays').hidden === false, '');
+  q('#numPick .vpick-tab[data-npick=days]').click();
+  q('#numDays').value = '5';
+  q('#numDays').dispatchEvent(new Event('input', { bubbles: true }));
+  ck('★ 又买了「够吃 5 天」→ 折成 5 片（每天 1 片）',
+     num(q('#numVal').value) === 5, q('#numVal').value);
+  q('#btnNumOk').click();
+  await null;
+  ck('按天数填完照样走到第二步「自费 / 医保」', stepOf('formNum') === 'ins', stepOf('formNum'));
+  q('#btnNumOk').click();
+  await null;
+  ck('★ 按天数补货，库存真的加了 5（7 → 12）',
+     stockNow(byName('旧基准片')) === 12, String(stockNow(byName('旧基准片'))));
+
+  calibMed(byName('旧基准片').id);
+  await null;
+  q('#numPick .vpick-tab[data-npick=days]').click();
+  q('#numDays').value = '9';
+  q('#numDays').dispatchEvent(new Event('input', { bubbles: true }));
+  ck('★ 校准成「够吃 9 天」→ 9 片', num(q('#numVal').value) === 9, q('#numVal').value);
+  q('#btnNumOk').click();
+  await null;
+  ck('★ 校准按天数填的，库存就是 9',
+     stockNow(byName('旧基准片')) === 9, String(stockNow(byName('旧基准片'))));
+
+  // 备用药在这两个入口也不摆天数这一档
+  openEditor(null);
+  f.name.value = '备用药二选一';
+  f.kind.value = 'prn'; syncKindUI();
+  f.unit.value = '片'; f.perDose.value = 1; f.stockBase.value = 10; f.note.value = '';
+  await submitMed({ preventDefault: function(){} });
+  restockMed(byName('备用药二选一').id);
+  await null;
+  ck('★ 备用药的「又买了药」没有天数这一档',
+     q('#numTabDays').hidden === true, String(q('#numTabDays').hidden));
+  q('#btnNumCancel').click();
 
   /* ================= 8. 又买了药：先问数量，再问来路 ================= */
   openEditor(null);
