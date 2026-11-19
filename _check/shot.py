@@ -83,15 +83,36 @@ HOOKS = {
            " document.head.appendChild(st);"
            " var bs = curStage(); if(bs.indexOf(meds[1].id) < 0) bs.push(meds[1].id);"
            " save(); renderBox();",
-    # ★ 2026-11-19：药盒里每味药多了个「分好了」的勾。这张挑一味**同时在两格**里的
-    #   （葡萄糖酸钙：午饭前 + 晚饭后）勾上 —— 一眼能看出勾是按药记的，两格一起变淡。
+    # ★ 2026-11-19：药盒这张拍两件事 ——
+    #   ① 药盒右下角那颗「分药模式」按钮（勾选框从格子上搬走之后，入口就在这儿）；
+    #   ② 挑一味**同时在两格**里的勾上（葡萄糖酸钙：午饭前 + 晚饭后）→ 两格一起变淡，
+    #      证明勾还是按药记的，跟勾选框摆哪儿无关。
     "boxdone": "var st2 = document.createElement('style');"
                " st2.textContent = '.top,.people,.stats,#warn,.panel-h,#list,.col-side,.foot-sig{display:none !important}'"
                " + '.cols{grid-template-columns:1fr}';"
                " document.head.appendChild(st2);"
                " save(); boxDone[meds[2].id] = 1; renderBox();",
+    # ★ 2026-11-19（同一天返工）：分药模式那个大窗本身。拍它是因为这张图回答的就是
+    #   用户那句「有一种药会占两行，就很丑」—— 窗里一味药占一整行、剂量靠右、
+    #   两列排开，格子那边挤不下的问题在这儿不存在。
+    #   勾两味（其中葡萄糖酸钙在两格里都出现），顺带把「按药记 + 进度 2 / 5」一起拍上。
+    #   ★ 2026-11-19 傍晚追加：窗口最上面那排成员切换 —— 临时加一位「妈妈」（只在图里有），
+    #     否则这一排（人多于一才出）在成品图上是空的，README 那句话就没有依据。
+    "pickmode": "var st4 = document.createElement('style');"
+                " st4.textContent = '.top,.people,.stats,#warn,.panel-h,#list,.col-side,.foot-sig{display:none !important}'"
+                " + '.cols{grid-template-columns:1fr}';"
+                " document.head.appendChild(st4);"
+                " var mm = { id: uid(), name:'妈妈', note:'', box:{ slots: defaultSlots(3) }, meds: ["
+                "  { id: uid(), name:'叶酸片', spec:'0.4mg', perDose:1, unit:'片', cycleDays:1,"
+                "    timesPerCycle:1, stockBase:12, stockDate:todayStr(), rxMax:30, kind:'daily' },"
+                "  { id: uid(), name:'维生素D3滴剂', spec:'400IU', perDose:1, unit:'粒', cycleDays:1,"
+                "    timesPerCycle:1, stockBase:8, stockDate:todayStr(), rxMax:30, kind:'daily' } ] };"
+                " mm.box.slots[0].ids = [mm.meds[0].id, mm.meds[1].id];"
+                " people.push(mm);"
+                " save(); boxDone[meds[0].id] = 1; boxDone[meds[2].id] = 1; render(); openPick();",
     # ★ 2026-11-19：最挤的情况 —— 390 宽手机 + 7 格，每格只剩 80px 内宽。
-    #   加了个勾选框之后药名会不会被挤成三行、或者框被挤出去，这张专门看这个。
+    #   勾选框已经搬进大窗了，这张现在看的是：7 格时药名会不会被挤成三行、
+    #   以及右下角那颗「分药模式」在窄屏下排在哪（不该把格子顶歪）。
     "mbox7": "var st3 = document.createElement('style');"
              " st3.textContent = '.top,.people,.stats,#warn,.panel-h,#list,.col-side,.foot-sig{display:none !important}'"
              " + '.cols{grid-template-columns:1fr}';"
@@ -304,6 +325,8 @@ SIZE = {"rx": "1240,1340", "rxparsed": "1240,1430",
         "rxaudit": "1240,1420", "rxuse": "1240,1320",
         "main": "1240,2160", "picked": "1240,1560", "io": "820,420", "edit": "820,700",
         "prnedit": "820,700", "box": "820,372", "boxdone": "820,372", "mbox7": "390,900", "fam": "1240,1010",
+        # 分药模式大窗：760 宽的窗 + 4 格两列 + 头尾，900 够（再多会带上一圈空桌面）
+        "pickmode": "1240,600",
         # 引导式三张：一步只有一格，弹窗比原来矮多了（原来整张表要 1300 才装得下）
         "wiz1": "820,560", "wiz4": "820,660", "wizset": "820,600",
         "stockdays": "820,700",        # 全家汇总：8 行（合并后 8 种）× 约 78px + 头尾，1040 会把脚注切掉

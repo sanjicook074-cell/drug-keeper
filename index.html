@@ -238,15 +238,16 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 .chip .dose{flex:none;font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 .chip .x{flex:none;width:16px;height:16px;border:none;background:transparent;color:#aab2c0;
   cursor:pointer;border-radius:4px;font-size:13px;line-height:1;padding:0;display:grid;place-items:center}
-/* 分药时打的勾（2026-11-19 用户：「每个药的后边再加一个选择框，方便确定哪种药分完了」）。
-   只是这一屏的临时标记 —— 不存档、刷新就全清（见 boxDone）。
-   勾上之后整颗药变淡：一屏格子扫过去，深着的就是还没分的。
-   ★ 视觉用 scale 放大到 ~18px，但布局还是 16px —— 7 格时每格只剩 80px 内宽，
-     真给 20px 会把药名挤成两行。 */
-.chip .dk{flex:none;width:16px;height:16px;margin:0;align-self:center;
-  accent-color:var(--brand);cursor:pointer;transform:scale(1.15)}
+/* 分完了的药变淡（2026-11-19 用户：「每个药的后边再加一个选择框，方便确定哪种药分完了」）。
+   勾选框本身在「分药模式」那个大窗口里（见 #dlgPick），不放格子上 ——
+   7 格时每格只剩 80px 内宽，药名 + 剂量 + 勾 + × 四个元素塞一行必定折成两行，
+   用户 2026-11-19 就是嫌这个「一种药会占两行，很丑」。
+   格子这边只留一个结果：勾上的整颗变淡，一屏扫过去深着的就是还没分的。 */
 .chip.done{opacity:.5}
 .chip .x:hover{background:#e8edf5;color:var(--out)}
+/* 药盒右下角那一行 —— 目前只有「分药模式」一个按钮，贴右放，
+   和上面格子的右边线对齐；以后要加第二个也往这里塞。 */
+.box-tools{display:flex;justify-content:flex-end;gap:8px;margin-top:9px}
 .box-foot{margin-top:8px;font-size:11.5px;color:var(--faint)}
 
 /* ---------- 未入清单：还没摆进任何一格的药 ----------
@@ -540,6 +541,42 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 .sec-title{grid-column:1/-1;font-size:12px;font-weight:650;color:var(--muted);
   margin:6px 0 -4px;padding-top:10px;border-top:1px solid var(--line-2)}
 .sec-title:first-child{padding-top:0;border-top:none;margin-top:0}
+
+/* ---------- 分药模式（药盒右下角那个按钮点开的大窗） ----------
+   用户 2026-11-19：「加了这个选择框之后，有一种药会占两行，就很丑。所以我想的是
+   在药盒的右下角加一个按钮，上面写着分药模式，然后点开这个分药模式之后就弹出一个窗口来，
+   这个窗口大一些它就不会一个药占两行了。」
+   ★ 所以这里的宽度是**故意**比别的弹窗宽一档（760 vs 560）：格子只有 92px，
+     摆不下「药名 + 剂量 + 勾」，窗口里一个药占一整行就永远只占一行。
+   ★ 宽屏两列（minmax 320px），手机竖屏自然塌成一列 —— auto-fill 自己会算，不用写媒体查询。 */
+#dlgPick{width:min(760px,94vw)}
+/* 窗口最上面那排人。用的是主页同一套 .ptab —— 两处长得一样，才不会让人以为是两个东西。
+   人多于一才出现（见 renderPick）；一个人时这块 :empty，不占高度。 */
+.pk-people{display:flex;flex-wrap:wrap;gap:7px;padding:16px 22px 0}
+.pk-people:empty{display:none}
+.pk-people .ptab{padding:5px 13px;font-size:12.5px}
+.pk-b{padding:14px 22px 4px;max-height:min(64vh,560px);overflow:auto}
+.pk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px 15px;align-items:start}
+.pk-sec{border:1px solid var(--line);border-radius:10px;background:#fff;padding:9px 11px 10px}
+.pk-sec.on{border-color:#dbe6f6;background:#fbfdff}
+.pk-h{display:flex;align-items:baseline;gap:7px;margin-bottom:5px}
+.pk-n{font-size:12.5px;font-weight:650;color:#374151}
+.pk-c{font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}
+/* 一味药一行，绝不折行：药名给 nowrap + 省略号兜底（窗口再宽也可能遇到超长药名），
+   剂量靠右固定 —— 折行了这一整块就白做了。 */
+.pk-row{display:flex;align-items:center;gap:9px;padding:5px 6px;border-radius:7px;
+  font-size:13px;cursor:pointer}
+.pk-row:hover{background:#f3f7fc}
+.pk-row .dk{flex:none;width:17px;height:17px;margin:0;accent-color:var(--brand);cursor:pointer}
+.pk-row .nm{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#242a35}
+.pk-row .dose{flex:none;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.pk-row.done{opacity:.45}
+.pk-row:focus-within{background:#eff6ff}
+.pk-none{font-size:12px;color:#c3c9d4;padding:3px 6px 4px}
+/* 左下角的进度：分到一半退出去，再进来知道还剩几味 */
+.pk-prog{margin-right:auto;align-self:center;font-size:12px;color:var(--muted);
+  font-variant-numeric:tabular-nums}
+.pk-prog.all{color:#15803d;font-weight:650}
 
 /* ---------- 「已经开药」批量入库 ---------- */
 .disp-list{display:flex;flex-direction:column;gap:10px;max-height:50vh;overflow:auto}
@@ -1538,6 +1575,30 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
   </div>
 </dialog>
 
+<!-- 分药模式（2026-11-19 用户要求）
+     「加了这个选择框之后，有一种药会占两行，就很丑。所以我想的是在药盒的右下角加一个按钮，
+      上面写着分药模式，然后点开这个分药模式之后就弹出一个窗口来，这个窗口大一些
+      它就不会一个药占两行了。」
+     ★ 勾选框从格子上搬到了这里（格子里塞不下），所以这不只是"同一个东西换个地方看"：
+       它是**唯一**能打勾的地方，格子那边只负责把勾过的药变淡。
+     ★ 勾仍然按药记、不进存档、刷新就清 —— 跟原来一模一样，只是容器变了（boxDone 没动）。
+     内容整块由 renderPick() 生成，这里只留三个空壳。 -->
+<dialog id="dlgPick">
+  <!-- 家里人摆在最上面（2026-11-19 用户：「这个分药模式，家里面的不同成员要共同显示在
+       分药模式的上方，可以切换」）。只在人多于一的时候出 —— 一个人时这排就是个摆设。 -->
+  <div class="pk-people" id="pkPeople"></div>
+  <div class="dlg-h">
+    <h3>分药模式</h3>
+    <p>照着格子一味一味点：勾上 = 这味已经分好了。只是打个勾，库存不动、刷新就清空。</p>
+  </div>
+  <div class="dlg-b pk-b" id="pkBody"></div>
+  <div class="dlg-f">
+    <span class="pk-prog" id="pkProg"></span>
+    <button type="button" class="btn ghost" id="pkClear">清空勾</button>
+    <button type="button" class="btn primary" id="pkClose">分好了</button>
+  </div>
+</dialog>
+
 <!-- 单个数字弹窗：「又买了药」/「校准余量」共用（替代浏览器自带的 prompt 小框） -->
 <!-- ★ 2026-10-12 用户要求：单位不用 0.25（半片那种粒度数药片时用不上）→ step="1"，按 1 片计。
      form 上加 novalidate：否则浏览器会用自己的气泡拦下 step/min 不符的值（用户明确讨厌原生弹窗），
@@ -2233,17 +2294,33 @@ function findMed(id){
    ★ 只活在这一屏 —— 不进存档、刷新就全清（用户 2026-11-19：「这个就是临时的框，
      刷新之后就不用再显示了」）。所以它是模块里的一个普通对象，不是 person 上的字段。
    ★ 按**药**记，不按格子记：一味药常常同时在早/中/晚三格里，分完这一瓶
-     就该三处一起打勾，而不是勾三次。 */
+     就该三处一起变淡，而不是勾三次。
+   ★ 2026-11-19 起勾选框**只在大窗里**（#dlgPick 的分药模式），格子上不再放框 ——
+     格子里塞不下第四个元素（见 chipHTML 的注释）。boxDone 这个状态本身没变。 */
 let boxDone = {};
 
-// 一味药的勾变了：只改它自己那几处（同一味药可能出现在好几格），不整块重画 ——
-// 重画会把格子上的落点高亮和滚动位置一起冲掉。
+// 一味药的勾变了：只改它自己那几处（同一味药可能出现在好几格 / 大窗里好几行），
+// 不整块重画 —— 重画会把格子上的落点高亮和滚动位置一起冲掉。
+// ★ 两个容器用的是同一个 class `.done`（chip 和 .pk-row 各自定义了变淡的透明度），
+//   所以这里一套选择器就够；格子上已经没有勾选框了，querySelector 取不到就跳过。
 function syncBoxDone(id){
-  $$('#box .chip').forEach(function(c){
+  const on = !!boxDone[id];
+  $$('#box .chip[data-med], #pkBody .pk-row[data-med]').forEach(function(c){
     if(c.getAttribute('data-med') !== id) return;
-    c.classList.toggle('done', !!boxDone[id]);
+    c.classList.toggle('done', on);
     const ck = c.querySelector('input.dk');
-    if(ck) ck.checked = !!boxDone[id];
+    if(ck) ck.checked = on;
+  });
+  syncPickSecs();
+  pickProg();
+}
+
+// 大窗里某一格是不是全分完了 —— 全勾上就把那一块染成淡蓝底，扫一眼知道这格收工了
+function syncPickSecs(){
+  $$('#pkBody .pk-sec').forEach(function(sec){
+    const rows = Array.prototype.slice.call(sec.querySelectorAll('.pk-row'));
+    const allOn = rows.length > 0 && rows.every(function(r){ return r.classList.contains('done'); });
+    sec.classList.toggle('on', allOn);
   });
 }
 
@@ -2259,13 +2336,13 @@ function chipDose(m){
 
 function chipHTML(m, slotIdx){
   const done = !!boxDone[m.id];
+  // ★ 格子只有 92px 内宽（7 格时 80px），药名 + 剂量 + × 已经把一行占满了。
+  //   2026-11-19 之前这里还塞过一个勾选框，结果长药名一律折成两行，用户嫌丑
+  //   —— 勾搬到「分药模式」大窗里去了，这里只按 boxDone 把整颗药变淡。
   return '<div class="chip' + (done ? ' done' : '') + '" data-med="' + m.id + '" data-from="' + slotIdx + '"'
     +   ' data-lv="' + level(m) + '" title="' + esc(m.name) + '（拖到别的格 = 搬过去）">'
     +   '<span class="nm">' + esc(m.name) + '</span>'
     +   (chipDose(m) ? '<span class="dose">' + chipDose(m) + '</span>' : '')
-    // 分药用的临时勾：勾上 = 这一味已经分进格子了（刷新就清空，不存档）
-    +   '<input type="checkbox" class="dk" data-done="' + m.id + '"' + (done ? ' checked' : '')
-    +     ' aria-label="「' + esc(m.name) + '」分好了" title="这味分好了（只是打个勾，刷新就清空）">'
     +   '<button class="x" data-del="' + slotIdx + '" data-id="' + m.id + '"'
     +     ' aria-label="从这一格拿出来" title="从这一格拿出来">×</button>'
     + '</div>';
@@ -2375,6 +2452,101 @@ function stageHTML(){
     + '</div>';
 }
 
+/* ---------------- 分药模式：把盒子摊到一个大窗里，一味药一行 ----------------
+   用户 2026-11-19：「加了这个选择框之后，有一种药会占两行，就很丑。所以我想的是
+   在药盒的右下角加一个按钮，上面写着分药模式，然后点开就弹出一个窗口来，
+   这个窗口大一些它就不会一个药占两行了。」
+   ★ 它不复制一份状态：读的还是 curBox() / boxDone，改的也是 boxDone ——
+     窗口里勾一下，格子上那颗药立刻变淡（syncBoxDone 两边一起改），不是两套账。
+   ★ 格子顺序照原样（不排序）：认药认的是位置，早/中/晚换位置就找不着了。 */
+function pickGroups(){
+  return curBox().slots.map(function(s, i){
+    return {
+      name: s.name || ('第' + (i + 1) + '格'),
+      i: i,
+      meds: (s.ids || []).map(findMed).filter(Boolean)
+    };
+  });
+}
+
+// 盒子里一共有几味（同一味摆了三格也只算一味 —— 分药分的是瓶子，不是格子）
+function boxMedIds(){
+  const seen = {};
+  pickGroups().forEach(function(g){ g.meds.forEach(function(m){ seen[m.id] = 1; }); });
+  return Object.keys(seen);
+}
+
+function pickProg(){
+  const el = $('#pkProg');
+  if(!el) return;
+  const ids = boxMedIds();
+  if(!ids.length){ el.textContent = ''; el.classList.remove('all'); return; }
+  const done = ids.filter(function(id){ return !!boxDone[id]; }).length;
+  el.textContent = '已分 ' + done + ' / ' + ids.length;
+  el.classList.toggle('all', done === ids.length);
+}
+
+/* 窗口最上面那排人（2026-11-19 用户：「家里面的不同成员要共同显示在分药模式的上方，可以切换」）。
+   ★ 只在人多于一的时候画：一个人的时候这排只是一个没法点的自己。
+   ★ 样式直接借主页的 `.ptab` —— 同一个东西在两处长得一样，别人才不会以为是两套。
+   ★ 切换走 switchPerson()，和主页顶部那排是**同一条路**（where 写在这儿就是错的：
+     换人得连着 currentId / meds / 存档 / 整页重画一起做）。 */
+function renderPickPeople(){
+  const el = $('#pkPeople');
+  if(!el) return;
+  if(people.length < 2){ el.innerHTML = ''; return; }
+  el.innerHTML = people.map(function(p){
+    return '<button type="button" class="ptab' + (p.id === currentId ? ' active' : '') + '"'
+      + ' data-pp="' + p.id + '" title="切到「' + esc(p.name) + '」的药盒">'
+      + esc(p.name) + '</button>';
+  }).join('');
+}
+
+function renderPick(){
+  const body = $('#pkBody');
+  if(!body) return;
+  renderPickPeople();
+  body.innerHTML = '<div class="pk-grid">' + pickGroups().map(function(g){
+    const allOn = g.meds.length && g.meds.every(function(m){ return !!boxDone[m.id]; });
+    return '<div class="pk-sec' + (allOn ? ' on' : '') + '">'
+      + '<div class="pk-h">'
+      +   '<span class="pk-n">' + esc(g.name) + '</span>'
+      +   '<span class="pk-c">' + (g.meds.length ? g.meds.length + ' 味' : '空着') + '</span>'
+      + '</div>'
+      + (g.meds.length
+          ? g.meds.map(function(m){
+              const on = !!boxDone[m.id];
+              return '<label class="pk-row' + (on ? ' done' : '') + '" data-med="' + m.id + '">'
+                + '<input type="checkbox" class="dk" data-done="' + m.id + '"' + (on ? ' checked' : '')
+                +   ' aria-label="「' + esc(m.name) + '」分好了">'
+                + '<span class="nm" title="' + esc(m.name) + '">' + esc(m.name) + '</span>'
+                + (chipDose(m) ? '<span class="dose">' + chipDose(m) + '</span>' : '')
+                + '</label>';
+            }).join('')
+          : '<div class="pk-none">还没有药 —— 回去把药拖进这一格</div>')
+      + '</div>';
+  }).join('') + '</div>';
+  pickProg();
+}
+
+function openPick(){
+  if(!boxMedIds().length) return;      // 盒子里一味药都没有：按钮本来就是灰的，双保险
+  renderPick();
+  const d = $('#dlgPick');
+  if(d && !d.open) d.showModal();
+}
+
+// 清空所有勾（分完一顿要重新分下一顿时用；不然得一味一味往回点）
+function clearPick(){
+  boxDone = {};
+  $$('#box .chip, #pkBody .pk-row').forEach(function(c){
+    c.classList.remove('done');
+    const ck = c.querySelector('input.dk');
+    if(ck) ck.checked = false;
+  });
+  $$('#pkBody .pk-sec').forEach(function(s){ s.classList.remove('on'); });
+  pickProg();
+}
 function renderBox(){
   const el = $('#box');
   if(!el) return;
@@ -2397,6 +2569,12 @@ function renderBox(){
   + '<div class="slots">' + box.slots.map(function(s, i){
         return slotHTML(s, i, n > BOX_MIN);
       }).join('') + '</div>'
+  // 「分药模式」：药盒右下角。空盒时不画（下面那行提示已经在说怎么摆药，
+  // 再挂一颗灰按钮只是噪音）；盒里有了药才出现。
+  + (used ? '<div class="box-tools">'
+      + '<button type="button" class="btn sm ghost" data-pickmode="1"'
+      +   ' title="把盒子摊开，一味一行地打勾">分药模式</button>'
+      + '</div>' : '')
   // 一味药都还没有的时候不显示未入清单 —— 空应用的正文已经在说"还没有记录任何药品"，
   // 这里再顶一行"还没有每天吃的药"纯属噪音。有药（哪怕全是备用药）才出。
   + (used ? '' : '<div class="box-foot">'
@@ -2407,6 +2585,8 @@ function renderBox(){
   + ((meds || []).length ? unplacedHTML() + stageHTML() : '');
 
   el.onclick = function(e){
+    const pk = e.target.closest('button[data-pickmode]');
+    if(pk){ openPick(); return; }
     const sg = e.target.closest('button[data-stgdel]');
     if(sg){ removeFromStage(sg.getAttribute('data-stgdel')); return; }
     // ★ 顺序要紧：先把「删格」的叉挑出来，再判 removeFromSlot 的 [data-del]。
@@ -2421,14 +2601,9 @@ function renderBox(){
       setSlotCount(curBox().slots.length + d);
     }
   };
-  // 分药的勾：勾 / 取消勾。只记在内存里（见 boxDone），save() 都不会碰它。
-  el.onchange = function(e){
-    const ck = (e.target && e.target.closest) ? e.target.closest('input[data-done]') : null;
-    if(!ck) return;
-    const id = ck.getAttribute('data-done');
-    if(ck.checked) boxDone[id] = 1; else delete boxDone[id];
-    syncBoxDone(id);
-  };
+  // ★ 2026-11-19：格子上那个勾选框撤了（塞不下，长药名会折两行），
+  //   所以这里不再挂 onchange —— 打勾的入口只剩「分药模式」弹窗（见 bindEvents 里的 #pkBody）。
+  //   格子只按 boxDone 把整颗药变淡，这个渲染在 chipHTML 里，不需要事件。
   el.ondblclick = function(e){
     const nm = e.target.closest('[data-slotname]');
     if(nm) renameSlot(Number(nm.getAttribute('data-slotname')));
@@ -5689,6 +5864,34 @@ $('#allList').addEventListener('click', function(e){
   openAllAdjust(decodeURIComponent(b.getAttribute('data-alladj')));
 });
 $('#btnAllClose').addEventListener('click', function(){ $('#dlgAll').close(); });
+
+/* ---- 分药模式（药盒右下角那颗按钮 → 大窗） ----
+   勾选框现在只在这个弹窗里，所以这里是**唯一**打勾的入口；
+   改的是同一个 boxDone，syncBoxDone 会把格子上那颗药一起变淡。 */
+$('#pkBody').addEventListener('change', function(e){
+  const ck = (e.target && e.target.closest) ? e.target.closest('input.dk') : null;
+  if(!ck) return;
+  const id = ck.getAttribute('data-done');
+  if(!id) return;
+  if(ck.checked) boxDone[id] = 1; else delete boxDone[id];
+  syncBoxDone(id);
+});
+$('#pkClear').addEventListener('click', clearPick);
+/* 窗口上方那排人：点谁就切到谁 —— 走 switchPerson（同主页），然后只把窗里的内容重画一遍。
+   ★ 窗口不关：分药时经常是"给妈妈分完接着给孩子分"，关掉再开就断了。 */
+$('#pkPeople').addEventListener('click', function(e){
+  const b = e.target.closest('button[data-pp]');
+  if(!b) return;
+  const id = b.getAttribute('data-pp');
+  if(id === currentId) return;
+  switchPerson(id);
+  if($('#dlgPick').open) renderPick();
+});
+$('#pkClose').addEventListener('click', function(){ $('#dlgPick').close(); });
+// Esc / 点遮罩关掉 = 直接关，不留半截状态（勾本身就是要留着的，所以不走取消那套）
+$('#dlgPick').addEventListener('click', function(e){
+  if(e.target === this) this.close();
+});
 $('#famList').addEventListener('click', function(e){
   const b = e.target.closest('[data-goto]');
   if(!b) return;

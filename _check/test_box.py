@@ -983,11 +983,18 @@ PROBE = r"""
     ck('收走台面不动已经摆好的那一格', nameIn(0, '晚饭后胶囊'), slotIds(0).length);
   })();
 
-  /* ---------------- 19. 分药时打的勾（2026-11-19 用户要求）----------------
-     原话：「药盒这里，每一个药的后边再加一个选择框，方便在分药的时候能够确定
-            哪种药已经分完了、哪种药还没有分。这个就是临时的框，刷新之后就不用再显示了」。
-     钉四件事：① 每颗药后面都有框；② 按**药**记 —— 一味药在两个格里，勾一处两处一起勾；
-               ③ 勾了不动库存、不带动别的药；④ 不进存档（重画还在、刷新就没）。 */
+  /* ---------------- 19. 分药模式（2026-11-19 用户要求，隔天返工过一次）----------------
+     用户先要了勾选框，原话：「药盒这里，每一个药的后边再加一个选择框，方便在分药的时候
+       能够确定哪种药已经分完了、哪种药还没有分。这个就是临时的框，刷新之后就不用再显示了」；
+     隔天又推翻了这个摆法：「加了这个选择框之后，有一种药会占两行，就很丑。所以我想的是
+       在药盒的右下角加一个按钮，上面写着分药模式，然后点开这个分药模式之后就弹出一个窗口来，
+       这个窗口大一些它就不会一个药占两行了」。
+     所以这里守的是返工之后的形状（不是在测旧的那版）：
+       ① 格子上**不再有**勾选框 —— 它就是把长药名挤成两行的元凶；
+       ② 药盒右下角有一颗「分药模式」按钮，点开是一张比通用弹窗更宽的窗；
+       ③ 窗里一味药一行、药名 nowrap，行高整齐（没折行）；
+       ④ 勾了 → 盒里这味药的每一格一起变淡；勾不动库存、不带别人、不进存档。
+     ★ 勾选框搬了家，状态还是同一个 boxDone —— 所以「按药记」那条一点没变。 */
   fixture();
   var mEarly = byName('早饭前片'), mLate = byName('晚饭后胶囊');
   curBox().slots[0].ids = [mEarly.id];                 // 早饭前片摆两格
@@ -995,44 +1002,151 @@ PROBE = r"""
   save(); render();
 
   function doneChips(id){ return qa('#box .chip[data-med="' + id + '"]'); }
-  function doneCk(id){ return doneChips(id).map(function(c){ return c.querySelector('input.dk'); }); }
+  function pkRows(id){ return qa('#pkBody .pk-row[data-med="' + id + '"]'); }
+  function pkCk(id){ return pkRows(id).map(function(r){ return r.querySelector('input.dk'); }); }
 
-  ck('每颗药后面都有一个勾选框（芯片数 = 框数）',
-     qa('#box .chip').length > 0 && qa('#box .chip').length === qa('#box .chip input.dk').length,
-     qa('#box .chip').length + ' 颗 / ' + qa('#box .chip input.dk').length + ' 个框');
-  ck('刚打开时一个都没勾（临时标记不该自己亮）',
-     qa('#box .chip input.dk:checked').length === 0, qa('#box .chip input.dk:checked').length);
+  ck('格子上不再挤勾选框（药名 + 剂量 + × 才摆得下一行）',
+     qa('#box .chip').length > 0 && qa('#box .chip input').length === 0,
+     qa('#box .chip').length + ' 颗 / ' + qa('#box .chip input').length + ' 个 input');
 
-  var dk0 = doneCk(mEarly.id)[0];
-  dk0.checked = true;
-  dk0.dispatchEvent(new Event('change', { bubbles: true }));
-  ck('勾一处 → 这味药在两格里都变淡（按药记，不是按格子记）',
+  var pkBtn = q('#box .box-tools button[data-pickmode]');
+  ck('药盒右下角有一颗「分药模式」按钮', !!pkBtn && /分药模式/.test(pkBtn.textContent || ''),
+     pkBtn ? pkBtn.textContent.trim() : '没找到');
+  ck('它贴在格子右下（.box-tools 紧跟 .slots，右对齐）',
+     !!q('#box .slots') && q('#box .slots').nextElementSibling === q('#box .box-tools')
+       && getComputedStyle(q('#box .box-tools')).justifyContent === 'flex-end',
+     q('#box .slots') && q('#box .slots').nextElementSibling
+       ? q('#box .slots').nextElementSibling.className : '没有');
+
+  pkBtn.click();
+  var pd = q('#dlgPick');
+  ck('点一下就弹出分药窗口', pd.open, pd.open ? 'open' : 'closed');
+  ck('这个窗口比通用弹窗宽（一味药得占得下一整行）',
+     parseFloat(getComputedStyle(pd).width) > 560, getComputedStyle(pd).width);
+  ck('窗里按盒子里的格数分组（3 格，空格也留着位置）',
+     qa('#pkBody .pk-sec').length === curBox().slots.length && qa('#pkBody .pk-row').length === 3,
+     qa('#pkBody .pk-sec').length + ' 格 / ' + qa('#pkBody .pk-row').length + ' 行');
+  ck('空格子在窗里也写清「还没有药」（不然看着像漏了一格）',
+     /还没有药/.test(qa('#pkBody .pk-sec')[2].textContent || ''),
+     qa('#pkBody .pk-sec')[2].textContent.trim());
+  ck('同一味摆两格就出现两行（窗里不合并 —— 分药是照着格子分的）',
+     pkRows(mEarly.id).length === 2, pkRows(mEarly.id).length);
+  ck('★ 一味药一行：药名 nowrap，不会被挤成两行',
+     qa('#pkBody .pk-row').every(function(r){
+       return getComputedStyle(r.querySelector('.nm')).whiteSpace === 'nowrap';
+     }), '');
+  ck('★ 每行等高（真折过行的那一行会明显更高）',
+     (function(){
+       var hs = qa('#pkBody .pk-row').map(function(r){
+         return Math.round(r.getBoundingClientRect().height); });
+       return hs.length > 0
+         && Math.max.apply(null, hs) - Math.min.apply(null, hs) <= 1
+         && Math.max.apply(null, hs) < 40;
+     })(), qa('#pkBody .pk-row').map(function(r){
+       return Math.round(r.getBoundingClientRect().height); }).join('/'));
+  ck('刚打开时一个都没勾', qa('#pkBody input.dk:checked').length === 0, qa('#pkBody input.dk:checked').length);
+  ck('左下角有 0 / N 的进度', (q('#pkProg').textContent || '').indexOf('已分 0 / 2') >= 0,
+     q('#pkProg').textContent);
+
+  pkCk(mEarly.id)[0].checked = true;
+  pkCk(mEarly.id)[0].dispatchEvent(new Event('change', { bubbles: true }));
+  ck('★ 勾一处 → 盒子里这味药的每一格都变淡（还是按药记，不是按格子记）',
      doneChips(mEarly.id).length === 2
        && doneChips(mEarly.id).every(function(c){ return c.classList.contains('done'); }),
      doneChips(mEarly.id).map(function(c){ return c.className; }).join(' | '));
-  ck('另一格的框也跟着勾上了（不然会以为是两件事）',
-     doneCk(mEarly.id).every(function(c){ return c.checked; }), '');
-  ck('别的药没被带上', !doneChips(mLate.id)[0].classList.contains('done'),
-     doneChips(mLate.id)[0].className);
+  ck('窗里同一味的另一行也跟着勾上了',
+     pkRows(mEarly.id).every(function(r){
+       return r.classList.contains('done') && r.querySelector('input.dk').checked;
+     }), '');
+  ck('进度跟着变成 1 / 2', (q('#pkProg').textContent || '').indexOf('已分 1 / 2') >= 0,
+     q('#pkProg').textContent);
+  ck('别的药没被带上', !pkRows(mLate.id)[0].classList.contains('done'), pkRows(mLate.id)[0].className);
   ck('勾一下不动库存', byName('早饭前片').stockBase === 30, byName('早饭前片').stockBase);
-  ck('勾着的时候重画页面，勾还在（说明它是内存态、不是画一次就丢的）',
+  ck('勾着的时候整页重画，勾还在（内存态，不是画一次就丢）',
      (function(){ render(); return doneChips(mEarly.id).every(function(c){
         return c.classList.contains('done'); }); })(), '');
 
-  var dk1 = doneCk(mEarly.id)[1];
-  dk1.checked = false;
-  dk1.dispatchEvent(new Event('change', { bubbles: true }));
+  pkCk(mEarly.id)[1].checked = false;
+  pkCk(mEarly.id)[1].dispatchEvent(new Event('change', { bubbles: true }));
   ck('再点一次就取消，两格一起恢复',
      doneChips(mEarly.id).every(function(c){ return !c.classList.contains('done'); }), '');
 
+  // 「清空勾」：分完一顿要接着分下一顿时用，不然得一味一味往回点
+  pkCk(mEarly.id)[0].checked = true;
+  pkCk(mEarly.id)[0].dispatchEvent(new Event('change', { bubbles: true }));
+  q('#pkClear').click();
+  ck('「清空勾」把盒子和窗里的勾一起清掉',
+     qa('#box .chip.done').length === 0 && qa('#pkBody .pk-row.done').length === 0
+       && qa('#pkBody input.dk:checked').length === 0,
+     qa('#box .chip.done').length + ' 颗变淡 / ' + qa('#pkBody .pk-row.done').length + ' 行');
+  ck('清空之后进度归零', (q('#pkProg').textContent || '').indexOf('已分 0 / 2') >= 0,
+     q('#pkProg').textContent);
+
   // 不进存档：勾上是"这一屏的事"，换设备 / 刷新都不该带着
-  doneCk(mEarly.id)[0].checked = true;
-  doneCk(mEarly.id)[0].dispatchEvent(new Event('change', { bubbles: true }));
+  pkCk(mEarly.id)[0].checked = true;
+  pkCk(mEarly.id)[0].dispatchEvent(new Event('change', { bubbles: true }));
   save();
   var rawSave = localStorage.getItem(LS_DATA) || '';
   ck('★ 勾选中不进存档（刷新就清空）',
      rawSave.indexOf('boxDone') < 0 && JSON.stringify(people).indexOf('boxDone') < 0,
      '存档 ' + rawSave.length + ' 字符里没有 boxDone');
+
+  q('#pkClose').click();
+  ck('点「分好了」就关窗', !pd.open, pd.open ? '还开着' : 'closed');
+
+  /* ★ 2026-11-19 当天追加：分药模式上面要列全家人、点一下就能切 ——
+     用户原话：「这个分药模式，家里面的不同成员要共同显示在这个分药模式的上方，可以切换」。
+     钉四件事：① 人多的时候窗口最上面真有一排人；② 当前那个人是亮的；
+               ③ 点了就换人，窗里的格子跟着换（窗口不关）；④ 切回来还是原来那盒。 */
+  var mom = { id: uid(), name: '妈妈', note: '',
+    box: { slots: defaultSlots(3) },
+    meds: [ { id: uid(), name: '叶酸片', spec: '0.4mg', perDose: 1, unit: '片', cycleDays: 1,
+              timesPerCycle: 1, stockBase: 12, stockDate: todayStr(), rxMax: 30, kind: 'daily' } ] };
+  mom.box.slots[0].ids = [mom.meds[0].id];
+  people.push(mom); save(); render();
+
+  openPick();
+  var mineTxt = (q('#pkBody').textContent || '').replace(/\s+/g, ' ');
+  ck('窗口上方列出全家人（一个不少，和主页那排一样多）',
+     people.length > 1 && qa('#pkPeople .ptab').length === people.length
+       && qa('#pkPeople .ptab').length === qa('#people .ptab').length,
+     qa('#pkPeople .ptab').length + ' 个 / 主页 ' + qa('#people .ptab').length + ' 个：'
+       + qa('#pkPeople .ptab').map(function(b){ return b.textContent; }).join('、'));
+  ck('当前那个人是亮的（借的还是主页那套 .ptab.active）',
+     qa('#pkPeople .ptab.active').length === 1
+       && qa('#pkPeople .ptab.active')[0].textContent === curPerson().name,
+     qa('#pkPeople .ptab.active').map(function(b){ return b.textContent; }).join('、'));
+  ck('那排人在窗口最上面（是 dialog 的第一个孩子，压在标题上头）',
+     (function(){
+       var d = q('#dlgPick');
+       var pp = d.querySelector('.pk-people');
+       return !!pp && pp === d.firstElementChild
+         && pp.getBoundingClientRect().top < d.querySelector('.dlg-h').getBoundingClientRect().top;
+     })(), '');
+
+  var myId = currentId;
+  q('#pkPeople .ptab[data-pp="' + mom.id + '"]').click();
+  ck('点一下就切到妈妈', curPerson().id === mom.id, curPerson().name);
+  ck('窗里的格子跟着换成她的药盒', /叶酸片/.test(q('#pkBody').textContent || ''),
+     (q('#pkBody').textContent || '').replace(/\s+/g, ' ').slice(0, 40));
+  ck('切人之后窗口还开着（不是一换人就关窗）', q('#dlgPick').open, '');
+  ck('高亮跟着走', qa('#pkPeople .ptab.active').length === 1
+       && qa('#pkPeople .ptab.active')[0].getAttribute('data-pp') === mom.id, '');
+
+  q('#pkPeople .ptab[data-pp="' + myId + '"]').click();
+  ck('再点回原来那位，盒子换回原样（切来切去不会串盒）',
+     curPerson().id === myId
+       && (q('#pkBody').textContent || '').replace(/\s+/g, ' ') === mineTxt,
+     (q('#pkBody').textContent || '').replace(/\s+/g, ' ').slice(0, 40));
+  q('#pkClose').click();
+
+  // 盒里没药 → 不挂按钮；就算硬调 openPick 也不弹一张空窗
+  curBox().slots[0].ids = []; curBox().slots[1].ids = [];
+  save(); render();
+  ck('盒子里没药就不挂按钮（空盒下面那行提示已经够了）', !q('#box [data-pickmode]'), '');
+  openPick();
+  ck('盒里没药时 openPick 不弹空窗（按钮是灰的，函数也得拦一道）', !pd.open,
+     pd.open ? '开了' : 'closed');
 
   /* ---------------- 20. 通用弹窗本身 ---------------- */
   // 用户 2026-10-23 原话：「点删除之后 应该是弹窗来确认 而不是由页面默认方式来实现
