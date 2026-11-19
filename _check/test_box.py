@@ -1018,6 +1018,29 @@ PROBE = r"""
      q('#box .slots') && q('#box .slots').nextElementSibling
        ? q('#box .slots').nextElementSibling.className : '没有');
 
+  /* ★ 2026-11-19：用户说「这个分药模式的按钮和这个边框靠得太近了」。
+     根子不是 margin，是 #box 一直没有内边距 —— 那条 .boxwrap 的 padding
+     写在样式表里，可 DOM 里从来没加过这个 class，等于全体贴边。
+     现在钉住"药盒这一块真有内边距"，谁把这行删了都会红。 */
+  (function(){
+    var cs = getComputedStyle(q('#box'));
+    ck('#box 自己有内边距（13 / 16 / 15 —— 标题、格子、按钮都不该贴着卡片边框）',
+       cs.paddingTop === '13px' && cs.paddingLeft === cs.paddingRight
+         && cs.paddingLeft === '16px' && cs.paddingBottom === '15px',
+       cs.padding);
+
+    var panel = q('#box').closest('.panel');
+    var br = q('#box .box-tools button').getBoundingClientRect();
+    var pr = panel.getBoundingClientRect();
+    ck('★ 按钮右沿离卡片边框至少 15px（原来只有 1px，就是"靠得太近"）',
+       pr.right - br.right >= 15, (pr.right - br.right).toFixed(1) + 'px');
+
+    var up = q('#box .unplaced');
+    ck('★ 按钮下沿也留着空（不压在下面那条虚线上）',
+       !!up && up.getBoundingClientRect().top - br.bottom >= 12,
+       up ? (up.getBoundingClientRect().top - br.bottom).toFixed(1) + 'px' : '没有未入清单');
+  })();
+
   pkBtn.click();
   var pd = q('#dlgPick');
   ck('点一下就弹出分药窗口', pd.open, pd.open ? 'open' : 'closed');
@@ -1050,10 +1073,21 @@ PROBE = r"""
 
   pkCk(mEarly.id)[0].checked = true;
   pkCk(mEarly.id)[0].dispatchEvent(new Event('change', { bubbles: true }));
-  ck('★ 勾一处 → 盒子里这味药的每一格都变淡（还是按药记，不是按格子记）',
+  /* ★ 2026-11-19 当天第二次返工：勾**不再**传染给药盒。用户原话：
+       「分药模式里边勾选的，它这个名字会变暗。然后连带着这个药盒里边的名字也变暗了，
+         这个药盒里边的名字不用和这个分药模式的联动。」
+     所以这里反过来钉：窗里勾上之后，盒子里的格子(class / 透明度 / 文字色)一点都不能变。
+     别再把这断言改回"变淡" —— 那是被用户当场推翻的做法。 */
+  ck('★ 窗里勾上 → 药盒里的格子一点不变（没有 .done、名字不淡）',
      doneChips(mEarly.id).length === 2
-       && doneChips(mEarly.id).every(function(c){ return c.classList.contains('done'); }),
-     doneChips(mEarly.id).map(function(c){ return c.className; }).join(' | '));
+       && doneChips(mEarly.id).every(function(c){
+            return !c.classList.contains('done')
+              && getComputedStyle(c).opacity === '1'
+              && getComputedStyle(c.querySelector('.nm')).color === 'rgb(36, 42, 53)';
+          }),
+     doneChips(mEarly.id).map(function(c){ return c.className; }).join(' | ')
+       + ' / opacity ' + doneChips(mEarly.id).map(function(c){
+            return getComputedStyle(c).opacity; }).join(','));
   ck('窗里同一味的另一行也跟着勾上了',
      pkRows(mEarly.id).every(function(r){
        return r.classList.contains('done') && r.querySelector('input.dk').checked;
@@ -1063,13 +1097,13 @@ PROBE = r"""
   ck('别的药没被带上', !pkRows(mLate.id)[0].classList.contains('done'), pkRows(mLate.id)[0].className);
   ck('勾一下不动库存', byName('早饭前片').stockBase === 30, byName('早饭前片').stockBase);
   ck('勾着的时候整页重画，勾还在（内存态，不是画一次就丢）',
-     (function(){ render(); return doneChips(mEarly.id).every(function(c){
-        return c.classList.contains('done'); }); })(), '');
+     (function(){ render(); return pkRows(mEarly.id).every(function(r){
+        return r.classList.contains('done'); }); })(), '');
 
   pkCk(mEarly.id)[1].checked = false;
   pkCk(mEarly.id)[1].dispatchEvent(new Event('change', { bubbles: true }));
-  ck('再点一次就取消，两格一起恢复',
-     doneChips(mEarly.id).every(function(c){ return !c.classList.contains('done'); }), '');
+  ck('再点一次就取消（同一味的两行一起恢复）',
+     pkRows(mEarly.id).every(function(r){ return !r.classList.contains('done'); }), '');
 
   // 「清空勾」：分完一顿要接着分下一顿时用，不然得一味一味往回点
   pkCk(mEarly.id)[0].checked = true;

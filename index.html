@@ -183,7 +183,12 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
    「今天这一格的药，我该从哪个瓶子里各拿几粒」。药盒就是回答这个的。
    格数随意（1~7），每格名字能改（「早饭前」「睡前」这种），药可以同时出现在多格
    （早晚各一次的那种），从下面列表拖 = 复制一份，从格子拖到格子 = 搬过去。 */
-.boxwrap{padding:13px 16px 15px;border-bottom:1px solid var(--line-2);background:#fcfcfd}
+/* ★ 药盒这一块的内边距挂在 #box 自己身上（原来这条是 .boxwrap，但那个 class
+   早就没人加了 —— 类还在、样式还在，DOM 里却没有，等于一直没内边距：
+   格子、标题、还有底下那颗「分药模式」全都是直接贴着卡片边框的。
+   用户 2026-11-19 就是被这个硌到的：「这个分药模式的按钮和这个边框靠得太近了」。
+   数值照抄原来那份（13/16/15，手机 11/13/13），已经是调好的比例。 */
+#box{padding:13px 16px 15px}
 .box-h{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:10px}
 .box-t{font-size:13px;font-weight:650;color:#1f2937}
 .box-tip{font-size:11.5px;color:var(--faint)}
@@ -238,16 +243,20 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 .chip .dose{flex:none;font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 .chip .x{flex:none;width:16px;height:16px;border:none;background:transparent;color:#aab2c0;
   cursor:pointer;border-radius:4px;font-size:13px;line-height:1;padding:0;display:grid;place-items:center}
-/* 分完了的药变淡（2026-11-19 用户：「每个药的后边再加一个选择框，方便确定哪种药分完了」）。
-   勾选框本身在「分药模式」那个大窗口里（见 #dlgPick），不放格子上 ——
-   7 格时每格只剩 80px 内宽，药名 + 剂量 + 勾 + × 四个元素塞一行必定折成两行，
-   用户 2026-11-19 就是嫌这个「一种药会占两行，很丑」。
-   格子这边只留一个结果：勾上的整颗变淡，一屏扫过去深着的就是还没分的。 */
-.chip.done{opacity:.5}
-.chip .x:hover{background:#e8edf5;color:var(--out)}
+/* ★ 格子里的药**不会**因为大窗里打了勾而变淡 —— 这一点是用户 2026-11-19 当场纠的：
+   「分药模式里边勾选的，它这个名字会变暗。然后连带着这个药盒里边的名字也变暗了，
+     这个药盒里边的名字不用和这个分药模式的联动。」
+   所以 .chip 上再也没有 .done 这种样式了，勾只作用于大窗里那一行（见 .pk-row.done）。
+   ★ 别再"顺手"给格子加回变淡效果：格子是装药时照着拿的实物对照，
+     名字必须一直是实的；勾选框都不在格子上了，勾的状态更不该跟过来。 */
 /* 药盒右下角那一行 —— 目前只有「分药模式」一个按钮，贴右放，
-   和上面格子的右边线对齐；以后要加第二个也往这里塞。 */
-.box-tools{display:flex;justify-content:flex-end;gap:8px;margin-top:9px}
+   和上面格子的右边线对齐；以后要加第二个也往这里塞。
+   ★ 用户 2026-11-19 说「这个分药模式的按钮和这个边框靠得太近了」，
+     根子是 #box 压根没有内边距（见上面 #box 那条注释）。
+     右边靠 #box 的 16px；下面那 15px 是有意的：它后面紧跟着未入清单的虚线，
+     margin-bottom 15 和虚线自己的 margin-top 11 相邻折叠 → 取 15，不是相加。 */
+.box-tools{display:flex;justify-content:flex-end;gap:8px;margin:11px 0 15px}
+.chip .x:hover{background:#e8edf5;color:var(--out)}
 .box-foot{margin-top:8px;font-size:11.5px;color:var(--faint)}
 
 /* ---------- 未入清单：还没摆进任何一格的药 ----------
@@ -819,7 +828,7 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
   .panel-h{padding:11px 13px}
   .panel-b{padding:12px 13px}
   .mlist{padding:12px 13px}
-  .boxwrap{padding:11px 13px 13px}
+  #box{padding:11px 13px 13px}
   .col-side{display:none}
   body.mtab2 .col-main{display:none}
   body.mtab2 .col-side{display:block}
@@ -1579,9 +1588,10 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
      「加了这个选择框之后，有一种药会占两行，就很丑。所以我想的是在药盒的右下角加一个按钮，
       上面写着分药模式，然后点开这个分药模式之后就弹出一个窗口来，这个窗口大一些
       它就不会一个药占两行了。」
-     ★ 勾选框从格子上搬到了这里（格子里塞不下），所以这不只是"同一个东西换个地方看"：
-       它是**唯一**能打勾的地方，格子那边只负责把勾过的药变淡。
-     ★ 勾仍然按药记、不进存档、刷新就清 —— 跟原来一模一样，只是容器变了（boxDone 没动）。
+     ★ 勾选框从格子上搬到了这里（格子里塞不下）。
+     ★ 勾只在这张窗里算数：窗里那一行会变淡，**药盒里的格子和名字不动** ——
+       用户 2026-11-19：「这个药盒里边的名字不用和这个分药模式的联动。」
+     ★ 勾仍然按药记、不进存档、刷新就清 —— 跟原来一模一样（boxDone 没动）。
      内容整块由 renderPick() 生成，这里只留三个空壳。 -->
 <dialog id="dlgPick">
   <!-- 家里人摆在最上面（2026-11-19 用户：「这个分药模式，家里面的不同成员要共同显示在
@@ -2293,19 +2303,21 @@ function findMed(id){
 /* 分药时打的那个勾：「这味分好了」。
    ★ 只活在这一屏 —— 不进存档、刷新就全清（用户 2026-11-19：「这个就是临时的框，
      刷新之后就不用再显示了」）。所以它是模块里的一个普通对象，不是 person 上的字段。
-   ★ 按**药**记，不按格子记：一味药常常同时在早/中/晚三格里，分完这一瓶
-     就该三处一起变淡，而不是勾三次。
+   ★ 按**药**记，不按格子记：一味药常常同时在早/中/晚三格里，勾一次三处一起算分完，
+     而不是勾三次（同一味的行在大窗里会一起亮/一起淡）。
    ★ 2026-11-19 起勾选框**只在大窗里**（#dlgPick 的分药模式），格子上不再放框 ——
-     格子里塞不下第四个元素（见 chipHTML 的注释）。boxDone 这个状态本身没变。 */
+     格子里塞不下第四个元素（见 chipHTML 的注释）。boxDone 这个状态本身没变。
+   ★ 同一天用户又补一句：「这个药盒里边的名字不用和这个分药模式的联动」——
+     所以这个勾**只画在大窗里**，药盒里的格子和名字一点都不受影响（见 syncBoxDone）。 */
 let boxDone = {};
 
-// 一味药的勾变了：只改它自己那几处（同一味药可能出现在好几格 / 大窗里好几行），
-// 不整块重画 —— 重画会把格子上的落点高亮和滚动位置一起冲掉。
-// ★ 两个容器用的是同一个 class `.done`（chip 和 .pk-row 各自定义了变淡的透明度），
-//   所以这里一套选择器就够；格子上已经没有勾选框了，querySelector 取不到就跳过。
+// 一味药的勾变了：只改大窗里它自己那几行（同一味药可能出现在好几格 = 好几行），
+// 不整块重画 —— 重画会把滚动位置和正在看的落点一起冲掉。
+// ★ 药盒（#box .chip）**故意不在这里**：用户明确要求盒子跟大窗解耦，
+//   勾上之后盒子里的药名保持原样。别再"顺手"把 '#box .chip' 加回选择器。
 function syncBoxDone(id){
   const on = !!boxDone[id];
-  $$('#box .chip[data-med], #pkBody .pk-row[data-med]').forEach(function(c){
+  $$('#pkBody .pk-row[data-med]').forEach(function(c){
     if(c.getAttribute('data-med') !== id) return;
     c.classList.toggle('done', on);
     const ck = c.querySelector('input.dk');
@@ -2335,11 +2347,11 @@ function chipDose(m){
 }
 
 function chipHTML(m, slotIdx){
-  const done = !!boxDone[m.id];
-  // ★ 格子只有 92px 内宽（7 格时 80px），药名 + 剂量 + × 已经把一行占满了。
-  //   2026-11-19 之前这里还塞过一个勾选框，结果长药名一律折成两行，用户嫌丑
-  //   —— 勾搬到「分药模式」大窗里去了，这里只按 boxDone 把整颗药变淡。
-  return '<div class="chip' + (done ? ' done' : '') + '" data-med="' + m.id + '" data-from="' + slotIdx + '"'
+  // ★ 格子不吃 boxDone：勾勾只活在大窗里。用户 2026-11-19 原话：
+  //   「这个药盒里边的名字不用和这个分药模式的联动」—— 名字一直是实的。
+  //   格子最窄只有 92px（7 格时 80px），药名 + 剂量 + × 已经占满一行，
+  //   2026-11-19 之前这里塞过一个勾选框，长药名一律折两行，用户嫌丑，勾才搬到大窗去的。
+  return '<div class="chip" data-med="' + m.id + '" data-from="' + slotIdx + '"'
     +   ' data-lv="' + level(m) + '" title="' + esc(m.name) + '（拖到别的格 = 搬过去）">'
     +   '<span class="nm">' + esc(m.name) + '</span>'
     +   (chipDose(m) ? '<span class="dose">' + chipDose(m) + '</span>' : '')
@@ -2457,7 +2469,9 @@ function stageHTML(){
    在药盒的右下角加一个按钮，上面写着分药模式，然后点开就弹出一个窗口来，
    这个窗口大一些它就不会一个药占两行了。」
    ★ 它不复制一份状态：读的还是 curBox() / boxDone，改的也是 boxDone ——
-     窗口里勾一下，格子上那颗药立刻变淡（syncBoxDone 两边一起改），不是两套账。
+     窗里勾一下、同一味的几行一起亮，不是两套账。
+   ★ 但**药盒那边不跟着变**（用户 2026-11-19：「药盒里边的名字不用和这个分药模式的联动」）：
+     盒子是装药时照着的实物对照，名字要一直是实的；勾只在这张窗里算数。
    ★ 格子顺序照原样（不排序）：认药认的是位置，早/中/晚换位置就找不着了。 */
 function pickGroups(){
   return curBox().slots.map(function(s, i){
@@ -2537,9 +2551,10 @@ function openPick(){
 }
 
 // 清空所有勾（分完一顿要重新分下一顿时用；不然得一味一味往回点）
+// ★ 只清大窗里的行 —— 药盒那边的格子本来就没跟着勾变过，也不用还原。
 function clearPick(){
   boxDone = {};
-  $$('#box .chip, #pkBody .pk-row').forEach(function(c){
+  $$('#pkBody .pk-row').forEach(function(c){
     c.classList.remove('done');
     const ck = c.querySelector('input.dk');
     if(ck) ck.checked = false;
@@ -2603,7 +2618,7 @@ function renderBox(){
   };
   // ★ 2026-11-19：格子上那个勾选框撤了（塞不下，长药名会折两行），
   //   所以这里不再挂 onchange —— 打勾的入口只剩「分药模式」弹窗（见 bindEvents 里的 #pkBody）。
-  //   格子只按 boxDone 把整颗药变淡，这个渲染在 chipHTML 里，不需要事件。
+  //   盒子这边连 boxDone 都不读（用户要求跟大窗解耦），chipHTML 只管画药名和剂量。
   el.ondblclick = function(e){
     const nm = e.target.closest('[data-slotname]');
     if(nm) renameSlot(Number(nm.getAttribute('data-slotname')));
@@ -5867,7 +5882,8 @@ $('#btnAllClose').addEventListener('click', function(){ $('#dlgAll').close(); })
 
 /* ---- 分药模式（药盒右下角那颗按钮 → 大窗） ----
    勾选框现在只在这个弹窗里，所以这里是**唯一**打勾的入口；
-   改的是同一个 boxDone，syncBoxDone 会把格子上那颗药一起变淡。 */
+   改的是同一个 boxDone，syncBoxDone 只同步这张窗里的那几行 —— 药盒那边不动
+   （用户 2026-11-19：「这个药盒里边的名字不用和这个分药模式的联动」）。 */
 $('#pkBody').addEventListener('change', function(e){
   const ck = (e.target && e.target.closest) ? e.target.closest('input.dk') : null;
   if(!ck) return;

@@ -83,15 +83,10 @@ HOOKS = {
            " document.head.appendChild(st);"
            " var bs = curStage(); if(bs.indexOf(meds[1].id) < 0) bs.push(meds[1].id);"
            " save(); renderBox();",
-    # ★ 2026-11-19：药盒这张拍两件事 ——
-    #   ① 药盒右下角那颗「分药模式」按钮（勾选框从格子上搬走之后，入口就在这儿）；
-    #   ② 挑一味**同时在两格**里的勾上（葡萄糖酸钙：午饭前 + 晚饭后）→ 两格一起变淡，
-    #      证明勾还是按药记的，跟勾选框摆哪儿无关。
-    "boxdone": "var st2 = document.createElement('style');"
-               " st2.textContent = '.top,.people,.stats,#warn,.panel-h,#list,.col-side,.foot-sig{display:none !important}'"
-               " + '.cols{grid-template-columns:1fr}';"
-               " document.head.appendChild(st2);"
-               " save(); boxDone[meds[2].id] = 1; renderBox();",
+    # ★ 2026-11-19：原来这儿还有一张 "boxdone"（盒子里勾过的药变淡）。
+    #   当天用户就把这个联动推翻了 ——「这个药盒里边的名字不用和这个分药模式的联动」——
+    #   盒子现在跟勾完全无关，再拍就是一张和 "box" 一模一样的图，所以整套撤了。
+    #   勾的效果只在 "pickmode" 那张大窗里看。
     # ★ 2026-11-19（同一天返工）：分药模式那个大窗本身。拍它是因为这张图回答的就是
     #   用户那句「有一种药会占两行，就很丑」—— 窗里一味药占一整行、剂量靠右、
     #   两列排开，格子那边挤不下的问题在这儿不存在。
@@ -324,7 +319,7 @@ HOOKS = {
 SIZE = {"rx": "1240,1340", "rxparsed": "1240,1430",
         "rxaudit": "1240,1420", "rxuse": "1240,1320",
         "main": "1240,2160", "picked": "1240,1560", "io": "820,420", "edit": "820,700",
-        "prnedit": "820,700", "box": "820,372", "boxdone": "820,372", "mbox7": "390,900", "fam": "1240,1010",
+        "prnedit": "820,700", "box": "820,404", "mbox7": "390,940", "fam": "1240,1010",
         # 分药模式大窗：760 宽的窗 + 4 格两列 + 头尾，900 够（再多会带上一圈空桌面）
         "pickmode": "1240,600",
         # 引导式三张：一步只有一格，弹窗比原来矮多了（原来整张表要 1300 才装得下）
