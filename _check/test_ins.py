@@ -452,7 +452,79 @@ PROBE = r"""
      b1 ? b1.miStart : '无');
   ck('整包备份往返：自费那味仍然没有标记', b2 && !b2.ins, b2 ? String(b2.ins) : '无');
 
-  /* ================= 12. 全程不许走原生弹窗 ================= */
+  /* ================= 12. 清单里每天吃的药分「医保 / 自购」两段（2026-11-19） ======
+     用户原话：「每天吃的药要区分出是医保还是自购。在没有标明是医保的时候，就把这个药品
+               放到自购里。但是如果标明了是医保就放回医保。」
+     钉四件事：
+       ① 每天吃的药下面真有两段，医保在前、自购在后（医保带锁，是要先看的那类）；
+       ② 没标 ins 的（老存档 / 新加的默认）都在「自购」段 —— 不做任何"补录"；
+       ③ 标了 mi 的进「医保」段 —— 用的还是同一个 ins，不另存"分类"字段；
+       ④ 把一味改成医保（再去掉标记），它**当场换段**，条数跟着变。
+     ★ 段标题是 .sub-h，**不是** .sect-h —— test_prn 里数的是 .sect-h 的个数
+       （每天吃的 / 备用药那两个），这里再塞一个 .sect-h 会把那条断言顶掉。
+     ★ segOf 遇到 .sect-h 就停：备用药卡片前面最近的一段是一级标题，
+       不是"自购"段 —— 不拦的话它会一路往上找到自购段，误判成"备用药也是自购"。 */
+  reset();
+  var dSelf = mk({ name: '自购甲片', stock: 10 });
+  var dMi   = mk({ name: '医保乙片', ins: 'mi', miStart: todayStr(), stock: 10 });
+  var dOld  = mk({ name: '老存档丙片', stock: 10 });          // 完全没有 ins / miStart
+  mk({ name: '备用丁片', kind: 'prn', stock: 3 });
+
+  function subs(){ return qa('#list .sub-h'); }
+  function subText(i){
+    return (subs()[i] ? subs()[i].textContent : '').replace(/\s+/g, ' ').trim();
+  }
+  function segOf(n){
+    var c = cardOf(n);
+    if(!c) return '(无卡片)';
+    var prev = c.previousElementSibling;
+    while(prev){
+      if(prev.classList.contains('sect-h')) return '(一级分组：' + prev.textContent.replace(/\s+/g, ' ').trim() + ')';
+      if(prev.classList.contains('sub-h')) return prev.textContent.replace(/\s+/g, ' ').trim();
+      prev = prev.previousElementSibling;
+    }
+    return '(没有段标题)';
+  }
+
+  ck('每天吃的药下面分成两段', subs().length === 2,
+     subs().map(function(el){ return el.textContent.replace(/\s+/g, ' ').trim(); }).join(' | '));
+  ck('第一段是医保、第二段是自购（医保在前）',
+     /^医保/.test(subText(0)) && /^自购/.test(subText(1)), subText(0) + ' / ' + subText(1));
+  ck('两段都带条数（医保 1 种 / 自购 2 种）',
+     /1\s*种/.test(subText(0)) && /2\s*种/.test(subText(1)), subText(0) + ' / ' + subText(1));
+  ck('★ 没标过 ins 的都落在「自购」里（新加的默认 + 老存档）',
+     /^自购/.test(segOf('自购甲片')) && /^自购/.test(segOf('老存档丙片')),
+     segOf('自购甲片') + ' | ' + segOf('老存档丙片'));
+  ck('★ 标了医保的落在「医保」里', /^医保/.test(segOf('医保乙片')), segOf('医保乙片'));
+  ck('备用药不进这两段（它归一级标题「备用药」）',
+     /一级分组/.test(segOf('备用丁片')), segOf('备用丁片'));
+  ck('提示语里「每天吃的 3 种」和「医保 1 / 自购 2」对得上',
+     /每天吃的\s*3\s*种/.test(q('#listHint').textContent)
+       && /医保\s*1\s*\/\s*自购\s*2/.test(q('#listHint').textContent),
+     q('#listHint').textContent);
+
+  // ---- 改标记 → 当场换段 ----
+  dSelf.ins = 'mi'; dSelf.miStart = todayStr(); save(); render();
+  ck('★ 把一味从自购改成医保，它当场换到医保段',
+     /^医保/.test(segOf('自购甲片')), segOf('自购甲片'));
+  ck('  两段条数跟着变（医保 2 种 / 自购 1 种）',
+     /2\s*种/.test(subText(0)) && /1\s*种/.test(subText(1)), subText(0) + ' / ' + subText(1));
+  ck('  改过来的这味照样挂上医保锁标（不是只换了位置）',
+     !!cardOf('自购甲片').querySelector('.tag.ins-lock, .tag.ins-open'), '');
+
+  dSelf.ins = ''; delete dSelf.miStart; save(); render();
+  ck('★ 去掉医保标记 → 回到自购段（分类就是 ins 本身，没有第二个字段）',
+     /^自购/.test(segOf('自购甲片')), segOf('自购甲片'));
+  ck('  回去之后医保段只剩 1 种', /1\s*种/.test(subText(0)), subText(0));
+
+  // 全是自购时：两段只剩一段也得显示 —— 否则"没标明 = 自购"这条规则在界面上没痕迹
+  setMeds([dOld]); save(); render();
+  ck('★ 只有自购的药时，那一段仍然写出来（不然看不出它们被归到哪儿了）',
+     subs().length === 1 && /^自购/.test(subText(0)), subText(0));
+  ck('  这一段的条数是 1 种', /1\s*种/.test(subText(0)), subText(0));
+  reset();
+
+  /* ================= 13. 全程不许走原生弹窗 ================= */
   ck('★ 整个过程一次都没走浏览器原生 alert / confirm / prompt',
      R.natives.length === 0, R.natives.join(' | ') || '(一次都没有)');
 

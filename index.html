@@ -178,6 +178,19 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 .sect-h .cnt{font-size:11.5px;font-weight:600;color:var(--faint)}
 .sect-h.mt{margin-top:4px;padding-top:12px;border-top:1px solid var(--line-2)}
 
+/* ---------- 每天吃的药再按钱分两块：医保 / 自购 ----------
+   2026-11-19 用户：「每天吃的药要区分出是医保还是自购。在没有标明是医保的时候，
+   就把这个药品放到自购里。但是如果标明了是医保就放回医保。」
+   ★ 分组的唯一依据就是 ins === 'mi'（见 miIsMI）—— **没标 = 自购**，
+     老存档没有这个字段就落在自购里，不给人凭空补一个「医保」出来。
+   ★ 做成「小药丸标签」而不是再加一层带竖条的标题：卡片左边已经有一条按档位变色的
+     4px 竖条，标题再来一根，两套色条挨着会读成同一套语义。 */
+.sub-h{display:flex;align-items:center;gap:7px;margin:3px 0 -3px;
+  font-size:11.5px;font-weight:600;color:var(--faint);line-height:1.6}
+.sub-h .pill{font-size:11px;font-weight:650;padding:2px 9px;border-radius:99px;line-height:1.6}
+.sub-h .pill.mi{background:#e2e8f0;color:#334155}
+.sub-h .pill.self{background:#f1f3f6;color:#6b7280}
+
 /* ---------- 药盒：模拟分格药盒，把药拖进格子里 ----------
    为什么要有它：库存告诉你「还剩几天」，但装药那一刻要回答的是另一个问题 ——
    「今天这一格的药，我该从哪个瓶子里各拿几粒」。药盒就是回答这个的。
@@ -2253,11 +2266,27 @@ function renderList(){
   const sorted = sortedMeds();
   const dailyRows = sorted.filter(function(m){ return !isPrn(m); });
   const prnRows   = sorted.filter(isPrn);
+  // 每天吃的药再按「医保 / 自购」分两段（2026-11-19 用户要求）。
+  // ★ 判据只有 miIsMI()：标了医保的进医保段，**其余一律进自购段** ——
+  //   老的、新加的、从底方录入的，没标过就都算自购，不需要谁去「补录」。
+  // ★ 组内顺序沿用 sortedMeds()，不再按支付方式重排：一次只改一个维度，
+  //   否则「哪味快没了」和「哪味是医保」两个顺序会互相打架。
+  const miRows    = dailyRows.filter(miIsMI);
+  const selfRows  = dailyRows.filter(function(m){ return !miIsMI(m); });
 
   let html = '<div class="mlist">';
   if(dailyRows.length){
-    html += '<div class="sect-h">每天吃的药<span class="cnt">' + dailyRows.length + ' 种</span></div>'
-          + dailyRows.map(cardHTML).join('');
+    html += '<div class="sect-h">每天吃的药<span class="cnt">' + dailyRows.length + ' 种</span></div>';
+    if(miRows.length){
+      html += '<div class="sub-h"><span class="pill mi">医保</span>'
+            + '<span class="cnt" style="font-weight:600">' + miRows.length + ' 种</span></div>'
+            + miRows.map(cardHTML).join('');
+    }
+    if(selfRows.length){
+      html += '<div class="sub-h"><span class="pill self">自购</span>'
+            + '<span class="cnt" style="font-weight:600">' + selfRows.length + ' 种</span></div>'
+            + selfRows.map(cardHTML).join('');
+    }
   }
   if(prnRows.length){
     html += '<div class="sect-h' + (dailyRows.length ? ' mt' : '') + '">备用药'
@@ -2267,8 +2296,10 @@ function renderList(){
   html += '</div>';
   list.innerHTML = html;
 
+  // ⚠️ 别写成「共 N 种 · 医保 x / 自购 y」—— N 含备用药，x+y 只数每天吃的，
+  //    两个数放一起会被人拿去做加法对不上。这句只说每天吃的。
   $('#listHint').textContent = dailyRows.length
-    ? '每天吃的按剩余天数排，共 ' + meds.length + ' 种'
+    ? '每天吃的 ' + dailyRows.length + ' 种 · 医保 ' + miRows.length + ' / 自购 ' + selfRows.length
     : '共 ' + meds.length + ' 种';
 
   // 事件委托
