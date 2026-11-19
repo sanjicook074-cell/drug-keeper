@@ -138,6 +138,21 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 .med-note{margin-top:6px;font-size:12.5px;color:var(--faint)}
 .med-foot{display:flex;gap:8px;margin-top:11px;padding-top:11px;border-top:1px dashed var(--line-2)}
 
+/* ---------- 卡片左上角的勾选框（2026-11-19） ----------
+   勾上的 = 这一趟去医院实际开到了哪几味；右边「✓ 已经开药」只处理勾上的这几种。
+   ★ 这张卡片整块同时是药盒的拖拽源（dragDown 认 [data-med]），
+     所以指针按在 label / input 上时必须不算拖 —— dragDown 开头已经先挡掉这两类了。
+   ★ 选中只加一圈描边，**不改底色**：底色是档位（已用完/偏少）在用，覆盖掉就读不出"该补了"。 */
+.med-pick{flex:none;display:flex;align-items:center;justify-content:center;
+  width:24px;height:24px;margin:-3px 0 0 -5px;cursor:pointer}
+.med-pick input{width:18px;height:18px;margin:0;cursor:pointer;accent-color:var(--brand)}
+.med.picked{border-color:#b9cff8;box-shadow:0 0 0 2px rgba(37,99,235,.1)}
+.pick-hint{display:block;font-size:11.5px;line-height:1.6;color:var(--faint);margin:0 2px;text-align:center}
+/* 手机底部「就诊准备」页签上的小圆点：勾了药之后那边才有东西可点 */
+.tbadge{display:inline-block;min-width:15px;margin-left:4px;padding:0 4px;border-radius:8px;
+  background:var(--brand);color:#fff;font-size:10px;line-height:15px;text-align:center;font-weight:650}
+.tbadge[hidden]{display:none}
+
 .tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 7px;border-radius:5px;line-height:1.5}
 .tag.out{background:#fee2e2;color:#b91c1c}
 .tag.soon{background:#fef3c7;color:#a16207}
@@ -534,7 +549,9 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 .disp-sum{margin:14px 0 0;padding:10px 13px;border-radius:9px;background:#f8f9fb;
   border:1px solid var(--line-2);font-size:12.5px;color:#4b5563}
 
-/* ---------- 批量调整存量 ---------- */
+/* ---------- 数字弹窗里那一格（.bulk-days 是历史类名） ----------
+   原来「批量调存量」也用它，那一页 2026-11-19 按用户要求删了；类名没改，
+   是因为「又买了药 / 校准余量」两处还挂着，改名只会平白多一次替换风险。 */
 .bulk-days{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:#4b5563;margin-bottom:14px}
 .bulk-days input{font:inherit;padding:8px 11px;border:1px solid var(--line);border-radius:8px;width:130px}
 .bulk-days input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
@@ -558,18 +575,6 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 .vpick-f[hidden]{display:none}
 .vpick-f .hintline{font-size:11.5px;color:var(--faint);line-height:1.55}
 .vpick-f .hintline b{color:#374151;font-weight:680}
-.bulk-list{display:flex;flex-direction:column;gap:8px;max-height:44vh;overflow:auto}
-.bulk-after{flex:none;text-align:right;font-size:11.5px;color:var(--muted);line-height:1.5}
-.bulk-after b{font-size:14px;font-weight:660;color:#374151}
-.bulk-after .down b{color:var(--out)}
-.bulk-after .noop{color:var(--faint)}
-/* ★ 2026-10-12 用户要求：批量调存量可以**挑着调**（勾选），列表顺序跟主页一致，
-   并且用颜色标出哪些药不够了 —— 行色沿用卡片那套档位色（.disp-row[data-lv]） */
-.bulk-pick{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:0 0 10px;
-  border-bottom:1px dashed var(--line);font-size:12.5px;color:var(--muted)}
-.bulk-pick .sp{flex:1}
-.bulk-ck{flex:none;width:16px;height:16px;margin:0;accent-color:var(--brand);cursor:pointer}
-.bulk-ck:disabled{cursor:not-allowed;opacity:.45}
 .disp-name .tag{margin-left:6px;vertical-align:1px}
 .disp-sum b{color:#374151}
 
@@ -600,6 +605,9 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 .rx-row[data-lv=ok]{border-left-color:var(--ok)}
 .rx-row[data-lv=na]{border-left-color:var(--na)}
 .rx-line{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+/* 每行最前面那个勾选框。★ 原来借的是 .bulk-ck（批量调存量那页的样式），
+   那一页 2026-11-19 删掉时差点把这格也带没 —— 它现在有自己的名字了。 */
+.rx-ck{flex:none;width:16px;height:16px;margin:0;accent-color:var(--brand);cursor:pointer}
 .rx-line + .rx-line{margin-top:8px}
 .rx-row input,.rx-row select{font:inherit;font-size:12.5px;padding:6px 9px;
   border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text)}
@@ -735,7 +743,7 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
   h1{font-size:16.5px;white-space:nowrap}
   .sub{display:none}
   .top-actions{flex-wrap:nowrap;margin-left:auto;gap:8px}
-  #btnSettings,#btnImport,#btnExport,#btnBulk,#btnFam,#btnRx{display:none}
+  #btnSettings,#btnIO,#btnFam,#btnRx{display:none}
   #btnAdd{display:none}                 /* 换成右下角悬浮按钮 */
   #btnMore{display:grid;place-items:center;width:40px;height:40px;padding:0;
     border:1px solid var(--line);border-radius:12px;background:#fff;
@@ -775,6 +783,9 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
   .slot-x{width:24px;height:24px;font-size:16px;border-radius:6px}
   .slot-hd{margin-bottom:3px}
   .btn.sm{padding:7px 11px;font-size:13px}
+  /* 勾选框在触屏上要够大：18px 的方框手指点不准，给到 22px，外面再留一圈可点区 */
+  .med-pick{width:32px;height:32px;margin:-6px 0 0 -7px}
+  .med-pick input{width:22px;height:22px}
 
   /* 「就诊准备」那一页用不着统计，省下的地方留给「要开的药」和底部四个按钮 */
   body.mtab2 .stats{display:none}
@@ -826,8 +837,9 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
   .rx-row .rx-spec{width:102px}
 }
 
-/* ---- ⋯ 菜单（只有手机能打开，桌面没有入口） ---- */
-#dlgMore{width:min(420px,calc(100vw - 22px))}
+/* ---- ⋯ 菜单（只有手机能打开，桌面没有入口）/ 导入导出 ----
+   两张都是一列大按钮，共用同一套 .morelist 样式。 */
+#dlgMore,#dlgIO{width:min(420px,calc(100vw - 22px))}
 .morelist{display:flex;flex-direction:column;gap:7px}
 .moreitem{display:flex;flex-direction:column;gap:1px;text-align:left;width:100%;
   padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:#fff;
@@ -837,8 +849,8 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 .moreitem .ms{font-size:11.5px;color:var(--muted)}
 /* 用 showModal 打开时浏览器会把焦点丢给第一个按钮，默认那个黑框看着像没加载完。
    默认不画，只有键盘 Tab 走到时才画（:focus-visible）。 */
-#dlgMore .moreitem:focus{outline:none}
-#dlgMore .moreitem:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+#dlgMore .moreitem:focus,#dlgIO .moreitem:focus{outline:none}
+#dlgMore .moreitem:focus-visible,#dlgIO .moreitem:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 </style>
 </head>
 <body>
@@ -854,9 +866,7 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
     </div>
     <div class="top-actions">
       <button class="btn ghost" id="btnSettings">设置</button>
-      <button class="btn ghost" id="btnImport">导入</button>
-      <button class="btn ghost" id="btnExport">导出备份</button>
-      <button class="btn ghost" id="btnBulk" title="按「够吃 N 天」统一加减这个药箱里所有药品的存量">批量调存量</button>
+      <button class="btn ghost" id="btnIO" title="导出备份 / 从备份导入">导入导出</button>
       <button class="btn ghost" id="btnFam" title="把全家每个人药箱里「已用完 / 偏少」的药摊在一页，买药开药一趟办完">全家偏少</button>
       <button class="btn ghost" id="btnRx" title="底方照片先发给 AI（DeepSeek、Kimi 等），让它把药名和用量打成文字，再粘进来解析">底方录入</button>
       <button class="btn primary" id="btnAdd">＋ 添加药品</button>
@@ -906,6 +916,7 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 
         <div class="side-actions">
           <button class="btn success block" id="btnDispense">✓ 已经开药</button>
+          <span class="pick-hint" id="dispPickHint"></span>
           <button class="btn primary block" id="btnCopy">复制给医生</button>
           <div style="display:flex;gap:8px">
             <button class="btn ghost" style="flex:1" id="btnDownload">下载 .txt</button>
@@ -927,7 +938,7 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
   <button type="button" data-tab="1" class="on" aria-current="page">
     <span class="ind"></span><span>药品</span></button>
   <button type="button" data-tab="2">
-    <span class="ind"></span><span>就诊准备</span></button>
+    <span class="ind"></span><span>就诊准备<b class="tbadge" id="tabPick" hidden></b></span></button>
 </nav>
 <button type="button" id="fabAdd" aria-label="添加药品">＋</button>
 
@@ -944,15 +955,9 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
       <button type="button" class="moreitem" data-act="btnFam">
         <span class="mt">全家偏少</span>
         <span class="ms">全家人缺的药摊在一页，能一键复制药名</span></button>
-      <button type="button" class="moreitem" data-act="btnBulk">
-        <span class="mt">批量调存量</span>
-        <span class="ms">按「够吃 N 天」统一加减这个药箱的药</span></button>
-      <button type="button" class="moreitem" data-act="btnExport">
-        <span class="mt">导出备份</span>
-        <span class="ms">存成 json 文件｜换手机、卸载重装前请先导一次</span></button>
-      <button type="button" class="moreitem" data-act="btnImport">
-        <span class="mt">导入</span>
-        <span class="ms">从备份 json 恢复，会整包替换现在这台手机上的数据</span></button>
+      <button type="button" class="moreitem" data-act="btnIO">
+        <span class="mt">导入导出</span>
+        <span class="ms">导出 json 备份 / 从备份恢复（换手机、重装前先导一次）</span></button>
       <button type="button" class="moreitem" data-act="btnSettings">
         <span class="mt">设置</span>
         <span class="ms">提醒天数、家里都有谁</span></button>
@@ -960,6 +965,28 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
   </div>
   <div class="dlg-f">
     <button type="button" class="btn ghost" id="btnMoreClose">关闭</button>
+  </div>
+</dialog>
+
+<!-- 导入导出（2026-11-19 用户要求：「把导入导出备份放到一起，放成一个导入导出，
+     点开之后可以选择导入和导出」）—— 顶栏只留一个入口，里面两项各说清后果。 -->
+<dialog id="dlgIO">
+  <div class="dlg-h">
+    <h3>导入导出</h3>
+    <p>数据只存在这台机器的浏览器里 —— 换手机、卸载重装前先导一份备份。</p>
+  </div>
+  <div class="dlg-b">
+    <div class="morelist">
+      <button type="button" class="moreitem" id="btnIOExport">
+        <span class="mt">导出备份</span>
+        <span class="ms">存成 json 文件｜换手机、卸载重装前请先导一次</span></button>
+      <button type="button" class="moreitem" id="btnIOImport">
+        <span class="mt">从备份导入</span>
+        <span class="ms">选一个之前导出的 json，按提示合并或整包替换</span></button>
+    </div>
+  </div>
+  <div class="dlg-f">
+    <button type="button" class="btn ghost" id="btnIOClose">关闭</button>
   </div>
 </dialog>
 
@@ -1459,37 +1486,6 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
   </form>
 </dialog>
 
-<!-- 批量调整存量弹窗 -->
-<dialog id="dlgBulk">
-  <form id="formBulk">
-    <div class="dlg-h">
-      <h3>批量调整存量</h3>
-      <p id="bulkSub"></p>
-    </div>
-    <div class="dlg-b">
-      <label class="bulk-days">按「够吃多少天」换算
-        <input name="days" id="bulkDays" type="number" step="1" min="1" value="7">
-        <span class="hintline">用每味药自己的用法把「天」换成数量：每天 1 片的，7 天就是 7 片；
-          每 14 天 1 支的，7 天就是 0.5 支。<br>
-          这一页只是把库存数字改对，<b>不算一次开药</b> —— 医保锁不会动。</span>
-      </label>
-      <div class="bulk-pick">
-        <button type="button" class="btn ghost sm" id="btnBulkAll">全选</button>
-        <button type="button" class="btn ghost sm" id="btnBulkNone">全不选</button>
-        <span class="sp"></span>
-        <span id="bulkPickHint"></span>
-      </div>
-      <div class="bulk-list" id="bulkList"></div>
-      <div class="disp-sum" id="bulkSum"></div>
-    </div>
-    <div class="dlg-f">
-      <button type="button" class="btn ghost" id="btnBulkCancel">取消</button>
-      <button type="button" class="btn danger" id="btnBulkMinus">减少</button>
-      <button type="button" class="btn primary" id="btnBulkPlus">增加</button>
-    </div>
-  </form>
-</dialog>
-
 <!-- 全家偏少：跨人聚合页（2026-10-23 用户要求「显示全家人偏少的药」）
      只读清单，不在这里改数 —— 改数还是回各自的药箱（点「去这个药箱」就切过去了）。
      这样这一页永远回答同一个问题：现在这一趟该买（开）哪些药。 -->
@@ -1846,7 +1842,7 @@ function isPrn(m){ return kindOf(m) === 'prn'; }
 // 它同时是「够吃几天」的分母，对间隔用药表示的是**药效覆盖速率**：
 // 1 支管 2 周 → 每天 1/14 支 → 3 支覆盖 42 天（第 42 天才是下次该打的日子）。
 // ★ 备用药恒为 0：这一项是「按天推」的总阀门，它一旦为 0，下游的
-//   daysLeft / needUnits / inRefill / 批量调存量 / 已经开药 全都自动不参与，
+//   daysLeft / needUnits / inRefill / 已经开药 全都自动不参与，
 //   不用在每处各写一遍 if —— 只有卡片和列表要单独走 prn 分支。
 function dailyUse(m){
   if(isPrn(m)) return 0;
@@ -1895,9 +1891,27 @@ function level(m){
 const LEVEL_LABEL = { out:'已用完', soon:'偏少', ok:'充足', na:'未设用法', prn:'备用药' };
 const LEVEL_ORDER = { out:0, soon:1, ok:2, na:3, prn:4 };   // prn 永远排在最后
 
+/* 「该开了」这条线 —— 2026-11-19 改口径。
+   用户原话：「要开的药清单不是按照固定的剩余天数，而是按照是不是比一次最多能开多少天少来判断
+   —— 用户在用这个的时候肯定是奔着开够这一个周期去用的」。
+
+   所以每味药拿**自己的「一次最多能开几天」**当界线：
+     还剩 60 天 < 上限 90 天 → 列进来（这一趟正好把一个周期开满，缺口是实打实的）
+     还剩 95 天 ≥ 上限 90 天 → 不列（这趟开不下一个整周期，跑一趟不划算）
+   没填上限的药没有「一个周期」可言 → 退回原来的提醒天数（设置里的 alertDays），行为不变。
+   备用药 daysLeft = Infinity，永远不进清单。
+   ★ 别把这条线并进 level()：档位那一套还在按 alertDays 说话（统计栏写的就是「≤N天」），
+     两者的答案本来就可以不一样 —— 卡片说「充足」，清单说「顺手开一个周期」，都不算错；
+     卡片底色不跟着改，也是这个道理。 */
+function refillLine(m){
+  const cap = rxCapDays(m);
+  return isFinite(cap) ? cap : settings.alertDays;
+}
 function inRefill(m){
   const dl = daysLeft(m);
-  return isFinite(dl) && dl <= settings.alertDays;
+  if(!isFinite(dl)) return false;
+  const cap = rxCapDays(m);
+  return isFinite(cap) ? dl < cap : dl <= settings.alertDays;
 }
 
 /* -------------------- 医保锁（2026-10-28 用户要求） --------------------
@@ -1915,7 +1929,7 @@ function inRefill(m){
    ★ 锁是**算出来的**，不存「锁没锁」这个状态：只存 miStart（哪天开的）。
      日期一过就自己开，不需要每天跑什么定时任务，也不会因为某天没打开页面而漏解。
    ★ 「自费买」永远不碰锁：自费补货不动 miStart，原来那把医保锁还在（本来就还在）。
-   ★ 校准余量、批量调存量也不碰锁 —— 那两处是「把数字改对」，不是「又开了一次药」。 */
+   ★ 校准余量也不碰锁 —— 那只是「把数字改对」，不是「又开了一次药」。 */
 
 function miDays(){ return Math.max(1, Math.round(num(settings.miDays, 30)) || 30); }
 function miEarly(){
@@ -1990,7 +2004,12 @@ function needUnits(m){
 function rxMaxIsDay(m){ return !!(m && m.rxMaxDay); }
 function rxCapDays(m){
   const v = num(m.rxMax);
-  return (v > 0 && rxMaxIsDay(m)) ? v : Infinity;
+  if(!(v > 0)) return Infinity;
+  if(rxMaxIsDay(m)) return v;
+  // 老存档那个数是**数量**（rxMaxDay 没标）：折成天数再拿去比 —— 它同样是一个周期。
+  // 换算只在算的时候做，**不写回存档**（写回是不可逆的，除不尽会改掉用户当初填的数）。
+  const d = dailyUse(m);
+  return d > 0 ? round2(v / d) : Infinity;
 }
 function rxCap(m){
   const v = num(m.rxMax);
@@ -2045,8 +2064,9 @@ function freqText(m){
 function render(){ renderPeople(); renderStats(); renderBox(); renderList(); renderNote(); renderRefill(); }
 
 // 药品的统一排序口径：先按档位（已用完 → 偏少 → 充足 → 未设用法），同档位再按剩余天数少的靠前。
-// ★ 2026-10-12：从 renderList() 里抽出来，因为「批量调存量」弹窗要求**顺序和主页一样**
-//   —— 两边共用这一份，改排序只改这里，不会各排各的。
+// ★ 2026-10-12：从 renderList() 里抽出来，因为别处也要求**顺序和主页一样**
+//   （当时是「批量调存量」弹窗；现在是勾选后的入库清单）。
+//   —— 共用这一份，改排序只改这里，不会各排各的。
 function sortedMeds(){
   return meds.slice().sort(function(a, b){
     const la = LEVEL_ORDER[level(a)], lb = LEVEL_ORDER[level(b)];
@@ -2158,6 +2178,22 @@ function renderList(){
     else if(act === 'restock') restockMed(id);
     else if(act === 'calib') calibMed(id);
     else if(act === 'del') delMed(id);
+  };
+
+  /* 勾选框：只改这一张卡的描边 + 侧栏按钮上的数目，**不重画列表**
+     —— 重画会把滚动位置弹回顶部，勾第三味的时候人已经找不到自己勾到哪了。 */
+  list.onchange = function(e){
+    const ck = (e.target && e.target.closest) ? e.target.closest('input[data-pick]') : null;
+    if(!ck) return;
+    const before = pickCount();
+    pickSet(ck.getAttribute('data-pick'), ck.checked);
+    const card = ck.closest('.med');
+    if(card) card.classList.toggle('picked', ck.checked);
+    renderRefill();
+    // 手机上「已经开药」在另一页，勾第一味时得说一句，否则看起来什么都没发生
+    if(ck.checked && before === 0 && isNarrow()){
+      toast('已勾上 —— 到「就诊准备」点「✓ 已经开药」入库');
+    }
   };
 }
 
@@ -2657,6 +2693,23 @@ document.addEventListener('pointercancel', function(){
   markOver(-1); markUnplaced(false); markStage(false);
 });
 
+/* -------------------- 勾选：这一趟开到了哪几味（2026-11-19） --------------------
+   用户原话：「在卡片上加一个选择框，选了之后，旁边的『已经开药』就针对选中的药批量入库」。
+   所以「已经开药」不再自己从清单里挑一批，而是**只处理勾上的**：
+   勾哪几味，就哪几味各加「它的一次最多能开几天」。
+   ★ 勾选是**界面状态，不进存档**（换人 / 入库完 / 刷新页面都清空）——
+     它回答的是「这一趟」，不是「这味药」。存进去下次打开会莫名亮着，反倒像没保存成功。 */
+let pickIds = {};
+function pickSet(id, on){ if(on) pickIds[id] = true; else delete pickIds[id]; }
+function pickClear(){ pickIds = {}; }
+// 勾上的药，顺序跟主页卡片一致（已删掉的药自动忽略）
+function pickedMeds(){
+  return sortedMeds().filter(function(m){ return pickIds[m.id]; });
+}
+// 按钮上那个「（N 种）」和弹窗里的行数必须是同一个数（都走 dispItems）
+function pickCount(){ return dispItems().length; }
+function isNarrow(){ return !!(window.matchMedia && window.matchMedia('(max-width:640px)').matches); }
+
 function cardHTML(m){
   if(isPrn(m)) return prnCardHTML(m);
   const lv = level(m);
@@ -2674,9 +2727,17 @@ function cardHTML(m){
   // ★ 卡片上不再提示「需补 X / 单次限 X / 得开 N 次」（2026-09-28 用户点名删掉）：
   //   卡片变黄本身就是「该补药了」的信号，补多少是点「已经开药」时才需要看的细节。
   return ''
-  + '<div class="med" data-lv="' + lv + '" data-med="' + m.id + '">'
+  + '<div class="med' + (pickIds[m.id] ? ' picked' : '') + '" data-lv="' + lv + '" data-med="' + m.id + '">'
   +   '<div class="med-top">'
-  +     '<div style="min-width:0">'
+  // ★ 没设用法的药不给勾选框：它换不出"几天"，勾了也入不了库（还会白上一把医保锁）。
+  //   留个空位把名字对齐，不然那一行会比别的卡片左移 24px，看着像排版坏了。
+  +     (d > 0
+        ? '<label class="med-pick" title="勾上它，再到右边点「✓ 已经开药」">'
+          + '<input type="checkbox" data-pick="' + m.id + '"'
+          +   ' aria-label="选中「' + esc(m.name) + '」"' + (pickIds[m.id] ? ' checked' : '') + '>'
+          + '</label>'
+        : '<span class="med-pick" aria-hidden="true"></span>')
+  +     '<div style="min-width:0;flex:1">'
   +       '<div class="med-name">' + esc(m.name)
   +         ' <span class="tag ' + lv + '">' + LEVEL_LABEL[lv] + '</span>' + miBadge(m) + '</div>'
   +       (m.spec ? '<div class="med-spec">' + esc(m.spec) + '</div>' : '')
@@ -2767,7 +2828,7 @@ function renderRefill(){
   if(!txt){
     pre.className = 'refill empty-txt';
     pre.textContent = meds.length
-      ? '目前没有需要开的药。\n（剩余天数都在 ' + settings.alertDays + ' 天以上的，不会列进来）'
+      ? '目前没有需要开的药。\n（剩的天数还够「一次最多能开几天」的，这趟开不下一个整周期，不列）'
       : '这个人的药箱还是空的，\n添加药品后这里会自动列出该开的药。';
   } else {
     pre.className = 'refill';
@@ -2775,7 +2836,11 @@ function renderRefill(){
   }
   $('#btnCopy').disabled = !hasOut;
   $('#btnDownload').disabled = !hasOut;
-  $('#drugTip').textContent = cnt ? cnt + ' 种' : '';
+  // 标题右边那个数：清单里有几种。鼠标停上去能看见这条线是怎么画的
+  const tipEl = $('#drugTip');
+  tipEl.textContent = cnt ? cnt + ' 种' : '';
+  tipEl.title = '剩余天数少于「一次最多能开几天」的药会列在这里（这趟正好开够一个周期）；'
+    + '没填上限的按提醒天数（' + settings.alertDays + ' 天）算。';
 
   // 医保锁：这几味虽然该开了，但还在锁定期 —— 这一趟用医保开不出来，得先说清楚，
   // 否则人跑一趟医院才发现开不了。只提示**这条清单里的**，锁着但不缺的药不占版面。
@@ -2797,11 +2862,24 @@ function renderRefill(){
     }
   }
 
-  // 「已经开药」跟着清单走：没有需要补的药就禁用
-  const dn = dispItems().length;
+  /* 「已经开药」不再跟着清单走，而是跟着**勾选**走（2026-11-19 用户要求）：
+     清单回答"这一趟该开什么"，勾选回答"这一趟真的开到了什么"。两者可以不一样
+     —— 医保锁着的那几味就常出现"该开但这次没开成"。 */
+  const dn = pickCount();
   const db = $('#btnDispense');
   db.disabled = (dn === 0);
   db.textContent = dn ? '✓ 已经开药（' + dn + ' 种）' : '✓ 已经开药';
+  // 按钮下面那句：0 种时必须说清"去哪里勾"，否则按钮一直是灰的，像坏了
+  const hint = $('#dispPickHint');
+  if(hint){
+    hint.textContent = dn
+      ? '勾了 ' + dn + ' 种 · 每种 +它自己的「一次最多能开几天」'
+      : (cnt ? '还没勾药 —— 在药品卡片左上角打勾，勾上的才会入库'
+             : '现在没有要开的药，勾哪味就入库哪味');
+  }
+  // 手机底部那个页签：勾了药才亮出数字（"去开药"在另一页，得有个地方提醒）
+  const tb = $('#tabPick');
+  if(tb){ tb.hidden = (dn === 0); tb.textContent = String(dn); }
 }
 
 /* 就诊人的情况：按人存，自动保存。
@@ -3449,6 +3527,7 @@ function boxForget(id){
 /* -------------------- 人员 -------------------- */
 function switchPerson(id){
   currentId = id;
+  pickClear();          // 勾选是「这个人的这一趟」，换人就得清空（id 不同，留着也是脏数据）
   syncMeds();
   save(); render();
 }
@@ -3546,7 +3625,7 @@ function renderPeopleMgr(){
 
 /* -------------------- 单个数字弹窗（「又买了药」/「校准余量」共用） -------------------- */
 // ★ 2026-10-11 用户要求：这两个入口原来是浏览器原生 prompt —— 顶部一条小框、手机上尤其难用。
-//   改成和「批量调存量」同一套**中间弹窗**：标题 + 说明 + 输入框 + 取消/确定。
+//   改成和「已经开药」同一套**中间弹窗**：标题 + 说明 + 输入框 + 取消/确定。
 //   两个入口共用同一个 dialog（#dlgNum），只是 mode 不同：
 //     · mode='add'：cur + 你填的量 → 入库（又买了药）
 //     · mode='set'：直接校准成你填的数（校准余量）
@@ -3862,7 +3941,7 @@ function restockMed(id){
     unit: unit,
     rate: dailyUse(m),                   // 备用药 = 0 → 天数那一档自动不出现
     title: '又买了药',
-    sub: '新买的数量会加到「今天推算出的余量」上，基准日一并滚到今天 —— 和「批量调存量」同一套算法。',
+    sub: '新买的数量会加到「今天推算出的余量」上，基准日一并滚到今天 —— 和「已经开药」同一套算法。',
     label: '又买了多少 ' + unit,
     daysLabel: '这批够吃几天',
     hint: '按包装上的数填（1 盒 28 ' + unit + ' 就填 28）',
@@ -3899,11 +3978,12 @@ function calibMed(id){
   });
 }
 
-/* -------------------- 已经开药（一次把所有要补的药入库） -------------------- */
-// 只列「真的需要补」的药：偏少线内但需求量算出 0 的（阈值设置反常时会出现）不列
+/* -------------------- 已经开药（把勾上的这几种一起入库） -------------------- */
+/* 这次入库哪几种 = 卡片上勾上的那几种（2026-11-19 用户要求）。
+   ★ 不再自己从清单里挑 —— 清单回答"该开什么"，勾选回答"真开到了什么"。
+     顺序照主页卡片（sortedMeds），勾的时候人认的是那个顺序。 */
 function dispItems(){
-  return meds.filter(function(m){ return inRefill(m) && needUnits(m) > 0; })
-    .sort(function(a, b){ return daysLeft(a) - daysLeft(b); });
+  return pickedMeds().filter(function(m){ return !isPrn(m) && dailyUse(m) > 0; });
 }
 
 // 这次的入库计划：不必手填——一次挂号只能开一次药，有单次上限就按上限开满，
@@ -3921,14 +4001,15 @@ async function openDisp(){
   const plan = dispPlan();
   if(!plan.length){
     await askAlert({
-      title: '暂时不用补药',
-      sub: '没有偏少的药，都还够吃。等哪味低于「提醒天数」时再来。'
+      title: '还没勾药',
+      sub: '先在药品卡片左上角打勾 —— 勾上的那几种才会入库。'
     });
     return;
   }
 
-  $('#dispSub').textContent = '一次挂号只能开一次药：每个药按「一次最多能开几天」换算出数量入库（开满），'
-    + '没填天数的就补满到够吃 ' + settings.targetDays + ' 天。确认即更新药库。';
+  $('#dispSub').textContent = '勾上的这 ' + plan.length + ' 种，每种按它自己的「一次最多能开几天」'
+    + '换算出数量入库（开满一个周期）；没填天数的就补满到够吃 ' + settings.targetDays + ' 天。'
+    + '确认即更新药库。';
 
   let still = 0;
   $('#dispList').innerHTML = plan.map(function(p){
@@ -3939,7 +4020,8 @@ async function openDisp(){
     const nu = needUnits(m);
     const after = round2(stockNow(m) + p.qty);
     const days = d > 0 ? after / d : Infinity;
-    const ok = !isFinite(days) || days > settings.alertDays;
+    // 「开完够不够一个周期」—— 和清单同一条线（refillLine），不是提醒天数
+    const ok = !isFinite(days) || days >= refillLine(m);
     if(!ok) still++;
     return '<div class="disp-row" data-lv="' + lv + '">'
       +   '<div class="disp-info">'
@@ -3967,8 +4049,8 @@ async function openDisp(){
 
   $('#dispSum').innerHTML = '这次将更新 <b>' + plan.length + '</b> 种药'
     + (still
-        ? '，其中 <b>' + still + '</b> 种受单次上限限制、开完仍在清单里（可以再点一次「已经开药」）'
-        : '，入库后就都够吃了');
+        ? '，其中 <b>' + still + '</b> 种开完仍凑不满一个周期'
+        : '，开完就都够一个周期了');
 
   // 默认按医保记（这本来就是去医院开的动作），用户想记自费可以改
   const mi = document.querySelector('#formDisp input[name=dispIns][value=mi]');
@@ -4002,62 +4084,19 @@ async function submitDisp(e){
     // 医保开的：从今天重新上锁。自费买的：锁原样不动（不是"解锁"，是压根没发生过医保开药）。
     if(ins === 'mi'){ p.m.ins = 'mi'; p.m.miStart = todayStr(); }
   });
+  // 勾选是「这一趟」的状态：入库完就清掉 —— 否则下次打开页面那几行还亮着，
+  // 会让人以为"这批还没入过库"
+  pickClear();
   save(); render();
   $('#dlgDisp').close();
 
-  const left = dispItems();
+  const short = plan.filter(function(p){ return inRefill(p.m); }).length;
   await askAlert({
     title: '已入库 ' + plan.length + ' 种药',
-    sub: left.length
-      ? '还有 ' + left.length + ' 种没到位（受「一次最多能开几天」限制），可以再点一次「已经开药」。'
-      : '现在都在偏少线以上了。'
+    sub: short
+      ? '其中 ' + short + ' 种还没凑满一个周期，下次再补。'
+      : '这 ' + plan.length + ' 种都够一个周期了。'
   });
-}
-
-/* -------------------- 批量调整存量（把整个药箱的药统一加/减 N 天） -------------------- */
-// 用户场景：一批药同时多买了、或者发现漏吃了几天 —— 不想一味一味点「又买了药」。
-// ⚠️ 口径必须和另外两个入口（「又买了药」/「已经开药」）完全一致：
-//   先按今天推算出现在剩多少（stockNow），再加/减 N 天的量，基准日滚到今天。
-//   **不要图省事去动 stockDate** —— 隔天/隔周吃的药是按周期整档扣的，
-//   把日期推来推去会让它跨过一个周期点、整档跳变。
-function bulkDays(){
-  return Math.max(1, Math.floor(num($('#bulkDays').value, 7)));
-}
-// sign: +1 增加 / -1 减少。返回每味药调整前后的量。
-function bulkRows(days, sign){
-  return meds.map(function(m){
-    const unit = m.unit || '片';
-    const d = dailyUse(m);
-    const cur = stockNow(m);
-    if(!(d > 0)){                       // 没设用法 → 天数换不成数量，跳过
-      return { m:m, unit:unit, cur:cur, delta:0, next:cur, skip:true, floored:false, noop:false };
-    }
-    let next = round2(cur + sign * days * d);
-    let floored = false;
-    if(next < 0){ next = 0; floored = true; }   // 存量不能为负
-    const delta = round2(next - cur);
-    return { m:m, unit:unit, cur:cur, delta:delta, next:next, skip:false,
-             floored:floored, noop:delta === 0 };
-  });
-}
-// ★ 2026-10-12 用户要求：这个弹窗要能**挑着调**——列出全部药品（顺序和主页一样）、
-//   每行一个勾选框、行色按档位标出「哪些药不够了」，没设用法的药勾不了。
-//   勾选状态放 bulkPicked（id → true），每次点开弹窗重置为**默认档**（见 bulkDefaultPick）。
-let bulkPicked = {};
-function bulkPickable(m){ return dailyUse(m) > 0; }      // 没设用法 → 天数换不成数量，调不了
-// 默认勾「已用完 / 偏少」的 —— 也就是真正要补的那批；「充足」的不勾（它不缺，调它属于误操作）。
-// 用户 2026-10-12：「默认打钩的是已用完和偏少的 充足的不用打勾」。
-// 想让充足的也一起调 → 点「全选」，或自己把那个框勾上（全选仍等于「能调的全勾」）。
-function bulkDefaultPick(m){
-  const lv = level(m);
-  return bulkPickable(m) && (lv === 'out' || lv === 'soon');
-}
-function bulkPickedCount(){
-  return meds.filter(function(m){ return bulkPickable(m) && bulkPicked[m.id]; }).length;
-}
-function bulkResetPicks(){
-  bulkPicked = {};
-  meds.forEach(function(m){ if(bulkDefaultPick(m)) bulkPicked[m.id] = true; });
 }
 
 /* -------------------- 全家偏少：跨人聚合 --------------------
@@ -4426,153 +4465,6 @@ function applyAllTotal(key, total){
   }
 }
 
-async function openBulk(){
-  if(!meds.length){
-    await askAlert({ title: '药箱是空的', sub: '先添加药品，才能按天数统一加减存量。' });
-    return;
-  }
-  $('#bulkDays').value = 7;
-  bulkResetPicks();
-  $('#dlgBulk').showModal();
-  renderBulk();
-}
-
-// 一行右侧的「＋N 天 / −N 天」结果。没勾选的写「未勾选」—— 不动它就不给数字。
-// 「按不了天算」的原因分两种：备用药本来就不按天；每天吃的没填用法（算不出每天多少）。
-function bulkSkipText(row){
-  return isPrn(row.m) ? '备用药，不按天算' : '没法按天算';
-}
-function bulkCellHTML(x, days){
-  if(x.skip) return '<span class="noop">' + bulkSkipText(x) + '</span>';
-  let h = '→ <b>' + fmtNum(x.next) + '</b> ' + esc(x.unit);
-  if(x.floored) h += '<br><span class="noop">已减到 0（原本不够 ' + days + ' 天）</span>';
-  else if(x.noop) h += '<br><span class="noop">和现在一样</span>';
-  return h;
-}
-function bulkAfterHTML(r, d, days, picked){
-  if(r.skip) return '<span class="noop">' + bulkSkipText(r) + '</span>';   // 备用药 / 没设用法：给它勾也换不成数量
-  if(!picked) return '<span class="noop">未勾选</span>';
-  return '<span>＋' + days + ' 天 ' + bulkCellHTML(r, days) + '</span><br>'
-       + '<span class="down">−' + days + ' 天 ' + bulkCellHTML(d, days) + '</span>';
-}
-
-function bulkRowHTML(m, r, d, days){
-  const lv = level(m);
-  const can = bulkPickable(m);
-  const picked = can && !!bulkPicked[m.id];
-  const freq = r.skip ? '' : freqText(m);
-  return '<div class="disp-row" data-lv="' + lv + '" data-id="' + m.id + '">'
-    +   '<input type="checkbox" class="bulk-ck" data-id="' + m.id + '"'
-    +     (can ? '' : ' disabled') + (picked ? ' checked' : '') + '>'
-    +   '<div class="disp-info">'
-    +     '<div class="disp-name">' + esc(m.name)
-    +       '<span class="tag ' + lv + '">' + LEVEL_LABEL[lv] + '</span></div>'
-    +     '<div class="disp-meta">现有 <b>' + fmtNum(r.cur) + '</b> ' + esc(r.unit)
-    +       (freq ? '<span class="disp-src">　' + freq + '</span>' : '')
-    +       (r.skip ? '<span class="disp-src">　' + (isPrn(m) ? '备用药' : '没设用法') + '</span>' : '') + '</div>'
-    +   '</div>'
-    +   '<div class="bulk-after" id="bulkAfter-' + m.id + '">'
-    +     bulkAfterHTML(r, d, days, picked)
-    +   '</div>'
-    + '</div>';
-}
-
-function renderBulk(){
-  if(!$('#dlgBulk').open) return;
-  const days = bulkDays();
-  const who = curPerson();
-  const order = sortedMeds();                       // ★ 和主页同一个排序（见 sortedMeds）
-
-  const up = {}, dn = {};
-  bulkRows(days, 1).forEach(function(r){ up[r.m.id] = r; });
-  bulkRows(days, -1).forEach(function(r){ dn[r.m.id] = r; });
-
-  $('#bulkSub').textContent = '把「' + (who ? who.name : '当前人') + '」药箱里的 '
-    + meds.length + ' 种药列出来，勾选要调的那些，再按「够吃 ' + days + ' 天」统一加或减。'
-    + '默认只勾「已用完 / 偏少」的；充足的药不缺，要一起调就自己勾上或点「全选」。';
-
-  $('#bulkList').innerHTML = order.map(function(m){
-    return bulkRowHTML(m, up[m.id], dn[m.id], days);
-  }).join('');
-
-  bulkRefreshFoot();
-}
-
-// 勾选一变只刷新「底部汇总 + 两个按钮文案 + 那一行的结果」，
-// 不整表重画 —— 否则列表里那个滚动条会弹回顶部，勾几种药就跳几次，很难用。
-function bulkRefreshFoot(){
-  const days = bulkDays();
-  const upRows = bulkRows(days, 1);
-  const dn = {};
-  bulkRows(days, -1).forEach(function(r){ dn[r.m.id] = r; });
-
-  let pickable = 0, flooredN = 0, noopN = 0;
-  upRows.forEach(function(r){
-    if(r.skip) return;
-    pickable++;
-    if(!bulkPicked[r.m.id]) return;
-    const d = dn[r.m.id];
-    if(d && d.floored) flooredN++;
-    if(r.noop && d && d.noop) noopN++;
-  });
-  const picked = bulkPickedCount();
-  const skipN = meds.length - pickable;
-  // 「按不了天算」有两种原因，别混成一句话：备用药本来就不按天（2026-10-22 新增这一类），
-  // 每天吃的没填用法则是数据缺一块。用户看到「3 种没设用法」会以为自己漏填了。
-  const prnN = meds.filter(isPrn).length;
-  const noUseN = Math.max(0, skipN - prnN);
-
-  $('#bulkPickHint').textContent = '已勾选 ' + picked + ' / ' + pickable + ' 种';
-  $('#btnBulkPlus').textContent  = '确认：勾选的 ' + picked + ' 种各增加 ' + days + ' 天';
-  $('#btnBulkMinus').textContent = '确认：勾选的 ' + picked + ' 种各减少 ' + days + ' 天';
-  $('#btnBulkPlus').disabled  = picked === 0;
-  $('#btnBulkMinus').disabled = picked === 0;
-
-  const bits = [];
-  if(skipN){
-    const why = [];
-    if(prnN) why.push('备用药 ' + prnN + ' 种');
-    if(noUseN) why.push('没设用法 ' + noUseN + ' 种');
-    bits.push('<b>' + skipN + '</b> 种按不了天算（' + why.join(' + ')
-      + '），勾不了、也不会被动到');
-  }
-  if(flooredN) bits.push('选「减少」时，其中 <b>' + flooredN + '</b> 种会被减到 0（原本就不够 ' + days + ' 天）');
-  if(noopN) bits.push('<b>' + noopN + '</b> 种换算后不足 0.01，等于没变（吃药周期比 ' + days + ' 天长）');
-  $('#bulkSum').innerHTML = '共 <b>' + meds.length + '</b> 种药，已勾选 <b>' + picked + '</b> 种'
-    + (bits.length ? '；' + bits.join('；') : '')
-    + '。<br>确认后基准日一并滚到今天 —— 和「又买了药」「已经开药」同一套算法。';
-}
-
-async function applyBulk(sign){
-  const days = bulkDays();
-  // ★ 只动勾选的（2026-10-12）：没勾的一律不碰
-  const rows = bulkRows(days, sign).filter(function(r){
-    return !r.skip && bulkPicked[r.m.id];
-  });
-  if(!rows.length){
-    await askAlert(meds.some(bulkPickable)
-      ? { title: '还没勾选任何药', sub: '左边每一行前面有个勾选框，先勾上要动的药。' }
-      : { title: '没有能按天换算的药', sub: '这个药箱里的药都没设用法 —— 全是备用药，或者每天吃的也没填用法。算不出「N 天是多少量」。' });
-    return;
-  }
-  rows.forEach(function(r){
-    r.m.stockBase = r.next;          // next 已含「不能为负」的截断
-    r.m.stockDate = todayStr();
-  });
-  save(); render();
-  $('#dlgBulk').close();
-
-  const word = sign > 0 ? '增加' : '减少';
-  const floored = rows.filter(function(r){ return r.floored; }).length;
-  const unchanged = rows.filter(function(r){ return r.noop; }).length;
-  await askAlert({
-    title: '存量已调整',
-    sub: '已把 ' + rows.length + ' 种药的存量' + word + ' ' + days + ' 天的量。'
-      + (floored ? '\n\n其中 ' + floored + ' 种原本就不够 ' + days + ' 天，已减到 0。' : '')
-      + (unchanged ? '\n\n有 ' + unchanged + ' 种换算后不足 0.01，实际没变。' : '')
-  });
-}
-
 /* -------------------- 底方录入（2026-10-12 首版；2026-10-13 砍掉浏览器端 OCR，只留助手通道） --------------------
    底方 = 医院打印的那种处方。**认照片这件事整条交给助手**（页面里不装 OCR）：
 
@@ -4928,7 +4820,7 @@ function rxRowHTML(r){
   return '<div class="rx-row" data-lv="' + rxLevel(r) + '" data-key="' + r.key + '"'
     +       (r.existing ? ' data-dup="1"' : '') + '>'
     +   '<div class="rx-line">'
-    +     '<input type="checkbox" class="bulk-ck rx-ck"' + (r.picked ? ' checked' : '') + '>'
+    +     '<input type="checkbox" class="rx-ck"' + (r.picked ? ' checked' : '') + '>'
     +     '<input type="text" class="rx-name" autocomplete="off" placeholder="药品名称" value="' + esc(r.name) + '">'
     +     '<input type="text" class="rx-spec" autocomplete="off" placeholder="规格" value="' + esc(r.spec) + '">'
     +     '<button type="button" class="rx-insb' + (r.ins === 'mi' ? ' mi' : '') + '"'
@@ -5727,8 +5619,17 @@ $('#btnDownload').addEventListener('click', function(){
   }
 });
 $('#btnPrint').addEventListener('click', function(){ window.print(); });
-$('#btnExport').addEventListener('click', exportJSON);
-$('#btnBulk').addEventListener('click', openBulk);
+// 导入导出：一个入口，里面再选是导出还是导入（2026-11-19 用户要求把两个按钮并成一个）
+$('#btnIO').addEventListener('click', function(){ $('#dlgIO').showModal(); });
+$('#btnIOClose').addEventListener('click', function(){ $('#dlgIO').close(); });
+$('#btnIOExport').addEventListener('click', function(){
+  $('#dlgIO').close();
+  exportJSON();
+});
+$('#btnIOImport').addEventListener('click', function(){
+  $('#dlgIO').close();
+  $('#fileImport').click();      // 选文件这一步只能由浏览器的原生选择框来做
+});
 // 全家偏少：只读聚合页。点「去这个药箱」= 切到那个人，顺手把弹窗关掉
 $('#btnFam').addEventListener('click', openFam);
 $('#btnFamClose').addEventListener('click', function(){ $('#dlgFam').close(); });
@@ -5747,36 +5648,6 @@ $('#famList').addEventListener('click', function(e){
   $('#dlgFam').close();
   switchPerson(b.getAttribute('data-goto'));
 });
-$('#bulkDays').addEventListener('input', renderBulk);
-$('#btnBulkPlus').addEventListener('click', function(){ applyBulk(1); });
-$('#btnBulkMinus').addEventListener('click', function(){ applyBulk(-1); });
-$('#btnBulkCancel').addEventListener('click', function(){ $('#dlgBulk').close(); });
-// 全选 / 全不选（只作用于「能按天换算」的药；没设用法的勾不了）
-$('#btnBulkAll').addEventListener('click', function(){
-  meds.forEach(function(m){ if(bulkPickable(m)) bulkPicked[m.id] = true; });
-  renderBulk();
-});
-$('#btnBulkNone').addEventListener('click', function(){
-  bulkPicked = {};
-  renderBulk();
-});
-// 单行勾选：事件委托挂在列表容器上（列表 innerHTML 每次重画，子元素会被换掉）
-$('#bulkList').addEventListener('change', function(e){
-  const ck = e.target && e.target.closest ? e.target.closest('input.bulk-ck') : null;
-  if(!ck) return;
-  const id = ck.getAttribute('data-id');
-  if(ck.checked) bulkPicked[id] = true; else delete bulkPicked[id];
-  // 只刷这一行的结果 + 底部汇总，不整表重画（免得滚动条被弹回顶部）
-  const days = bulkDays();
-  const one = function(sign){
-    return bulkRows(days, sign).filter(function(r){ return r.m.id === id; })[0];
-  };
-  const cell = $('#bulkAfter-' + id);
-  const r = one(1), d = one(-1);
-  if(cell && r && d) cell.innerHTML = bulkAfterHTML(r, d, days, ck.checked);
-  bulkRefreshFoot();
-});
-$('#formBulk').addEventListener('submit', function(e){ e.preventDefault(); });
 
 /* ---- 底方录入（只剩「手打/粘贴」和「助手给的链接」两条入口） ---- */
 $('#btnRx').addEventListener('click', function(){ openRx(); });
@@ -5974,7 +5845,7 @@ $('#formAsk').addEventListener('submit', function(e){
   e.preventDefault();                       // 回车：按主按钮（输入框那种就是"确定"）
   if(askCtx) askSettle(askCtx.primary);
 });
-$('#btnImport').addEventListener('click', function(){ $('#fileImport').click(); });
+// 选完文件 → 解析。入口在「导入导出」弹窗里（btnIOImport 触发那个隐藏的 file input）
 $('#fileImport').addEventListener('change', function(e){
   const f = e.target.files && e.target.files[0];
   if(f) importJSON(f);

@@ -76,12 +76,21 @@ PROBE = r"""
   ck('补丁挂了返回键入口 window.__appBack',
      typeof window.__appBack === 'function', typeof window.__appBack);
 
-  /* ---- 1. 导出备份：要真的调用原生写文件 ---- */
+  /* ---- 1. 导入导出：一个入口，点开再选（2026-11-19 合并了两个按钮）---- */
+  q('#btnIO').click();
+  await sleep(20);
+  ck('「导入导出」点开是一个选择弹窗', !!q('#dlgIO') && q('#dlgIO').open, '');
+  ck('弹窗里同时有导出和导入两项',
+     !!q('#btnIOExport') && !!q('#btnIOImport'), '');
+  ck('顶栏不再有单独的「导入」「导出备份」按钮',
+     !q('#btnImport') && !q('#btnExport'), '');
+  ck('顶栏也没有「批量调存量」了（改成卡片勾选）', !q('#btnBulk'), '');
   C.save.length = 0;
-  q('#btnExport').click();
+  q('#btnIOExport').click();
   await waitFor(function(){ return C.save.length > 0; });
   var s0 = C.save[0] || { name: '', text: '' };
   ck('导出备份走原生写文件（不再用 blob 下载）', C.save.length === 1, C.save.length + ' 次');
+  ck('导出完弹窗自己关掉', !q('#dlgIO').open, '');
   ck('导出的文件名带「药品库存备份」和 .json', /药品库存备份.*\.json/.test(s0.name), s0.name);
   var parsed = null;
   try { parsed = JSON.parse(s0.text); } catch(e){}

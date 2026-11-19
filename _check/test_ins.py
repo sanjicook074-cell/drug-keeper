@@ -14,7 +14,7 @@ drug-keeper：医保锁 —— 真实 DOM 驱动测试。
   ② 医保的上一把锁，锁到哪天是**算**出来的（开药日 + 间隔 − 提前量），不存"锁没锁"；
   ③ 两个天数在**设置**里填，改一次全局生效；
   ④ 锁着自己的开了，卡片上从「🔒 医保 / 锁到几号」变成「医保 / 已经可以再开」；
-  ⑤ **不是一次开药的操作不动锁**（校准余量、批量调存量）。
+  ⑤ **不是一次开药的操作不动锁**（校准余量）；顺手验「已经开药只动勾上的那几味」。
 
 ★ 零迁移：老存档没有 ins 字段 → 一律当自费、不上锁。下面第 0 节专门钉这一条 ——
   要是给历史数据凭空上锁，用户一打开页面会发现整箱药"都不能开了"。
@@ -255,7 +255,7 @@ PROBE = r"""
   ck('自费补货后 ins 还是 mi（这味本来就算医保开的）', byName('补货片').ins === 'mi',
      byName('补货片').ins);
 
-  /* ================= 6. 校准余量 / 批量调整：不碰锁 ================= */
+  /* ================= 6. 校准余量：不碰锁 ================= */
   reset();
   var cal = mk({ name: '校准片', ins: 'mi', miStart: todayStr(), stock: 20 });
   var beforeStart = cal.miStart;
@@ -270,17 +270,15 @@ PROBE = r"""
      byName('校准片').miStart);
   ck('校准后仍然锁着', miLocked(byName('校准片')) === true, '');
 
-  var bulk = mk({ name: '批量片', ins: 'mi', miStart: todayStr(), stock: 2 });
-  var beforeBulk = bulk.miStart;
-  await openBulk();
-  bulkPicked = {}; bulkPicked[bulk.id] = true;
-  await applyBulk(1);
-  ck('批量增加后数量变了', stockNow(byName('批量片')) > 2, stockNow(byName('批量片')));
-  ck('★ 批量调存量不动医保锁', byName('批量片').miStart === beforeBulk, byName('批量片').miStart);
+  /* 注：「批量调存量」那一页 2026-11-19 按用户要求删了（改成卡片勾选 + 已经开药），
+     原来这里那条「批量调存量不动锁」的断言随之失效。同一件事（不是一次开药的操作不碰锁）
+     已由上面的校准余量钉住；勾选制本身在下面第 7 节接着验。 */
 
-  /* ================= 7. 已经开药：默认按医保记 ================= */
+  /* ================= 7. 已经开药：默认按医保记，且只动勾上的 ================= */
   reset();
-  mk({ name: '要开的片', stock: 2 });                       // 2 天 → 偏少，进"已经开药"
+  mk({ name: '要开的片', stock: 2 });                       // 2 天 → 偏少，进"要开的药"
+  pickSet(byName('要开的片').id, true);                      // 2026-11-19 起要先勾
+  render();
   await openDisp();
   ck('「已经开药」默认选「医保开的」',
      q('#formDisp input[name=dispIns]:checked').value === 'mi',
@@ -295,6 +293,8 @@ PROBE = r"""
   // 换成自费再开一次
   reset();
   mk({ name: '自费开的片', stock: 2 });
+  pickSet(byName('自费开的片').id, true);
+  render();
   await openDisp();
   q('#formDisp input[name=dispIns][value=self]').checked = true;
   q('#formDisp').dispatchEvent(new Event('change', { bubbles: true }));
@@ -302,6 +302,23 @@ PROBE = r"""
   await submitDisp({ preventDefault: function(){} });
   ck('已经开药（自费）→ 不打医保标记', !byName('自费开的片').ins, String(byName('自费开的片').ins));
   ck('已经开药（自费）→ 不上锁', miLocked(byName('自费开的片')) === false, '');
+
+  // ★ 勾选制：只勾一味，另一味（哪怕也该开）一根手指都不许碰
+  reset();
+  mk({ name: '勾上的片', stock: 2 });
+  mk({ name: '没勾的片', stock: 1 });
+  pickSet(byName('勾上的片').id, true);
+  render();
+  ck('没勾的那味不进入库计划', dispItems().length === 1 && dispItems()[0].name === '勾上的片',
+     dispItems().map(function(m){ return m.name; }).join('/'));
+  await openDisp();
+  await submitDisp({ preventDefault: function(){} });
+  ck('勾上的那味上了锁', miLocked(byName('勾上的片')) === true, '');
+  ck('★ 没勾的那味：没入库、也没上锁',
+     stockNow(byName('没勾的片')) === 1 && !byName('没勾的片').ins
+       && miLocked(byName('没勾的片')) === false,
+     stockNow(byName('没勾的片')) + ' / ' + String(byName('没勾的片').ins));
+  ck('入库完勾选清空', pickCount() === 0, pickCount());
 
   /* ================= 8. 底方录入：总开关 + 逐行改 ================= */
   reset();

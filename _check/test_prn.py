@@ -7,13 +7,14 @@ drug-keeper：两类药（每天都在吃 / 备用药）—— 真实 DOM 驱动
 
 这条要求拆成两半，本脚本就是按这两半钉的：
   ① **分得开**：列表分成两栏（每天吃的 / 备用药）、统计栏分开数、表单里能选类型；
-  ② **备用药不跟天数走**：不按用法扣、不算「剩几天」、不进续方清单 / 已经开药 /
-     批量调存量，余量只由「又买了药 / 校准余量」改。
+  ② **备用药不跟天数走**：不按用法扣、不算「剩几天」、不进续方清单 / 已经开药，
+     余量只由「又买了药 / 校准余量」改。
 
 ★ 口径**不是新写一套**，而是让 `dailyUse()` 对备用药返回 0：
-  它是「按天推」的总阀门，一旦为 0，daysLeft / needUnits / inRefill / dispItems /
-  bulkRows 全都自动不参与。所以下面的断言一大半是在验「下游确实被这一个 0 关掉了」，
+  它是「按天推」的总阀门，一旦为 0，daysLeft / needUnits / inRefill / dispItems
+  全都自动不参与。所以下面的断言一大半是在验「下游确实被这一个 0 关掉了」，
   而不是在验每个函数各写了一遍 if（那种写法迟早会漏一处）。
+  （原来还有 bulkRows 这一条下游，2026-11-19 随「批量调存量」整页删掉了。）
 
 做法同 test_rxcap.py：把 index.html 复制成临时副本，在主 IIFE 内部末尾注入探针，
 用无头 Chrome --dump-dom 取回渲染后的 DOM，解析 #__T 里的 JSON。
@@ -111,9 +112,12 @@ PROBE = r"""
   ck('备用药不在「该开的药」清单里',
      refillItems().every(function(m){ return !isPrn(m); }),
      refillItems().map(function(m){ return m.name; }).join('/') || '(空)');
-  ck('备用药不在「已经开药」的入库计划里',
-     dispItems().every(function(m){ return !isPrn(m); }),
-     dispItems().map(function(m){ return m.name; }).join('/') || '(空)');
+  // 2026-11-19 起「已经开药」只处理勾上的；备用药连框都没有，硬勾进去也不收
+  ck('备用药不在「已经开药」的入库计划里（就算硬勾上也不收）',
+     (function(){ pickSet(prnM.id, true); var r = dispItems(); pickClear(); render();
+                  return r.length === 0; })(), '');
+  ck('备用药卡片上没有勾选框（勾了也没意义）',
+     !card('备用多片').querySelector('.med-pick'), '');
   ck('「要开的药」那段文字里没有备用药',
      buildRefillText().indexOf('备用') < 0, buildRefillText().replace(/\n/g, ' / ') || '(空)');
 
@@ -357,39 +361,7 @@ PROBE = r"""
   ck('改回每天吃 → kind = daily 且又开始算天数',
      cv.kind === 'daily' && isFinite(daysLeft(cv)), cv.kind + ' / ' + daysLeft(cv));
 
-  // ---- 9. 批量调存量：备用药按不了天，一根手指都不许碰 ----
-  fixture();
-  var upRows = {}, dnRows = {};
-  bulkRows(7, 1).forEach(function(r){ upRows[r.m.name] = r; });
-  bulkRows(7, -1).forEach(function(r){ dnRows[r.m.name] = r; });
-  ck('批量：备用药被标成 skip', upRows['备用多片'].skip === true && dnRows['备用多片'].skip === true, '');
-  ck('批量：备用药调整量是 0、数量没被换过',
-     upRows['备用多片'].delta === 0 && upRows['备用多片'].next === 10,
-     upRows['备用多片'].delta + ' / ' + upRows['备用多片'].next);
-  ck('批量：每天吃的那味照旧能被换（14→1，+7 天 = 8）',
-     upRows['每天吃甲片'].skip === false && upRows['每天吃甲片'].next === 8,
-     upRows['每天吃甲片'].next);
-  openBulk();
-  var bulkTxt = q('#bulkList').textContent;
-  ck('批量弹窗里备用药那行写「备用药，不按天算」（不是含糊的"没法按天算"）',
-     /备用药，不按天算/.test(bulkTxt), '');
-  ck('批量弹窗里备用药也标了「备用药」文字标', /备用药/.test(bulkTxt), '');
-  var ckPrn = qa('#bulkList input.bulk-ck').filter(function(c){
-    return c.disabled === true; }).length;
-  ck('批量弹窗里备用药的勾选框是禁用的', ckPrn === 2, ckPrn);
-  q('#dlgBulk').close();
-  // 真跑一次「全选 + 减 7 天」：备用药必须一动不动
-  openBulk();
-  q('#btnBulkAll').click();
-  var before10 = { a: byName('备用多片').stockBase, b: byName('备用少片').stockBase };
-  applyBulk(-1);
-  ck('批量减完之后备用药一点没动',
-     byName('备用多片').stockBase === before10.a && byName('备用少片').stockBase === before10.b,
-     before10.a + '→' + byName('备用多片').stockBase + ' / ' + before10.b + '→' + byName('备用少片').stockBase);
-  ck('同一批里每天吃的那味确实被减了',
-     byName('每天吃乙片').stockBase < 40, byName('每天吃乙片').stockBase);
-
-  // ---- 10. 「又买了药 / 校准余量」对备用药照常生效（余量只能这样改）----
+  // ---- 9. 「又买了药 / 校准余量」对备用药照常生效（余量只能这样改）----
   fixture();
   var pm = byName('备用多片');
   restockMed(pm.id);

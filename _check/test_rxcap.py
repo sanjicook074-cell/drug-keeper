@@ -188,6 +188,18 @@ PROBE = r"""
      String(settings.urgentDays));
 
   // ---- 4. 弹窗入库量必须与内部口径同一个数（弹窗里保留说明）----
+  // ★ 2026-11-19：入库对象从「清单里的全部」改成「卡片上勾上的那几味」，先勾一遍
+  ck('一张卡片一个勾选框，一打开全是空着的', 
+     document.querySelectorAll('#list .med .med-pick input').length === 5 && pickCount() === 0,
+     document.querySelectorAll('#list .med .med-pick input').length + ' 个框 / 勾了 ' + pickCount());
+  ck('没勾之前「已经开药」是灰的', q('#btnDispense').disabled === true, '');
+
+  pickClear();
+  refillItems().forEach(function(m){ pickSet(m.id, true); });
+  render();
+  ck('勾上之后侧栏按钮数出 5 种', /（5 种）/.test(q('#btnDispense').textContent), q('#btnDispense').textContent);
+  ck('勾上之后按钮可点', q('#btnDispense').disabled === false, '');
+
   var plan = dispPlan();
   var pm = {};
   plan.forEach(function(p){ pm[p.m.name] = p.qty; });
@@ -199,8 +211,8 @@ PROBE = r"""
   openDisp();
   var sub = q('#dispSub') ? q('#dispSub').textContent : '';
   var rows = q('#dispList') ? q('#dispList').textContent.replace(/\s+/g, ' ').trim() : '';
-  ck('弹窗说明点明「一次挂号只能开一次药」', sub.indexOf('一次挂号只能开一次药') >= 0, sub);
-  ck('弹窗行内说明按上限开满', /单次限\s*7 .*?按上限开满/.test(rows), rows.slice(0, 200));
+  ck('弹窗说明点明「勾上的这几种」', sub.indexOf('勾上的这 5 种') >= 0, sub);
+  ck('弹窗行内说明按上限开满', /单次最多开\s*7\s*天\s*＝\s*7\s*片.*?按上限开满/.test(rows), rows.slice(0, 200));
   ck('弹窗行内说明给出趟数', /共需\s*29.*?要开\s*5\s*次/.test(rows), rows.slice(0, 300));
 
   // ---- 5. 真点一次「已经开药」，看库存是不是按上限加 ----
@@ -218,240 +230,89 @@ PROBE = r"""
   ck('入库后 维生素C = 1+7 = 8', after.a === 8, JSON.stringify([before.a, after.a]));
   ck('入库后 维生素B2 = 3+14 = 17', after.b === 17, JSON.stringify([before.b, after.b]));
   ck('入库后 维生素B12 = 1+2 = 3', after.c === 3, JSON.stringify([before.c, after.c]));
-  ck('提示还剩 1 种没到位', /还有\s*1\s*种/.test(R.alerts.join(' | ')), R.alerts.join(' | '));
+  ck('★ 入库完勾选被清空（下次打开不该还亮着）', pickCount() === 0, pickCount());
+  ck('提示说清开完都够一个周期了', /都够一个周期/.test(R.alerts.slice(-1).join(' | ')),
+     R.alerts[R.alerts.length - 1]);
 
   // ---- 6. 缺药但补满后离开清单 ----
   var asp = byName('健胃消食片');
   ck('健胃消食补满后 30 天、已不在清单',
      asp && daysLeft(asp) > settings.alertDays && !inRefill(asp), asp ? daysLeft(asp) : null);
 
-  // ---- 7. 批量调整存量（整个药箱统一 ±N 天）----
-  // 重置到已知状态（前面几段动过数据），并补一味「没设用法」的药来验跳过分支。
-  var demo2 = [
-    { name:'维生素C片', spec:'100mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
-      stockBase:14, stockDate:agoD(13), rxMax:7 },                  // 现 1，每日 1
-    { name:'维生素B2片', spec:'5mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
-      stockBase:21, stockDate:agoD(18), rxMax:14 },                 // 现 3，每日 1
-    { name:'葡萄糖酸钙片', spec:'0.5g', perDose:1, unit:'片', cycleDays:1, timesPerCycle:2,
-      stockBase:60, stockDate:agoD(20) },                           // 现 20，每日 2 → 7 天=14 片
-    { name:'健胃消食片', spec:'0.8g', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
-      stockBase:90, stockDate:agoD(10) },                           // 现 80，每日 1
-    { name:'维生素B12注射液', spec:'0.5mg/支', perDose:1, unit:'支', cycleDays:14, timesPerCycle:1,
-      stockBase:2, stockDate:agoD(20), rxMax:2 },                   // 现 1，每 14 天 1 支 → 7 天=0.5 支
-    { name:'维生素E软胶囊', spec:'400IU', perDose:1, unit:'粒', cycleDays:1, timesPerCycle:0,
-      stockBase:30, stockDate:todayStr() }                          // 没设用法 → 应被跳过
-  ];
-  demo2.forEach(function(d){ d.id = uid(); });
-  setMeds(demo2); save(); render();
-  ck('批量前置：6 味药已就位', meds.length === 6, meds.length);
+  // ---- 7. ★ 2026-11-19：「要开的药」按「剩余天数 < 一次最多能开几天」判 ----
+  // 用户原话：「清单不是按固定的剩余天数，而是按是不是比一次最多能开多少天少来判断
+  //            —— 用户肯定是奔着开够这一个周期去用的」。
+  // 所以剩下 20 天、上限 30 天的药**要进清单**（这趟正好开满一个周期），
+  // 哪怕卡片上还标着「充足」。
+  (function(){
+    var rows7 = [
+      // 20 天 < 上限 30 → 该开（老口径 14 天，会漏掉它）
+      { name:'两周多但不够一片周期片', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+        stockBase:20, stockDate:todayStr(), rxMax:30, rxMaxDay:1 },
+      // 35 天 > 上限 30 → 不该开（这趟开不下一个整周期，跑了也白跑）
+      { name:'够一个周期还多片', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+        stockBase:35, stockDate:todayStr(), rxMax:30, rxMaxDay:1 },
+      // 没填上限 → 退回提醒天数 14：20 天 > 14，不列
+      { name:'没填上限的两周片', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+        stockBase:20, stockDate:todayStr(), rxMax:0 },
+      // 没填上限、只剩 10 天 → 14 天以内，列
+      { name:'没填上限只剩十天片', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
+        stockBase:10, stockDate:todayStr(), rxMax:0 },
+      // 没设用法（每天 0 次）→ 没天数、也没勾选框：勾了也换不出数量，只会白上一把医保锁
+      { name:'没设用法片', perDose:1, unit:'片', cycleDays:1, timesPerCycle:0,
+        stockBase:5, stockDate:todayStr(), rxMax:30, rxMaxDay:1 }
+    ];
+    rows7.forEach(function(d){ d.id = uid(); });
+    setMeds(rows7); save(); render();
 
-  // --- 7a. 纯计算：天数 → 数量，各按自己的用法换算 ---
-  var upR = {}, dnR = {};
-  bulkRows(7, 1).forEach(function(r){ upR[r.m.name] = r; });
-  bulkRows(7, -1).forEach(function(r){ dnR[r.m.name] = r; });
-  ck('维生素C 现 1 片 → 加 7 天 = 8 片', upR['维生素C片'].next === 8, upR['维生素C片'].next);
-  ck('维生素C 减 7 天 → 0 且标记已截断',
-     dnR['维生素C片'].next === 0 && dnR['维生素C片'].floored === true,
-     JSON.stringify(dnR['维生素C片']));
-  ck('葡萄糖酸钙 每日 2 片 → 加 7 天 = 34（+14）', upR['葡萄糖酸钙片'].next === 34,
-     upR['葡萄糖酸钙片'].next);
-  ck('维生素B12 每 14 天 1 支 → 加 7 天 = 1.5（+0.5）', upR['维生素B12注射液'].next === 1.5,
-     upR['维生素B12注射液'].next);
-  ck('健胃消食 现 80 → 加 7 天 = 87', upR['健胃消食片'].next === 87, upR['健胃消食片'].next);
-  ck('没设用法的那味被跳过', upR['维生素E软胶囊'].skip === true && dnR['维生素E软胶囊'].skip === true, '');
-  ck('跳过的药不会被改动（next 仍 30）', upR['维生素E软胶囊'].next === 30, upR['维生素E软胶囊'].next);
+    ck('上限 30 / 只剩 20 天 → 进清单（老口径会漏）', inRefill(byName('两周多但不够一片周期片')) === true, '');
+    ck('上限 30 / 还剩 35 天 → 不进清单', inRefill(byName('够一个周期还多片')) === false, '');
+    ck('没填上限 / 20 天 → 按提醒天数 14，不进', inRefill(byName('没填上限的两周片')) === false, '');
+    ck('没填上限 / 10 天 → 进清单', inRefill(byName('没填上限只剩十天片')) === true, '');
+    ck('没设用法的药没有勾选框（那一行留了空位对齐，不是整行左移）',
+       (function(){
+         var c = document.querySelector('#list .med[data-med="' + byName('没设用法片').id + '"]');
+         return !!c && !c.querySelector('.med-pick input') && !!c.querySelector('.med-pick');
+       })(), '');
+    ck('硬勾一味没设用法的 → 不进库（dailyUse=0 换不出数量）',
+       (function(){ pickSet(byName('没设用法片').id, true); var n = dispItems().length;
+                    pickClear(); return n === 0; })(), '');
 
-  // --- 7b. 弹窗预览（2026-10-12：可勾选 + 顺序同主页 + 档位色）---
-  // 这一段的 demo2 正好能验顺序：录入顺序是 氨氯/阿托/二甲/健胃消食/维生素B12/维D，
-  // 而按档位排完后 维生素B12（每 14 天 1 支，剩 14 天 = 偏少）要排到健胃消食（剩 80 天 = 充足）前面。
-  function namesOf(sel){
-    return Array.prototype.map.call(document.querySelectorAll(sel), function(el){
-      var t = el.firstChild;
-      return t ? String(t.nodeValue).trim() : '';
-    });
-  }
-  openBulk();
-  var brows = document.querySelectorAll('#bulkList .disp-row');
-  ck('弹窗列出全部 6 味（含跳过的那味）', brows.length === 6, brows.length);
-  ck('标题写清作用对象是当前人', /「我」药箱/.test(q('#bulkSub').textContent), q('#bulkSub').textContent);
-  var body = q('#bulkList').textContent.replace(/\s+/g, ' ');
-  ck('预览同时给出加/减两个方向的数', /＋7 天 → 8 片/.test(body) && /−7 天/.test(body), body.slice(0, 200));
-  ck('预览标出会被减到 0 的药', /已减到 0/.test(body), '');
-  ck('预览标出没设用法的药', /没法按天算/.test(body), '');
+    ck('★ 卡片还是「充足」，清单却要它 —— 两把尺子各说各的，这是故意的',
+       level(byName('两周多但不够一片周期片')) === 'ok', level(byName('两周多但不够一片周期片')));
+    ck('清单里正好这 2 味', refillItems().length === 2,
+       refillItems().map(function(m){ return m.name; }).join(' / '));
+    ck('清单文字按剩余天数排（10 天的在前）',
+       buildRefillText().indexOf('没填上限只剩十天片') < buildRefillText().indexOf('两周多但不够一片周期片'),
+       buildRefillText().replace(/\n/g, ' / '));
+    ck('侧栏标题旁边的数 = 2 种', q('#drugTip').textContent === '2 种', q('#drugTip').textContent);
+    ck('标题的悬停说明写清了这条线',
+       /一次最多能开几天/.test(q('#drugTip').title), q('#drugTip').title);
 
-  // ★ 顺序必须和主页一模一样
-  var homeOrder = namesOf('#list .med .med-name');
-  var bulkOrder = namesOf('#bulkList .disp-row .disp-name');
-  ck('弹窗里的排列顺序和主页一致',
-     homeOrder.length === 6 && homeOrder.join('|') === bulkOrder.join('|'),
-     '主页 ' + homeOrder.join(' / ') + '　弹窗 ' + bulkOrder.join(' / '));
-  ck('排序确实按档位重排了（维生素B12排在健胃消食前面，不是录入顺序）',
-     bulkOrder.indexOf('维生素B12注射液') < bulkOrder.indexOf('健胃消食片'),
-     bulkOrder.join(' / '));
+    // 真的点一下那个勾选框（走 list.onchange 那条路，不直接调 pickSet）
+    var ckEl = document.querySelector('#list .med[data-med="'
+      + byName('没填上限只剩十天片').id + '"] .med-pick input');
+    ck('卡片上有勾选框，默认没勾', !!ckEl && ckEl.checked === false, ckEl ? ckEl.checked : '(没有框)');
+    ckEl.click();
+    ck('点一下 → 卡片变成「选中」描边', ckEl.closest('.med').classList.contains('picked'), '');
+    ck('点一下 → 侧栏按钮数出 1 种',
+       /（1 种）/.test(q('#btnDispense').textContent), q('#btnDispense').textContent);
+    ck('点一下 → 按钮从灰变成可点', q('#btnDispense').disabled === false, '');
+    ckEl.click();
+    ck('再点一下 → 取消勾选、按钮重新变灰',
+       pickCount() === 0 && q('#btnDispense').disabled === true, pickCount());
 
-  // ★ 颜色：行上有档位标记，且档位和主页的 level() 一致
-  function lvCount(sel, v){
-    return document.querySelectorAll(sel + '[data-lv=' + v + ']').length;
-  }
-  ck('偏少（soon）的 4 味行上带 soon 标记', lvCount('#bulkList .disp-row', 'soon') === 4,
-     lvCount('#bulkList .disp-row', 'soon'));
-  ck('充足的 1 味带 ok 标记', lvCount('#bulkList .disp-row', 'ok') === 1,
-     lvCount('#bulkList .disp-row', 'ok'));
-  ck('没设用法的 1 味带 na 标记', lvCount('#bulkList .disp-row', 'na') === 1,
-     lvCount('#bulkList .disp-row', 'na'));
-  ck('每行还挂了「已用完 / 偏少 / 充足 / 未设用法」文字标',
-     document.querySelectorAll('#bulkList .disp-name .tag').length === 6,
-     document.querySelectorAll('#bulkList .disp-name .tag').length);
-
-  // ★ 勾选框：默认**只勾「已用完 / 偏少」**的（充足的不勾），没设用法的勾不了
-  //   2026-10-12 用户要求：「默认打钩的是已用完和偏少的 充足的不用打勾」。
-  function ckOf(n){
-    return document.querySelector('#bulkList input.bulk-ck[data-id="' + byName(n).id + '"]');
-  }
-  function afterOf(n){ return q('#bulkAfter-' + byName(n).id).textContent.trim(); }
-  function setCk(n, on){
-    var c = ckOf(n);
-    c.checked = on;
-    c.dispatchEvent(new Event('change', {bubbles:true}));
-  }
-  var cks = document.querySelectorAll('#bulkList input.bulk-ck');
-  var nCk = Array.prototype.filter.call(cks, function(c){ return c.checked; }).length;
-  var nDis = Array.prototype.filter.call(cks, function(c){ return c.disabled; }).length;
-  ck('每行都有勾选框', cks.length === 6, cks.length);
-  ck('默认勾上 4 味（4 味偏少）、禁用 1 味（没设用法）', nCk === 4 && nDis === 1, nCk + ' / ' + nDis);
-  ck('「偏少」的默认勾上（维生素B12）', ckOf('维生素B12注射液').checked === true, '');
-  ck('「偏少」的默认勾上（维生素C）', ckOf('维生素C片').checked === true, '');
-  ck('「充足」的默认不勾（健胃消食）', ckOf('健胃消食片').checked === false, '');
-  ck('「充足」的默认不勾 → 那行只写「未勾选」、不给数字', afterOf('健胃消食片') === '未勾选',
-     afterOf('健胃消食片'));
-  ck('底部写清已勾选几种（4 / 5）', /已勾选 4 \/ 5 种/.test(q('#bulkPickHint').textContent),
-     q('#bulkPickHint').textContent);
-  ck('按钮带上了天数与实数', /勾选的 4 种各增加 7 天/.test(q('#btnBulkPlus').textContent)
-     && /勾选的 4 种各减少 7 天/.test(q('#btnBulkMinus').textContent),
-     q('#btnBulkPlus').textContent);
-  ck('说明里写清了默认勾选规则', /默认只勾「已用完 \/ 偏少」/.test(q('#bulkSub').textContent),
-     q('#bulkSub').textContent);
-  q('#bulkDays').value = 14; renderBulk();
-  ck('改天数 → 按钮与预览跟着变', /勾选的 4 种各增加 14 天/.test(q('#btnBulkPlus').textContent),
-     q('#btnBulkPlus').textContent);
-  q('#bulkDays').value = 7; renderBulk();
-
-  // ★ 默认不勾 ≠ 调不了：自己把「充足」那味勾上，它照样能一起调
-  setCk('健胃消食片', true);
-  ck('手动勾上充足的药 → 已勾选 5 / 5', /已勾选 5 \/ 5 种/.test(q('#bulkPickHint').textContent),
-     q('#bulkPickHint').textContent);
-  ck('手动勾上后那行照常给数字', /＋7 天/.test(afterOf('健胃消食片')), afterOf('健胃消食片'));
-
-  // ★ 取消勾选一味（偏少的） → 那一行不再给数字，汇总与按钮当场跟着变
-  setCk('葡萄糖酸钙片', false);
-  ck('取消勾选后那行写「未勾选」，不再给数字', afterOf('葡萄糖酸钙片') === '未勾选',
-     afterOf('葡萄糖酸钙片'));
-  ck('取消勾选 → 底部变成已勾选 4 / 5', /已勾选 4 \/ 5 种/.test(q('#bulkPickHint').textContent),
-     q('#bulkPickHint').textContent);
-  ck('取消勾选 → 按钮文案变成 4 种', /勾选的 4 种各增加 7 天/.test(q('#btnBulkPlus').textContent),
-     q('#btnBulkPlus').textContent);
-  ck('没被取消的行照旧给数字', /＋7 天/.test(afterOf('维生素C片')), afterOf('维生素C片'));
-
-  // ★ 全不选 → 两个确认按钮禁用（避免"什么都没选就点确认"）
-  q('#btnBulkNone').click();
-  ck('全不选 → 已勾选 0 / 5', /已勾选 0 \/ 5 种/.test(q('#bulkPickHint').textContent),
-     q('#bulkPickHint').textContent);
-  ck('全不选 → 两个确认按钮都禁用',
-     q('#btnBulkPlus').disabled === true && q('#btnBulkMinus').disabled === true,
-     q('#btnBulkPlus').disabled + ' / ' + q('#btnBulkMinus').disabled);
-  ck('全不选 → 没设用法那行仍写「没法按天算」',
-     /没法按天算/.test(q('#bulkList').textContent), '');
-
-  // ★ 全选 → 再勾回来（补回取消的那味）
-  q('#btnBulkAll').click();
-  ck('全选 → 又回到已勾选 5 / 5', /已勾选 5 \/ 5 种/.test(q('#bulkPickHint').textContent),
-     q('#bulkPickHint').textContent);
-  ck('全选 → 按钮恢复',
-     q('#btnBulkPlus').disabled === false && /勾选的 5 种/.test(q('#btnBulkPlus').textContent), '');
-  ck('全选不会把「没设用法」那味的禁用框勾上',
-     await (async function(){
-       var c = document.querySelector('#bulkList input.bulk-ck[data-id="'
-         + byName('维生素E软胶囊').id + '"]');
-       return c.disabled === true && c.checked === false;
-     })(), '');
-
-  // --- 7c. 真的执行：增加 ---
-  var alertsBefore = R.alerts.length;
-  applyBulk(1);
-  ck('加 7 天：维生素C 8', byName('维生素C片').stockBase === 8,
-     byName('维生素C片').stockBase);
-  ck('加 7 天：维生素B2 10', byName('维生素B2片').stockBase === 10,
-     byName('维生素B2片').stockBase);
-  ck('加 7 天：葡萄糖酸钙 34', byName('葡萄糖酸钙片').stockBase === 34,
-     byName('葡萄糖酸钙片').stockBase);
-  ck('加 7 天：维生素B12 1.5', byName('维生素B12注射液').stockBase === 1.5,
-     byName('维生素B12注射液').stockBase);
-  ck('加 7 天：没设用法的那味没被动（仍 30）', byName('维生素E软胶囊').stockBase === 30,
-     byName('维生素E软胶囊').stockBase);
-  ck('基准日滚到今天', byName('维生素C片').stockDate === todayStr(),
-     byName('维生素C片').stockDate);
-  ck('加完弹窗已关闭', !q('#dlgBulk').open, '');
-  ck('提示说清了改了几味、改了多少天',
-     /已把 5 种药的存量增加 7 天的量/.test(R.alerts.slice(alertsBefore).join(' | ')),
-     R.alerts[R.alerts.length - 1]);
-
-  // --- 7d. 减少到负数 → 截到 0，不许出现负库存 ---
-  // 注：默认只勾「已用完 / 偏少」，这里要验全药箱一起减，所以先点「全选」。
-  openBulk(); q('#bulkDays').value = 100; renderBulk();
-  q('#btnBulkAll').click();
-  ck('点全选后 5 味都在勾上（含充足的那味）', /已勾选 5 \/ 5 种/.test(q('#bulkPickHint').textContent),
-     q('#bulkPickHint').textContent);
-  applyBulk(-1);
-  var five = ['维生素C片','维生素B2片','葡萄糖酸钙片','健胃消食片','维生素B12注射液'];
-  ck('减 100 天：5 味全到 0，没有负数',
-     five.every(function(n){ return byName(n).stockBase === 0; }),
-     five.map(function(n){ return byName(n).stockBase; }).join('/'));
-  ck('减到 0 的药 level 是「已用完」', byName('健胃消食片') && level(byName('健胃消食片')) === 'out',
-     level(byName('健胃消食片')));
-  ck('没设用法的那味仍是 30', byName('维生素E软胶囊').stockBase === 30,
-     byName('维生素E软胶囊').stockBase);
-  ck('提示里说明了被减到 0 的味数', /已减到 0/.test(R.alerts[R.alerts.length - 1]),
-     R.alerts[R.alerts.length - 1]);
-
-  // --- 7e. 「增加」必须和单药「又买了药」同一口径（stockNow 基础上加） ---
-  ck('批量加完后 stockNow == stockBase（基准日=今天，没被重复扣）',
-     byName('维生素E软胶囊').stockBase === stockNow(byName('维生素E软胶囊')), '');
-
-  // --- 7f. ★ 2026-10-12 新增：只勾一部分 → 没勾的必须一根手指都不碰 ---
-  // 此刻 5 味都已被减到 0，维生素E 仍是 30。
-  // 此刻 5 味都已用完 → 默认就把这 5 味全勾上了（「已用完」在默认档里），先把别的取消
-  openBulk();
-  ['维生素C片','维生素B2片','葡萄糖酸钙片','维生素B12注射液']
-    .forEach(function(n){
-      var c = document.querySelector('#bulkList input.bulk-ck[data-id="' + byName(n).id + '"]');
-      c.checked = false;
-      c.dispatchEvent(new Event('change', {bubbles:true}));
-    });
-  ck('只留健胃消食勾选（已勾选 1 / 5）', /已勾选 1 \/ 5 种/.test(q('#bulkPickHint').textContent),
-     q('#bulkPickHint').textContent);
-  var alerts2 = R.alerts.length;
-  applyBulk(1);
-  ck('只勾一种 → 它确实变了（0 → 7）', byName('健胃消食片').stockBase === 7,
-     byName('健胃消食片').stockBase);
-  ck('没勾的没被动（维生素C仍 0）', byName('维生素C片').stockBase === 0,
-     byName('维生素C片').stockBase);
-  ck('没勾的没被动（葡萄糖酸钙仍 0）', byName('葡萄糖酸钙片').stockBase === 0,
-     byName('葡萄糖酸钙片').stockBase);
-  ck('没设用法的没被动（维生素E 仍 30）', byName('维生素E软胶囊').stockBase === 30,
-     byName('维生素E软胶囊').stockBase);
-  ck('提示只说改了 1 种', /已把 1 种药的存量增加 7 天的量/.test(R.alerts.slice(alerts2).join(' | ')),
-     R.alerts[R.alerts.length - 1]);
-
-  // 一种都不勾就点确认 → 拦下，且不改任何数据（按钮虽已禁用，这里直接调函数兜底）
-  openBulk();
-  q('#btnBulkNone').click();
-  var alerts3 = R.alerts.length;
-  applyBulk(1);
-  ck('一种都没勾时点确认被拦下并提示', /还没勾选任何药/.test(R.alerts.slice(alerts3).join(' | ')),
-     R.alerts[R.alerts.length - 1]);
-  ck('被拦下时数据没动（健胃消食仍 7）', byName('健胃消食片').stockBase === 7,
-     byName('健胃消食片').stockBase);
-  q('#dlgBulk').close();
+    // 勾上它 → 入库量 = 上限 30 → 20 + 30 = 50 天，一次开满一个周期
+    pickSet(byName('两周多但不够一片周期片').id, true);
+    render();
+    var plan7 = dispPlan();
+    ck('勾上之后入库量 = 它的上限 30 天（30 片）', plan7.length === 1 && plan7[0].qty === 30,
+       plan7.map(function(p){ return p.name + ':' + p.qty; }).join(' / '));
+    submitDisp({ preventDefault: function(){} });
+    ck('开完从 20 天变成 50 天', daysLeft(byName('两周多但不够一片周期片')) === 50,
+       daysLeft(byName('两周多但不够一片周期片')));
+    ck('开完就离开清单了', inRefill(byName('两周多但不够一片周期片')) === false, '');
+  })();
 
   // ---- 8. ★ 2026-10-11 用户两次报 bug 后的定稿口径 ----
   // 用户原话：「卡片上显示的 每日2片 余量约4片 这个4片就是正确的，你把卡片上的数和编辑里的数同步」。
@@ -715,8 +576,12 @@ PROBE = r"""
   var c5r = mkRx({ timesPerCycle: 2, rxMax: 30 });
   ck('★ 老存档的 30 当 30 片读，不当 30 天（否则上限凭空翻倍）',
      rxCap(c5r) === 30, rxCap(c5r));
-  ck('  老存档没有「天数」可说 → rxCapDays 是无穷（弹窗仍按片数写）',
-     rxCapDays(c5r) === Infinity, String(rxCapDays(c5r)));
+  // ★ 2026-11-19：老存档那个「数量」也要能折成天数 —— 「要开的药」现在按
+  //   「剩余天数 < 一次最多能开几天」判，没有天数就没法比。换算只在算的时候做，
+  //   rxMax 原样 30、rxMaxDay 仍是空，**不写回存档**。
+  ck('  老存档那 30 片 → 折成 15 天（每天 2 片），存档本身不动',
+     rxCapDays(c5r) === 15 && !c5r.rxMaxDay && c5r.rxMax === 30,
+     String(rxCapDays(c5r)) + ' / ' + c5r.rxMax + ' / ' + c5r.rxMaxDay);
   // ⑥ 0 = 老口径的「不限」
   ck('rxMax=0 → 不限（Infinity）', rxCap(mkRx({ rxMax: 0 })) === Infinity,
      String(rxCap(mkRx({ rxMax: 0 }))));
@@ -754,6 +619,8 @@ PROBE = r"""
   // ⑨ 「已经开药」弹窗得把「限几天」和「多少片」一起写清
   setMeds([ mkRx({ name: '弹窗按天片', rxMax: 7, rxMaxDay: 1 }) ]);
   save(); render();
+  pickSet(byName('弹窗按天片').id, true);      // 勾选制：不勾就没有入库对象
+  render();
   openDisp();
   var drow = q('#dispList').textContent.replace(/\s+/g, ' ');
   ck('★ 弹窗行内写「单次最多开 7 天 ＝ 7 片」',
