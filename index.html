@@ -113,7 +113,11 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
    ★ 别在祖先上加 overflow（sticky 会失效）；.cols 的 align-items:start 要留着，
      否则格子会被拉成和左栏一样高，sticky 就没有可移动的余量了。 */
 @media(min-width:901px){
-  .col-side{position:sticky;top:16px;align-self:start;
+  /* 落点不是 16，是「窗口高度 - 面板高度 - 16」—— 也就是让它贴着窗口**下方**停住
+     （2026-11-20 用户要求：「悬浮是贴着这个窗口的下方会比较好」）。
+     这个值跟面板多高有关，CSS 算不出来（面板高度由内容决定），所以由 syncSideTop()
+     写进 --side-top；这里的 16 只是脚本没跑起来时的兜底。 */
+  .col-side{position:sticky;top:var(--side-top,16px);align-self:start;
     display:flex;flex-direction:column;max-height:calc(100vh - 32px)}
   .col-side .panel-h{flex:none}
   .col-side .panel-b{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain}
@@ -2245,7 +2249,24 @@ function freqText(m){
 }
 
 /* -------------------- 渲染 -------------------- */
-function render(){ renderPeople(); renderStats(); renderBox(); renderList(); renderNote(); renderRefill(); }
+function render(){ renderPeople(); renderStats(); renderBox(); renderList(); renderNote(); renderRefill(); syncSideTop(); }
+
+/* 右栏「就诊准备」粘在哪儿 —— 贴着窗口**下方**停住（2026-11-20 用户要求）。
+   sticky 的 top 是个固定值，写成 16 就会贴着窗口顶上；要贴底下，得让它等于
+   「视口高 - 面板高 - 16」。面板高度由内容决定（清单几行、有没有星号解释），
+   CSS 里拿不到自己的高度，只能在这里量一次、写进 --side-top。
+   ★ 面板比视口还高时（max-height 已经封顶到 100vh-32），这个差值会变成负数，
+     取 max(16, ...) 就退回"贴顶"—— 那时整块都塞满了，贴顶贴底本来也没区别。
+   ★ 只在两栏（>900px）下有意义；单栏/手机那边 .col-side 是 static，top 不生效。 */
+function syncSideTop(){
+  const el = $('.col-side');
+  if(!el) return;
+  if(!window.matchMedia('(min-width:901px)').matches){ el.style.removeProperty('--side-top'); return; }
+  const gap = 16;
+  const top = Math.max(16, window.innerHeight - el.offsetHeight - gap);
+  el.style.setProperty('--side-top', top + 'px');
+}
+window.addEventListener('resize', syncSideTop);
 
 // 药品的统一排序口径：先按档位（已用完 → 偏少 → 充足 → 未设用法），同档位再按剩余天数少的靠前。
 // ★ 2026-10-12：从 renderList() 里抽出来，因为别处也要求**顺序和主页一样**

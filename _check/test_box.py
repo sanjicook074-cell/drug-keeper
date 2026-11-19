@@ -1041,20 +1041,25 @@ PROBE = r"""
        up ? (up.getBoundingClientRect().top - br.bottom).toFixed(1) + 'px' : '没有未入清单');
   })();
 
-  /* ★ 2026-11-20：用户要「整个右边的这个框…随着页面的上下滑动，始终悬浮在页面上」。
-     这里钉住四件事：① 真的是 sticky；② 落点 16px；③ 高度封在视口内（超高的面板
-     改成内部滚，不能把下面那几个按钮裁掉）；④ 真滚一遍，它还在视口里。
+  /* ★ 2026-11-20：用户要「整个右边的这个框…随着页面的上下滑动，始终悬浮在页面上」，
+     随后又定了一句「悬浮是贴着这个窗口的**下方**会比较好」。所以落点不是 16，
+     而是「视口高 - 面板高 - 16」：面板底边贴着窗口底、留 16px 空。
+     这里钉五件事：① 真的是 sticky；② 落点算对了；③ 高度封在视口内（超高的面板
+     改成内部滚，不能把下面那几个按钮裁掉）；④ 真滚一遍，它还在视口里；⑤ 且是**贴底**。
      ★ 这一步跑在 1280 宽的窗口里（见本文件启动参数），≤900px 的那套单栏布局不生效 ——
-       所以量到的就是桌面两栏的行为。单栏那边"不许 sticky"由 test_app（420 宽）盯着。 */
+       所以量到的就是桌面两栏的行为。单栏那边"不许 sticky"由静态断言盯着。 */
   (function(){
     var side = q('.col-side');
     var cs = getComputedStyle(side);
+    var vh = window.innerHeight, sh = side.offsetHeight;
     ck('★ 右栏「就诊准备」是 sticky（不再是"滚走就没了"）', cs.position === 'sticky', cs.position);
-    ck('  粘住的落点离视口顶 16px', cs.top === '16px', cs.top);
+    ck('★ 落点 = 视口高 - 面板高 - 16（贴着窗口下方，不是顶上）',
+       Math.abs(parseFloat(cs.top) - Math.max(16, vh - sh - 16)) <= 1,
+       cs.top + ' / 期望 ' + Math.max(16, vh - sh - 16) + '（vh=' + vh + ' 面板=' + sh + '）');
     ck('★ 整个面板封在视口内（max-height = 100vh - 32）',
        /px$/.test(cs.maxHeight)
-         && Math.abs(parseFloat(cs.maxHeight) - (window.innerHeight - 32)) <= 1,
-       cs.maxHeight + ' / innerHeight=' + window.innerHeight);
+         && Math.abs(parseFloat(cs.maxHeight) - (vh - 32)) <= 1,
+       cs.maxHeight + ' / innerHeight=' + vh);
     var pb = side.querySelector('.panel-b');
     ck('  高度不够时只有正文滚，标题条常驻',
        ['auto', 'scroll'].indexOf(getComputedStyle(pb).overflowY) >= 0,
@@ -1067,11 +1072,11 @@ PROBE = r"""
     var y0 = window.scrollY;
     window.scrollTo(0, 900);
     var r = side.getBoundingClientRect();
-    ck('★ 页面往下滚 900px，右栏还卡在视口顶（top ≈ 16）',
-       Math.abs(r.top - 16) <= 1, r.top.toFixed(1));
-    ck('  且它整块都在视口里（底边没被切到屏幕外）',
-       r.bottom <= window.innerHeight + 1 && r.top >= 0,
-       r.top.toFixed(1) + ' ~ ' + r.bottom.toFixed(1) + ' / vh=' + window.innerHeight);
+    ck('★ 页面往下滚 900px 后，右栏底边仍贴着视口底（差 16px）',
+       Math.abs((vh - r.bottom) - 16) <= 1.5, (vh - r.bottom).toFixed(1) + 'px');
+    ck('  它整块都在视口里（顶上不越界、底下没被切）',
+       r.bottom <= vh + 1 && r.top >= 0,
+       r.top.toFixed(1) + ' ~ ' + r.bottom.toFixed(1) + ' / vh=' + vh);
     window.scrollTo(0, y0);
     pad.remove();
   })();
