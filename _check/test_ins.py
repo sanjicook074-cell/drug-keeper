@@ -607,6 +607,73 @@ PROBE = r"""
      q('#refillText').textContent.replace(/\s+/g, ' '));
   reset();
 
+  /* ========= 12.6 人名后面那个数字 = 「剩不到 7 天」的味数（2026-11-19）=======
+     用户原话：「最上边的那个人啊旁边有一个数字显示的是有哪几种药少，然后呢这个是和这个
+               药品存量少于这个 7 天来去计算的。」
+     它跟清单**不是一个口径**，这一点最容易在以后被"顺手统一"掉，所以逐条钉住：
+       ① 剩 5 天 → 数；剩 6.9 天 → 数（"少于 7 天"确实不含 7）；
+       ② 正好 7 天 → 不数；剩 10 天但上限 30 天（清单里有它）→ **也不数** ← 这次改动的核心；
+       ③ 已经用完（0 天）→ 数；备用药（不算天数）→ 不数；
+       ④ 医保锁着但只剩 5 天 → 照数（角标只看存量，不管开不开得出来）；
+       ⑤ 数字只算当前这个人，切人跟着换；不挂 title 的 0 味不画角标。
+     ★ 别把 lowDays 换成 shortNow/inRefill —— 那等于把口径退回 30 天，这条需求就没了。 */
+  reset();
+  mk({ name: '剩五天片', stock: 5 });                       // 5 天 → 数
+  mk({ name: '剩十天片', stock: 10 });                      // 10 天（上限 30 → 清单里有）→ 不数
+  mk({ name: '正好七天片', stock: 7 });                     // 边界 7 → 不数
+  mk({ name: '剩六点九天片', times: 10, stock: 69 });       // 6.9 天 → 数
+  mk({ name: '空了片', stock: 0 });                         // 0 天 → 数
+  mk({ name: '备用片', kind: 'prn', stock: 3 });            // 不算天数 → 不数
+  mk({ name: '锁着五天片', ins: 'mi', miStart: todayStr(), stock: 5 });   // 锁着但快没了 → 数
+  render();
+
+  function myBadge(){ return q('#people .ptab.active .badge'); }
+  function badgeTxt(){ return myBadge() ? myBadge().textContent.trim() : '(无角标)'; }
+
+  ck('★ 角标数的是「剩不到 7 天」的味数（5 / 6.9 / 0 / 锁着那味 = 4）',
+     !!myBadge() && myBadge().textContent.trim() === '4', badgeTxt());
+  ck('★ 剩 10 天、上限 30 天的药不算进去（它在清单里，但还没到"要没了"）',
+     lowDays(byName('剩十天片')) === false && shortNow(byName('剩十天片')) === true
+       && refillItems().map(function(m){ return m.name; }).indexOf('剩十天片') >= 0,
+     'low=' + lowDays(byName('剩十天片')) + ' short=' + shortNow(byName('剩十天片')));
+  ck('正好 7 天不数（"少于 7 天"不含 7）', lowDays(byName('正好七天片')) === false,
+     daysLeft(byName('正好七天片')));
+  ck('6.9 天要数（差一点点也不行）', lowDays(byName('剩六点九天片')) === true,
+     daysLeft(byName('剩六点九天片')));
+  ck('已经用完的（0 天）当然算', lowDays(byName('空了片')) === true,
+     daysLeft(byName('空了片')));
+  ck('备用药不数（它没有"还剩几天"这回事）', lowDays(byName('备用片')) === false,
+     String(daysLeft(byName('备用片'))));
+  ck('★ 医保锁着但只剩 5 天的照数（角标看存量，不看开不开得出来）',
+     lowDays(byName('锁着五天片')) === true && miLocked(byName('锁着五天片')),
+     'low=' + lowDays(byName('锁着五天片')));
+  ck('角标上挂了说明（鼠标停上去能知道这个数是什么）',
+     /剩不到\s*7\s*天/.test(myBadge().getAttribute('title') || ''),
+     myBadge().getAttribute('title'));
+  ck('人名那个 title 也把它说清了', /4 味剩不到 7 天/.test(q('#people .ptab.active').getAttribute('title') || ''),
+     q('#people .ptab.active').getAttribute('title'));
+
+  // 切人：数字只算这个人自己的药
+  var mom6 = { id: uid(), name: '妈妈', note: '', box: { slots: defaultSlots(3) }, meds: [] };
+  (function(){
+    var mm = { id: uid(), kind: 'daily', name: '妈妈只剩两天片', spec: '5mg', perDose: 1, unit: '片',
+               cycleDays: 1, timesPerCycle: 1, stockBase: 2, stockDate: todayStr(),
+               rxMax: 30, rxMaxDay: 1, note: '' };
+    mom6.meds.push(mm);
+  })();
+  people.push(mom6); save(); render();
+  var momTab = q('#people .ptab[data-pid="' + mom6.id + '"] .badge');
+  ck('★ 别人名下只挂 1（各自算各自的，不串）', !!momTab && momTab.textContent.trim() === '1',
+     momTab ? momTab.textContent.trim() : '(无角标)');
+  ck('  当前这个人还是 4', myBadge() && myBadge().textContent.trim() === '4', badgeTxt());
+
+  // 没有一味快没了 → 不画角标（0 不出数字，免得多一个"0"吓人）
+  reset();
+  mk({ name: '很够吃片', stock: 60 });
+  render();
+  ck('一味都不少于 7 天时不画角标', !myBadge(), badgeTxt());
+  reset();
+
   /* ================= 13. 全程不许走原生弹窗 ================= */
   ck('★ 整个过程一次都没走浏览器原生 alert / confirm / prompt',
      R.natives.length === 0, R.natives.join(' | ') || '(一次都没有)');

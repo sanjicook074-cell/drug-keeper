@@ -2045,6 +2045,21 @@ function inRefill(m){
   return shortNow(m) && !miLocked(m);
 }
 
+/* 「这味快没了」这条线 —— 人名后面那个数字用的就是它。
+   用户 2026-11-19 原话：「最上边的那个人啊旁边有一个数字显示的是有哪几种药少，
+   然后这个是和这个药品存量少于这个 7 天来去计算的。」
+   所以它是**固定的 7 天**，不看某味药的处方上限、也不看医保锁：
+     剩 5 天 → 数；剩 6.9 天 → 数；正好 7 天 → 不数（"少于 7 天"不含 7）；
+     剩 20 天（上限 30 天）→ 不数 —— 它该开药，但还没到"要没了"这一步。
+   ★ 别把它和 shortNow 合并：一个回答"这人手上还剩几味药"，一个回答"这趟值不值得开"。
+     合并之后角标会重新变回 30 天口径，等于把这个改动撤了。
+   ★ 备用药 daysLeft = Infinity（不算天数），未设用法的也算不出来 —— 两者自然不数。 */
+const LOW_DAYS = 7;
+function lowDays(m){
+  const dl = daysLeft(m);
+  return isFinite(dl) && dl < LOW_DAYS;
+}
+
 /* -------------------- 医保锁（2026-10-28 用户要求） --------------------
    场景（用户原话）：「如果是走医保开的药，那一段时间内这个药品是不能重复用医保开的」。
    所以每味药要记住「这批是医保开的还是自费买的」；医保开的那天起上一把锁，
@@ -2217,15 +2232,18 @@ function sortedMeds(){
 function renderPeople(){
   const box = $('#people');
   box.innerHTML = people.map(function(p){
-    // 该人有几种药该开了。★ 这里故意用 shortNow（缺就算），不用 inRefill：
-    // 清单不收医保锁着的药，但这个人**确实有药要处理**（自费买 / 等解锁），
-    // 提醒不该跟着清单一起消失 —— 那样锁着的那几味会一直没人管。
-    const need = p.meds.filter(shortNow).length;
+    // 人名后面那个数字 = 这个人有**几味药快吃完了**（剩不到 7 天，见 lowDays）。
+    // 2026-11-19 用户原话：「最上边的那个人啊旁边有一个数字显示的是有哪几种药少，
+    // 然后这个是和这个药品存量少于这个 7 天来去计算的。」
+    // ★ 它**不是**清单条数：清单问"这趟能开什么"（缺 + 医保锁已开 + 够一个周期），
+    //   这里是"这人手上有几味要没了"——所以锁着的、剩 20 天但上限 30 天的，都不算。
+    const need = p.meds.filter(lowDays).length;
     const active = (p.id === currentId);
     return '<button class="ptab' + (active ? ' active' : '') + '" data-pid="' + p.id + '"'
-      + ' title="' + esc(p.name) + '（' + p.meds.length + ' 种药）">'
+      + ' title="' + esc(p.name) + '（' + p.meds.length + ' 种药'
+      +   (need ? ' · ' + need + ' 味剩不到 ' + LOW_DAYS + ' 天' : '') + '）">'
       + '<span class="pnm">' + esc(p.name) + '</span>'
-      + (need ? '<span class="badge">' + need + '</span>' : '')
+      + (need ? '<span class="badge" title="' + need + ' 味药剩不到 ' + LOW_DAYS + ' 天">' + need + '</span>' : '')
       + '</button>';
   }).join('')
   + '<button class="padd" id="btnAddPerson">＋ 添加人</button>'
