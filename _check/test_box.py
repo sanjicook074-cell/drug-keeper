@@ -1041,6 +1041,41 @@ PROBE = r"""
        up ? (up.getBoundingClientRect().top - br.bottom).toFixed(1) + 'px' : '没有未入清单');
   })();
 
+  /* ★ 2026-11-20：用户要「整个右边的这个框…随着页面的上下滑动，始终悬浮在页面上」。
+     这里钉住四件事：① 真的是 sticky；② 落点 16px；③ 高度封在视口内（超高的面板
+     改成内部滚，不能把下面那几个按钮裁掉）；④ 真滚一遍，它还在视口里。
+     ★ 这一步跑在 1280 宽的窗口里（见本文件启动参数），≤900px 的那套单栏布局不生效 ——
+       所以量到的就是桌面两栏的行为。单栏那边"不许 sticky"由 test_app（420 宽）盯着。 */
+  (function(){
+    var side = q('.col-side');
+    var cs = getComputedStyle(side);
+    ck('★ 右栏「就诊准备」是 sticky（不再是"滚走就没了"）', cs.position === 'sticky', cs.position);
+    ck('  粘住的落点离视口顶 16px', cs.top === '16px', cs.top);
+    ck('★ 整个面板封在视口内（max-height = 100vh - 32）',
+       /px$/.test(cs.maxHeight)
+         && Math.abs(parseFloat(cs.maxHeight) - (window.innerHeight - 32)) <= 1,
+       cs.maxHeight + ' / innerHeight=' + window.innerHeight);
+    var pb = side.querySelector('.panel-b');
+    ck('  高度不够时只有正文滚，标题条常驻',
+       ['auto', 'scroll'].indexOf(getComputedStyle(pb).overflowY) >= 0,
+       getComputedStyle(pb).overflowY);
+
+    // 真滚一遍：先临时把左栏撑高，页面才有得滚
+    var pad = document.createElement('div');
+    pad.style.height = '1600px';
+    q('.col-main').appendChild(pad);
+    var y0 = window.scrollY;
+    window.scrollTo(0, 900);
+    var r = side.getBoundingClientRect();
+    ck('★ 页面往下滚 900px，右栏还卡在视口顶（top ≈ 16）',
+       Math.abs(r.top - 16) <= 1, r.top.toFixed(1));
+    ck('  且它整块都在视口里（底边没被切到屏幕外）',
+       r.bottom <= window.innerHeight + 1 && r.top >= 0,
+       r.top.toFixed(1) + ' ~ ' + r.bottom.toFixed(1) + ' / vh=' + window.innerHeight);
+    window.scrollTo(0, y0);
+    pad.remove();
+  })();
+
   pkBtn.click();
   var pd = q('#dlgPick');
   ck('点一下就弹出分药窗口', pd.open, pd.open ? 'open' : 'closed');
@@ -1271,6 +1306,36 @@ def main():
         print(dom_ns[:1500])
         return 3
     data = json.loads(html.unescape(mm.group(1)))
+
+    # ---- 静态判据（这两条看的是样式表放在哪，不用再起一次 Chrome）----
+    # ① sticky 必须待在 min-width:901px 里：单栏堆叠（≤900）时右栏排在清单下面，
+    #    那时 sticky 会把它钉在视口里、下半截永远滚不出来。
+    # ② 打印没有"视口"，sticky + max-height 会把右栏裁成一张纸那么高，必须还原。
+    def media_block(prefix):
+        i = src.find("@media" + prefix)
+        if i < 0:
+            return ""
+        j = src.index("{", i)
+        depth = 0
+        for k in range(j, len(src)):
+            if src[k] == "{":
+                depth += 1
+            elif src[k] == "}":
+                depth -= 1
+                if depth == 0:
+                    return src[j:k + 1]
+        return ""
+
+    desk = media_block("(min-width:901px)")
+    prnt = media_block(" print")
+    static_cases = [
+        ("★ sticky 只在 >900px 的两栏里生效（单栏堆叠时不许生效）",
+         bool(re.search(r"\.col-side\{[^}]*position:sticky", desk)), "静态源码"),
+        ("打印时右栏还原成普通流（sticky + 高度上限会把纸裁掉）",
+         bool(re.search(r"\.col-side\{[^}]*position:static", prnt)), "静态源码"),
+    ]
+    for name, ok, got in static_cases:
+        data["cases"].append({"name": name, "pass": ok, "got": got})
 
     fails = [c for c in data["cases"] if not c["pass"]]
     for c in data["cases"]:

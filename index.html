@@ -103,6 +103,22 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 .hint{font-size:12px;color:var(--muted)}
 .panel-b{padding:14px 16px}
 
+/* ---------- 右栏「就诊准备」跟着滚（2026-11-20 用户要求）----------
+   原来它只是排在右栏顶上，页面一往下滑就整块滚出去了：左边药多的时候，
+   人正在看清单，抬头想复制一句话，得先滑回顶部。现在让它粘在视口里。
+   ★ 只在桌面两栏（>900px）生效。≤900px 就变成单栏堆叠，右栏跑到清单**下面**去了，
+     那时 sticky 会把它钉住、下半截永远滚不出来 —— 比不粘更糟。
+   ★ 面板比视口还高时不裁内容：整块给一个视口高度上限，滚动交给面板内部，
+     标题条常驻、只有正文滚。这样"始终看得见"和"一个字段都不丢"两头都要到了。
+   ★ 别在祖先上加 overflow（sticky 会失效）；.cols 的 align-items:start 要留着，
+     否则格子会被拉成和左栏一样高，sticky 就没有可移动的余量了。 */
+@media(min-width:901px){
+  .col-side{position:sticky;top:16px;align-self:start;
+    display:flex;flex-direction:column;max-height:calc(100vh - 32px)}
+  .col-side .panel-h{flex:none}
+  .col-side .panel-b{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain}
+}
+
 /* ---------- 药品卡片 ---------- */
 .mlist{display:flex;flex-direction:column;gap:10px;padding:14px 16px}
 .med{border:1px solid var(--line);border-left-width:4px;border-radius:10px;
@@ -818,6 +834,9 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
   .top-actions,.stats,.col-main,.side-actions,.panel-h .hint,.blk-tip,.foot-sig{display:none !important}
   .cols{grid-template-columns:1fr}
   .panel{border:none;box-shadow:none}
+  /* 打印没有"视口"这回事：sticky + 高度上限会把右栏裁成一张纸那么高 */
+  .col-side{position:static !important;max-height:none !important;display:block !important}
+  .col-side .panel-b{overflow:visible !important}
   .panel-h{border-bottom:1px solid #ddd}
   /* 打印时输入框换成等价的静态文本，避免被滚动区裁掉 */
   #noteBox{display:none}
