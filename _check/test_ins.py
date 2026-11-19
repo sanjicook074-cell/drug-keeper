@@ -686,11 +686,15 @@ PROBE = r"""
      q('#refillText').parentNode.querySelector('.blk-t').textContent);
   ck('★ 没填上限的那味药名后面挂了星', /没填上限片<i class="rstar"/.test(rHtml), rHtml.replace(/\n/g, ' / '));
   ck('  填了上限的那味不带星', rHtml.indexOf('填了上限片<i') < 0, rHtml.replace(/\n/g, ' / '));
-  ck('★ 星下面有解释，说清"没有这个数 → 判不了该不该开"',
-     sBox.hidden === false && /没有「一次最多能开几天」这个数/.test(sBox.textContent)
-       && /判断不了/.test(sBox.textContent),
+  // ★ 2026-11-20 用户把这句砍成一行：「* 没有「一次能开几天」的数据」。
+  //   原来那段「带星号的 1 味…（没填，或者填的是片数）——程序判断不了这趟该不该开，
+  //   剩多少你自己看一眼」太长，整段压在清单下面喧宾夺主。断言跟着收窄：
+  //   只要这一行，多一个字都算回潮。
+  ck('★ 星下面就一行「* 没有「一次能开几天」的数据」',
+     sBox.hidden === false && sBox.textContent.trim() === '* 没有「一次能开几天」的数据',
      sBox.textContent.replace(/\s+/g, ' '));
-  ck('  解释里点了星的数量（1 味）', /1\s*味/.test(sBox.textContent),
+  ck('  不再解释"为什么判不了 / 剩多少自己看"（那些话挪回编辑页的说明里）',
+     !/判断不了|判不了|带星号|剩多少/.test(sBox.textContent),
      sBox.textContent.replace(/\s+/g, ' '));
   ck('★ 复制/下载的文字里没有星号（那是界面上的记号）',
      buildRefillText().indexOf('*') < 0
