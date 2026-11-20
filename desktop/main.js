@@ -1,8 +1,11 @@
 'use strict';
-/* 药品管家 · 数据台（Electron 主进程）
+/* 药品管家 · 桌面版（Electron 主进程）
  *
- * 窗口只负责看和点；真正干活的是 server.js 里那个局域网服务。
- * 关掉窗口 = 退出程序 = 服务停 —— 手机端那时就连不上了，界面上写了这句提醒。
+ * ★ 2026-11-20 用户把定位说清楚了：「桌面版完全复刻网页版的内容，再加上和手机端同步。
+ *   网页端只是展示，真正用起来是桌面端 + 手机端。」
+ *   所以主窗口直接加载项目里的 index.html —— 跟网页版、手机壳里是**同一份文件**，
+ *   不是另写一套界面。原来的「数据台」退成一个设置窗口，从应用里的「数据台设置」打开。
+ *   局域网上服务随程序一起起，关掉程序 = 服务停（手机那时就连不上了，控制台里写了）。
  */
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
@@ -14,7 +17,8 @@ const DATA_DIR = path.join(app.getPath('userData'), 'hub');
 const CFG_FILE = path.join(DATA_DIR, 'config.json');
 const DATA_FILE = path.join(DATA_DIR, 'main.json');
 
-let win = null;
+let win = null;       // 主窗口：完整应用（index.html）
+let hubWin = null;    // 设置窗口：数据台控制台（ui/index.html）
 let hub = null;
 let srv = null;
 let netOk = { ok: false, error: '还没启动' };
@@ -45,7 +49,8 @@ function status(){
 }
 
 function broadcast(){
-  if(win && !win.isDestroyed()) win.webContents.send('status', status());
+  // 只有数据台控制台订阅 status；主窗口是完整应用，不需要这个消息。
+  if(hubWin && !hubWin.isDestroyed()) hubWin.webContents.send('status', status());
 }
 
 async function boot(){
@@ -56,29 +61,52 @@ async function boot(){
   return netOk;
 }
 
+function prefs(){
+  return {
+    preload: path.join(APP_DIR, 'preload.js'),
+    contextIsolation: true,
+    nodeIntegration: false,
+    sandbox: false
+  };
+}
+
+/* 主窗口 = 网页版那一份，一字不改地加载。
+   ★ 必须用 cfg.projectDir 下的 index.html（也就是手机和网页共用的那一份），
+     不能拿 desktop/ui/index.html 顶替 —— 那就退回成只有同步面板的旧形态了。 */
 function createWindow(){
   win = new BrowserWindow({
-    width: 960, height: 950, minWidth: 780, minHeight: 560,
+    width: 1280, height: 900, minWidth: 1000, minHeight: 640,
+    backgroundColor: '#fff',
+    title: '药品管家',
+    autoHideMenuBar: true,
+    webPreferences: prefs()
+  });
+  win.loadFile(path.join(cfg.projectDir, 'index.html'));
+  win.on('closed', function(){ win = null; });
+}
+
+/* 数据台控制台：看设备、看主档、分发 APK、换项目目录。
+   单独一个窗口，免得把完整应用的界面挤掉。 */
+function createHubWindow(){
+  if(hubWin && !hubWin.isDestroyed()){ hubWin.focus(); return; }
+  hubWin = new BrowserWindow({
+    width: 900, height: 850, minWidth: 720, minHeight: 560,
+    parent: win,
     backgroundColor: '#f4f5f7',
     title: '药品管家 · 数据台',
     autoHideMenuBar: true,
-    webPreferences: {
-      preload: path.join(APP_DIR, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false
-    }
+    webPreferences: prefs()
   });
-  win.loadFile(path.join(APP_DIR, 'ui', 'index.html'));
-  win.on('closed', function(){ win = null; });
+  hubWin.loadFile(path.join(APP_DIR, 'ui', 'index.html'));
+  hubWin.on('closed', function(){ hubWin = null; });
 }
 
 app.whenReady().then(async function(){
   await boot();
   createWindow();
 
-  // 界面上每 3 秒刷一次：设备是不是还在线、页面版本有没有变，都靠这个轮询
-  setInterval(function(){ if(win) broadcast(); }, 3000);
+  // 控制台每 3 秒刷一次：设备是不是还在线、页面版本有没有变，都靠这个轮询
+  setInterval(broadcast, 3000);
 
   app.on('activate', function(){
     if(BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -111,9 +139,13 @@ ipcMain.handle('pick-dir', async function(){
   if(srv) srv.stop();
   srv = startServer(hub, function(){ broadcast(); });
   netOk = await srv.start();
+  // 换了项目目录，主窗口也得跟着换成那目录里的 index.html
+  if(win && !win.isDestroyed()) win.loadFile(path.join(cfg.projectDir, 'index.html'));
   broadcast();
   return status();
 });
+
+ipcMain.handle('open-hub', function(){ createHubWindow(); return true; });
 
 ipcMain.handle('rescan', function(){
   hub._cache = null;                     // 丢掉 md5 缓存，强制重算（换了页面文件时用）

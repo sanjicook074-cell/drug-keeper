@@ -19,8 +19,10 @@ drug-keeper：桌面端「数据台」的接口自检。
   ⑥ 设备台账：谁来过、什么类型、几味药、最后什么时候。
 """
 import hashlib
+import html
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -33,12 +35,64 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # = drug-ke
 DESK = os.path.join(ROOT, "desktop")
 PORT = 18730
 BASE = "http://127.0.0.1:%d" % PORT
+CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
 CASES = []
 
 
 def ck(name, cond, got=""):
     CASES.append({"name": name, "pass": bool(cond), "got": got})
+
+
+def check_desktop_dom():
+    """真开一次无头 Chrome，往页面里塞一个假的 window.desk，看桌面专属那几条有没有生效。
+
+    光做源码字符串检查不够：2026-11-20 就把「数据台设置」按钮的初始化写在了 IS_DESK
+    的 const 之前，整份页面脚本 ReferenceError 直接挂掉，源码断言却全绿。
+    """
+    if not os.path.exists(CHROME):
+        ck("桌面分支的浏览器实测（找不到 Chrome，跳过）", False, CHROME)
+        return
+    src = open(os.path.join(ROOT, "index.html"), encoding="utf-8").read()
+    stub = ('<script>window.desk={base:"http://127.0.0.1:8730",'
+            'openHub:function(){window.__hub=1;}};</script>')
+    src = src.replace("</head>", stub + "</head>", 1)
+    probe = """
+setTimeout(function(){
+  hubRefresh();
+  var b=document.querySelector('#btnDeskHub'), a=document.querySelector('#hubAddr');
+  document.title='DESKTEST '+JSON.stringify({
+    btn:getComputedStyle(b).display, addr:a.value, ro:a.readOnly,
+    sep:document.querySelector('#hubSep').textContent,
+    note:document.querySelector('#hubNote').textContent.slice(0,30)
+  });
+},60);
+"""
+    anchor = "})();\n</script>"      # 必须塞进页面脚本自己的 IIFE 里，hubRefresh 才可见
+    i = src.rindex(anchor)
+    page = src[:i] + probe + src[i:]
+    tmp = tempfile.mkdtemp(prefix="dk_deskdom_")
+    try:
+        p = os.path.join(tmp, "sim.html")
+        open(p, "w", encoding="utf-8").write(page)
+        r = subprocess.run(
+            [CHROME, "--headless=new", "--disable-gpu", "--no-first-run",
+             "--virtual-time-budget=4000", "--dump-dom",
+             "file:///" + p.replace("\\", "/")],
+            capture_output=True, timeout=120)
+        out = r.stdout.decode("utf-8", "replace")
+        m = re.search(r"<title>DESKTEST (\{.*?\})</title>", out, re.S)
+        d = json.loads(html.unescape(m.group(1))) if m else {}
+        ck("★ 桌面环境里「数据台设置」按钮真的显示出来（不是留在 DOM 里藏着）",
+           d.get("btn") not in (None, "none"), d.get("btn"))
+        ck("★ 同步地址自动锁到本机服务，不用手填",
+           d.get("addr") == "http://127.0.0.1:8730" and d.get("ro") is True,
+           str(d.get("addr")) + " / 只读=" + str(d.get("ro")))
+        ck("桌面端提示语改说「已连上本机」，分隔标题改说「与手机端」",
+           "已连上本机" in (d.get("note") or "") and "与手机端" in (d.get("sep") or ""),
+           str(d.get("note")) + " / " + str(d.get("sep")))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def req(path, body=None, method=None, headers=None):
@@ -208,6 +262,33 @@ def main():
         st, hd, body = req("/")
         ck("根地址有个小说明页，能直接在手机浏览器里确认「连上了」",
            st == 200 and "药品管家".encode("utf-8") in body, str(st))
+
+        # ---- 桌面形态（2026-11-20 用户重新定位：桌面版 = 完整网页版 + 同步；
+        #      数据台退成设置窗口，网页只作展示）----
+        # 这一组是源码级体检：Electron 窗口没有无头 Chrome 那么好驱动，
+        # 但「主窗口加载错了文件」这种回潮必须当场抓住。
+        with open(os.path.join(DESK, "main.js"), encoding="utf-8") as f:
+            mjs = f.read()
+        with open(os.path.join(DESK, "preload.js"), encoding="utf-8") as f:
+            pjs = f.read()
+        with open(os.path.join(ROOT, "index.html"), encoding="utf-8") as f:
+            page = f.read()
+        ck("★ 主窗口加载项目里的 index.html（完整应用，不是只剩同步面板）",
+           "win.loadFile(path.join(cfg.projectDir, 'index.html'))" in mjs
+           and "win.loadFile(path.join(APP_DIR, 'ui', 'index.html'))" not in mjs)
+        ck("★ 数据台退成单独的设置窗口，界面按钮能打开它",
+           "function createHubWindow()" in mjs
+           and "ipcMain.handle('open-hub'" in mjs
+           and "hubWin.loadFile(path.join(APP_DIR, 'ui', 'index.html'))" in mjs)
+        ck("预加载注入本机服务地址 + 打开数据台的方法",
+           "base: 'http://127.0.0.1:' + PORT" in pjs and "openHub" in pjs)
+        ck("★ 页面认出桌面环境：同步默认本机，设备登记成「电脑」而不是「网页版」",
+           "const IS_DESK" in page and "const DESK_BASE" in page
+           and "kind: IS_DESK ? 'desktop'" in page
+           and "deviceName: IS_DESK ? '电脑'" in page)
+        ck("桌面专属的「数据台设置」按钮默认隐藏，只在桌面显示",
+           'id="btnDeskHub"' in page and "classList.remove('hidden')" in page)
+        check_desktop_dom()
 
         fails = [c for c in CASES if not c["pass"]]
         for c in CASES:

@@ -1053,6 +1053,7 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 /* ---- 局域网同步（2026-11-20）：跟桌面版「数据台」互通 ----
    file:// 页面连 http://电脑IP:8730 属于跨域，靠的是服务端把 CORS 全开；
    这里只负责收集地址、发请求、把结果说人话。 */
+.hidden{display:none!important}   /* 桌面专属按钮在网页/手机版里用它藏起来 */
 .io-sep{margin:16px 0 9px;font-size:11.5px;color:var(--faint);
   display:flex;align-items:center;gap:9px}
 .io-sep::after{content:'';flex:1 1 auto;height:1px;background:var(--line)}
@@ -1213,11 +1214,16 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 
     <!-- ★ 2026-11-20 用户要求三端互联：桌面版当数据主档，网页和手机往里归。
          这里只放最小的一组：地址 + 上传 + 拉取。地址填一次就记住。 -->
-    <div class="io-sep">局域网同步（桌面版「数据台」）</div>
+    <div class="io-sep" id="hubSep">局域网同步（桌面版「数据台」）</div>
     <div class="hub-addr">
       <input id="hubAddr" inputmode="url" autocomplete="off" spellcheck="false"
              placeholder="192.168.1.38:8730" aria-label="电脑上数据台的地址">
     </div>
+    <!-- ★ 2026-11-20：桌面端专属入口。网页版/手机版里 default 隐藏（见下面的 .hidden），
+         只有 window.desk（Electron 预加载注入）存在时才显示 —— 打开那个管设备、发 APK 的控制台。 -->
+    <button type="button" class="moreitem hidden" id="btnDeskHub">
+      <span class="mt">数据台设置</span>
+      <span class="ms">看连上的设备、主档位置、安装包版本，改项目目录</span></button>
     <div class="morelist">
       <button type="button" class="moreitem" id="btnHubUp">
         <span class="mt">上传到电脑</span>
@@ -6618,16 +6624,33 @@ $('#btnIOImport').addEventListener('click', function(){
 const LS_HUB = 'dk.hub', LS_HUBDEV = 'dk.hub.dev', LS_HUBSYNC = 'dk.hub.sync';
 // 当前页面的 md5 记在这里（壳里由 AndroidApp.pageMd5() 填；浏览器里是空的）
 const LS_PAGE = 'dk.page.md5';
+/* ★ 2026-11-20：同一份页面在三个地方跑。桌面版由 Electron 预加载注入 window.desk，
+   手机壳注入 window.AndroidApp，浏览器里两者都没有。靠这个区分身份，
+   桌面端就不用手填 127.0.0.1 的地址，也不会把自己登记成「网页版」。 */
+const IS_DESK = !!(window.desk && window.desk.base);
+const DESK_BASE = IS_DESK ? String(window.desk.base).replace(/\/+$/, '') : '';
+// 桌面专属：打开数据台控制台（设备列表、主档位置、APK 分发）。网页/手机版里按钮是隐藏的。
+// 必须放在 IS_DESK 声明之后 —— 早先放在导入导出那几个监听器旁边，会在 const 初始化前读到它，
+// 整份页面脚本直接 ReferenceError 挂掉（2026-11-20 踩过）。
+if(IS_DESK && $('#btnDeskHub')){
+  $('#btnDeskHub').classList.remove('hidden');
+  $('#btnDeskHub').addEventListener('click', function(){
+    if(window.desk && window.desk.openHub) window.desk.openHub();
+  });
+}
 
 function hubDevId(){
   let id = store.get(LS_HUBDEV);
   if(!id){
-    id = 'web-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-3);
+    id = (IS_DESK ? 'desk-' : 'web-') +
+         Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-3);
     store.set(LS_HUBDEV, id);
   }
   return id;
 }
 function hubBase(){
+  // 桌面端的服务就跟自己一起启动，地址固定在本机；不让手填的地址把它带偏。
+  if(DESK_BASE) return DESK_BASE;
   let a = (store.get(LS_HUB) || '').trim();
   if(!a) return '';
   a = a.replace(/\/+$/, '');
@@ -6679,9 +6702,21 @@ async function hubApkCheck(base){
 
 function hubRefresh(){
   const a = store.get(LS_HUB) || '';
-  if($('#hubAddr') && $('#hubAddr').value !== a) $('#hubAddr').value = a;
+  if($('#hubAddr')){
+    // 桌面端把地址摆出来但锁住（它跟服务一起起，固定在本机）；网页/手机仍可手填局域网地址
+    $('#hubAddr').value = DESK_BASE || a;
+    $('#hubAddr').readOnly = IS_DESK;
+  }
+  if(IS_DESK && $('#hubSep')) $('#hubSep').textContent = '局域网同步（与手机端）';
   let last = null;
   try { last = JSON.parse(store.get(LS_HUBSYNC) || 'null'); } catch(e){ last = null; }
+  if(IS_DESK){
+    hubSay('已连上本机的<b>药品管家服务</b>（' + DESK_BASE + '）' +
+      (last ? '，上次同步 ' + agoText(last.t) + '。' : '。') +
+      '<br>手机和电脑连同一个 Wi-Fi，在手机 App 里填数据台窗口显示的那个地址，就能共用这一份。');
+    hubApkCheck(DESK_BASE);
+    return;
+  }
   if(!a){
     hubSay('还没填地址。电脑上打开「数据台」，窗口右上角那串 <b>http://192.168.x.x:8730</b> 填到上面。');
     return;
@@ -6707,11 +6742,11 @@ async function hubCall(kind){
     return;
   }
   const meta = hubCount();
-  const inApp = !!window.AndroidApp;      // 同一份页面，壳里跑就叫「手机」，浏览器里叫「网页」
+  const inApp = !!window.AndroidApp;      // 同一份页面：手机壳=手机，Electron=电脑，浏览器=网页
   const body = {
     deviceId: hubDevId(),
-    deviceName: inApp ? '手机' : '网页版',
-    kind: inApp ? 'phone' : 'web',
+    deviceName: IS_DESK ? '电脑' : (inApp ? '手机' : '网页版'),
+    kind: IS_DESK ? 'desktop' : (inApp ? 'phone' : 'web'),
     clientTime: Date.now(),
     people: meta.people,
     meds: meta.meds,
