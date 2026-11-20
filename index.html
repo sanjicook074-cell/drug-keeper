@@ -928,6 +928,15 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
    只有这里让它们出现 —— 所以桌面版和全部自检脚本都不受影响。 */
 #btnMore,#mtab,#fabAdd,#btnConnectPhone{display:none}
 
+/* ★ 2026-11-20 晚：手机「连接」弹窗的精简模式。
+   只有真机手机壳（AndroidApp.findHub）才由 JS 挂上 .slim-connect —— 里面只留
+   一个配对码输入框 + 连接按钮，连接结果用 toast 弹；地址/上传/拉取/说明全藏起来。
+   自检在无头 Chrome 里跑、没有手机壳，不会命中这一类，原来的 DOM 断言照旧。 */
+#dlgConnect.slim-connect .dlg-h p{display:none}
+#dlgConnect.slim-connect #connectBody > *:not(#hubPairRow){display:none!important}
+#dlgConnect.slim-connect #hubPairRow{margin:2px 0 4px}
+#dlgConnect.slim-connect #hubPairRow input{width:100%}
+
 @media(max-width:640px){
   body{font-size:14.5px;-webkit-tap-highlight-color:transparent}
   .wrap{padding:12px 12px calc(92px + env(safe-area-inset-bottom))}
@@ -1094,6 +1103,8 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
       </div>
     </div>
     <div class="top-actions">
+      <!-- ★ 2026-11-20 晚用户要求：连接手机放到「设置」左边、也就是最边上 -->
+      <button class="btn ghost" id="btnConnect" title="连接手机（配对码 / 局域网同步）">连接手机</button>
       <button class="btn ghost" id="btnSettings">设置</button>
       <button class="btn ghost" id="btnIO" title="导出备份 / 从备份导入">导入导出</button>
       <button class="btn ghost" id="btnFam" title="把全家每个人药箱里「已用完 / 偏少」的药摊在一页，买药开药一趟办完">全家偏少</button>
@@ -1101,7 +1112,6 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
            点开二选一（底方录入蓝、添加药品白）。两个原按钮保留在 DOM 里但隐藏，
            自检脚本和页面内部仍靠它们触发 openRx()/openEditor()。 -->
       <button class="btn primary" id="btnAddMenu" title="添加药品 / 底方录入">＋ 添加</button>
-      <button class="btn ghost" id="btnConnect" title="连接手机（配对码 / 局域网同步）">连接手机</button>
       <button class="btn ghost hidden" id="btnRx" title="底方照片先发给 AI（DeepSeek、Kimi 等），让它把药名和用量打成文字，再粘进来解析">底方录入</button>
       <button class="btn primary hidden" id="btnAdd">＋ 添加药品</button>
       <!-- 手机上顶栏放不下六个次要按钮，统一收进这个「⋯」里（桌面版不显示） -->
@@ -6776,6 +6786,11 @@ function bindConnect(){
     openConnect();
   });
   if($('#btnConnectClose')) $('#btnConnectClose').addEventListener('click', function(){ $('#dlgConnect').close(); });
+  // 真机手机壳里：连接弹窗只留配对码输入框，结果用 toast 蹦出来
+  if(window.AndroidApp && window.AndroidApp.findHub && $('#dlgConnect')){
+    $('#dlgConnect').classList.add('slim-connect');
+    if($('#connectTitle')) $('#connectTitle').textContent = '连接电脑';
+  }
 }
 bindConnect();
 
@@ -7087,17 +7102,27 @@ function scheduleHubAuto(){
 
 /* 配对：调原生 UDP 广播拿地址。只有手机壳（AndroidApp.findHub）能配对；
    桌面端地址固定本机、网页版靠手填，都不显示配对码输入框。 */
+/* 手机壳里连接弹窗只有配对码框+按钮，结果靠 toast 蹦出来；
+   slim 模式下把结果同时送到 toast 和 hubNote（hubNote 供自检/其它入口读）。 */
+function hubPairToast(msg, ok){
+  const d = $('#dlgConnect');
+  if(d && d.classList.contains('slim-connect')){
+    try { toast(msg); } catch(e){}
+  }
+}
 async function hubPair(){
   const input = $('#hubCode');
   const code = input ? (input.value || '').replace(/\D/g, '') : '';
   if(!/^\d{6}$/.test(code)){
     hubSay('配对码是电脑「数据台」窗口里那 <b>6 位数字</b>。', 'bad');
+    hubPairToast('未连接成功：配对码是 6 位数字', false);
     if(input) input.focus();
     return;
   }
   const AA = window.AndroidApp;
   if(!AA || !AA.findHub){
     hubSay('配对码要在<b>手机 App</b>里输；电脑上已经连着自己的服务了。', 'bad');
+    hubPairToast('未连接成功：请在手机 App 里输配对码', false);
     return;
   }
   hubSay('正在按配对码找电脑…');
@@ -7106,6 +7131,7 @@ async function hubPair(){
   if(!base){
     hubSay('没找到那台电脑。确认：① 电脑上的药品管家开着；② 手机和电脑连同一个 Wi-Fi；' +
            '③ 配对码没输错。', 'bad');
+    hubPairToast('未连接成功：没找到电脑，检查 Wi-Fi 和配对码', false);
     return;
   }
   store.set(LS_HUB, base);
@@ -7113,9 +7139,11 @@ async function hubPair(){
   hubSay('找到了 <b>' + base + '</b>，正在对齐数据…', 'ok');
   // 连上立刻同步一轮：本机有数据就推上去，主档有数据就拉下来
   const acted = await hubAutoSync();
-  if(acted === 'up')   hubSay('连上了，已把这台机器的数据<b>推到电脑</b>。', 'ok');
-  else if(acted === 'down') hubSay('连上了，已把电脑上的数据<b>取到这台机器</b>。', 'ok');
-  else hubSay('连上了 <b>' + base + '</b>。数据一样，不用改。', 'ok');
+  let msg;
+  if(acted === 'up'){   hubSay('连上了，已把这台机器的数据<b>推到电脑</b>。', 'ok'); msg = '连接成功：数据已同步'; }
+  else if(acted === 'down'){ hubSay('连上了，已把电脑上的数据<b>取到这台机器</b>。', 'ok'); msg = '连接成功：数据已同步'; }
+  else { hubSay('连上了 <b>' + base + '</b>。数据一样，不用改。', 'ok'); msg = '连接成功'; }
+  hubPairToast(msg, true);
 }
 
 // 边打边存：只在 change（失焦）存的话，用户打完直接点「从电脑拉取」，

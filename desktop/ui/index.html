@@ -13,7 +13,7 @@
   body{margin:0;background:var(--bg);color:var(--text);overflow-y:auto;
     font:14px/1.6 "Microsoft YaHei","PingFang SC",-apple-system,Segoe UI,sans-serif;
     -webkit-font-smoothing:antialiased}
-  .wrap{max-width:900px;margin:0 auto;padding:22px 22px 40px}
+  .wrap{max-width:720px;margin:0 auto;padding:22px 22px 40px}
 
   header{display:flex;align-items:center;gap:12px;margin-bottom:18px}
   .brand{display:flex;align-items:center;gap:11px;flex:1 1 auto;min-width:0}
@@ -21,7 +21,6 @@
     display:grid;place-items:center;font-style:normal;font-size:19px;font-weight:700;
     box-shadow:0 2px 6px rgba(37,99,235,.28)}
   .brand h1{margin:0;font-size:17px;font-weight:700;letter-spacing:.2px}
-  .brand p{margin:1px 0 0;font-size:12px;color:var(--faint)}
   .pill{flex:none;display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 13px;
     border-radius:999px;background:#fff;border:1px solid var(--line);font-size:12.5px;color:var(--muted)}
   .pill b{font-weight:600;color:var(--text)}
@@ -31,15 +30,8 @@
   .pill.off .dot{background:var(--out);box-shadow:0 0 0 3px rgba(220,38,38,.14)}
 
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;
-    box-shadow:0 1px 2px rgba(15,23,42,.04)}
+    box-shadow:0 1px 2px rgba(15,23,42,.04);margin-bottom:14px}
   .card h2{margin:0 0 12px;font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.3px}
-
-  .top{display:grid;grid-template-columns:1.15fr 1fr;gap:14px;margin-bottom:14px}
-  .stats{display:flex;gap:26px;margin:2px 0 10px}
-  .stat .n{font-size:26px;font-weight:700;line-height:1.15;font-variant-numeric:tabular-nums}
-  .stat .l{font-size:12px;color:var(--faint);margin-top:2px}
-  .meta{font-size:12.5px;color:var(--muted);border-top:1px dashed var(--line);padding-top:10px}
-  .meta b{color:var(--text);font-weight:600}
 
   .addr{font-family:ui-monospace,Consolas,monospace;font-size:13px;color:var(--brand);
     background:#f2f7ff;border:1px solid #dbe7fb;border-radius:9px;padding:8px 11px;
@@ -47,19 +39,6 @@
   .addr span{flex:1 1 auto;min-width:0}
   .addr.code{font-size:18px;font-weight:700;letter-spacing:4px;color:#1d4ed8;background:#eff6ff}
   .hint{font-size:12px;color:var(--faint);line-height:1.7}
-
-  .dev{display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px dashed var(--line)}
-  .dev:last-child{border-bottom:none}
-  .dev .nm{flex:1 1 auto;min-width:0}
-  .dev .nm b{font-weight:600;font-size:13.5px}
-  .dev .nm small{display:block;color:var(--faint);font-size:11.5px;margin-top:1px}
-  .tag{flex:none;font-size:11px;padding:2px 8px;border-radius:999px;background:#f3f4f6;color:var(--muted)}
-  .tag.phone{background:#eef2ff;color:#4338ca}
-  .tag.web{background:#ecfdf5;color:#047857}
-  .tag.desktop{background:#fef3c7;color:#92400e}
-  .live{width:7px;height:7px;border-radius:50%;background:var(--line-2);flex:none}
-  .live.on{background:var(--ok)}
-  .empty{color:var(--faint);font-size:12.5px;line-height:1.8;padding:6px 0}
 
   .row{display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px dashed var(--line)}
   .row:last-of-type{border-bottom:none}
@@ -76,9 +55,6 @@
   button.primary:hover{background:#1d4ed8}
   button:active{transform:translateY(.5px)}
 
-  .paths{margin-top:14px}
-  .p{font-family:ui-monospace,Consolas,monospace;font-size:11.5px;color:var(--muted);
-    word-break:break-all;margin:0 0 4px}
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;
     font-size:12.5px;padding:9px 16px;border-radius:999px;opacity:0;pointer-events:none;transition:.2s}
   .toast.show{opacity:.94}
@@ -90,37 +66,18 @@
   <header>
     <div class="brand">
       <i>药</i>
-      <div>
-        <h1>药品管家 · 数据台</h1>
-        <p>局域网里的数据主档 —— 手机、网页都往这儿归，新版本也从这儿发出去</p>
-      </div>
+      <h1>药品管家 · 数据台</h1>
     </div>
     <div class="pill" id="srvPill"><i class="mini">药</i><span id="srvText">启动中…</span></div>
   </header>
 
-  <div class="top">
-    <div class="card">
-      <h2>主档里的数据</h2>
-      <div class="stats">
-        <div class="stat"><div class="n" id="nPeople">0</div><div class="l">个人</div></div>
-        <div class="stat"><div class="n" id="nMeds">0</div><div class="l">味药</div></div>
-      </div>
-      <div class="meta" id="updMeta">还没有任何一端传过数据</div>
-    </div>
-
-    <div class="card">
-      <h2>让手机连上来</h2>
-      <div class="addr"><span id="addr">—</span><button id="btnCopy" style="padding:4px 9px;font-size:11.5px">复制</button></div>
-      <div class="addr code"><span id="pairCode">------</span><button id="btnCopyCode" style="padding:4px 9px;font-size:11.5px">复制</button></div>
-      <div class="hint">手机和电脑连同一个 Wi-Fi。手机 App 的「导入导出 → 局域网同步」里<b>只输这 6 位配对码</b>，
-        就会自动找到电脑并连上，不用手输上面那串地址。两边连上后按时间自动互相同步，谁那边新就更新另一边。</div>
-      <div class="warnline" id="srvWarn" hidden></div>
-    </div>
-  </div>
-
-  <div class="card" style="margin-bottom:14px">
-    <h2>连过的设备</h2>
-    <div id="devList"><div class="empty">还没有设备连上来。</div></div>
+  <!-- ★ 2026-11-20 晚用户要求：数据台只留这一块 + 更新分发，其余信息全部不显示 -->
+  <div class="card">
+    <h2>让手机连上来</h2>
+    <div class="addr"><span id="addr">—</span><button id="btnCopy" style="padding:4px 9px;font-size:11.5px">复制</button></div>
+    <div class="addr code"><span id="pairCode">------</span><button id="btnCopyCode" style="padding:4px 9px;font-size:11.5px">复制</button></div>
+    <div class="hint">手机和电脑连同一个 Wi-Fi，在手机 App 的「连接电脑」里只输这 6 位配对码，就会自动找到电脑并双向同步。</div>
+    <div class="warnline" id="srvWarn" hidden></div>
   </div>
 
   <div class="card">
@@ -135,17 +92,6 @@
     </div>
     <div class="hint" style="margin-top:10px">
       手机端下一次打开就会问这里要新页面：版本不一样就自动换掉并重载。安装包不发自动装 —— 手机上会弹一条提示，点一下才装。
-    </div>
-  </div>
-
-  <div class="card paths">
-    <h2>这份数据存在哪儿</h2>
-    <p class="p" id="pData">—</p>
-    <p class="p" id="pProj">—</p>
-    <div class="btns">
-      <button id="btnExport">导出一份主档</button>
-      <button id="btnOpenData">打开数据文件夹</button>
-      <button id="btnPick">换个项目目录</button>
     </div>
   </div>
 </div>
@@ -175,14 +121,6 @@ function kb(n){
   if(!n && n !== 0) return '—';
   return n >= 1024 * 1024 ? (n / 1024 / 1024).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB';
 }
-function esc(s){
-  return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){
-    return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' })[c];
-  });
-}
-function kindName(k){
-  return k === 'phone' ? '手机' : (k === 'desktop' ? '电脑' : '网页');
-}
 
 function render(st){
   S = st;
@@ -199,34 +137,11 @@ function render(st){
   $('#addr').textContent = addr;
   $('#pairCode').textContent = st.pairCode || '------';
 
-  $('#nPeople').textContent = (st.summary && st.summary.people) || 0;
-  $('#nMeds').textContent = (st.summary && st.summary.meds) || 0;
-  $('#updMeta').innerHTML = st.updatedAt
-    ? ('最后更新 <b>' + ago(st.updatedAt) + '</b>，是 <b>' + esc(st.updatedBy || '某台设备') + '</b> 传上来的')
-    : '还没有任何一端传过数据 —— 手机连上来点一次「上传到电脑」就有了';
-
-  const dl = $('#devList');
-  const ds = st.devices || [];
-  if(!ds.length){
-    dl.innerHTML = '<div class="empty">还没有设备连上来。<br>手机 App 里「导入导出 → 局域网同步」输上面那 6 位配对码，连上后自动同步。</div>';
-  } else {
-    dl.innerHTML = ds.map(function(d){
-      return '<div class="dev">' +
-        '<i class="live ' + (d.online ? 'on' : '') + '"></i>' +
-        '<div class="nm"><b>' + esc(d.name) + '</b>' +
-          '<small>' + d.meds + ' 味药 · ' + d.people + ' 个人 · 最后同步 ' + ago(d.lastSync) + '</small></div>' +
-        '<span class="tag ' + esc(d.kind) + '">' + kindName(d.kind) + '</span>' +
-      '</div>';
-    }).join('');
-  }
-
   const pg = st.page;
   $('#pageVer').textContent = pg ? pg.md5.slice(0, 12) : '没找到 index.html';
   $('#pageInfo').textContent = pg ? (kb(pg.size) + ' · ' + ago(pg.mtime)) : '—';
   $('#apkInfo').textContent = st.apk ? kb(st.apk.size) : '还没打包';
 
-  $('#pData').textContent = '主档：' + st.paths.dataFile;
-  $('#pProj').textContent = '项目：' + st.paths.projectDir;
   if(st.error) toast(st.error);
 }
 
@@ -248,12 +163,6 @@ $('#btnCopy').onclick = function(){ if(S) copyText($('#addr').textContent); };
 $('#btnCopyCode').onclick = function(){ if(S) copyText(S.pairCode || ''); };
 $('#btnRescan').onclick = async function(){ render(await window.desk.rescan()); toast('已重新扫描'); };
 $('#btnOpenPage').onclick = function(){ window.desk.openPage(); };
-$('#btnOpenData').onclick = function(){ window.desk.openData(); };
-$('#btnPick').onclick = async function(){ render(await window.desk.pickDir()); };
-$('#btnExport').onclick = async function(){
-  const r = await window.desk.exportData();
-  toast(r && r.ok ? '已存到 ' + r.path : '取消了');
-};
 $('#btnCopyApk').onclick = async function(){
   const u = await window.desk.apkUrl();
   if(u) copyText(u); else toast('没找到局域网地址');

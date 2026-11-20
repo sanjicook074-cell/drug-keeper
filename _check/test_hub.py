@@ -57,6 +57,18 @@ PROBE = r"""
        (q('#btnAddViaRx') || {}).className + ' / ' + (q('#btnAddViaOne') || {}).className);
     ck('★ 桌面顶栏有「＋ 添加」和「连接手机」入口',
        !!q('#btnAddMenu') && /连接手机/.test((q('#btnConnect') || {}).textContent || ''), '');
+    ck('★ 连接手机按钮就在「设置」左边、是顶栏第一个（2026-11-20 晚用户要求）',
+       (function(){
+         var bar = q('.top-actions');
+         if(!bar) return false;
+         var kids = Array.prototype.slice.call(bar.children).filter(function(b){
+           return getComputedStyle(b).display !== 'none' && b.offsetParent !== null;
+         });
+         return kids.length >= 2 && kids[0].id === 'btnConnect' && kids[1].id === 'btnSettings';
+       })(), '');
+    ck('★ 手机连接弹窗有精简模式样式（只留配对码框，结果用 toast 弹）',
+       /#dlgConnect\.slim-connect/.test(document.querySelector('style') ? document.documentElement.innerHTML : '') ||
+       /slim-connect/.test(document.documentElement.innerHTML), '');
     ck('★ 手机三个点旁有「连接电脑」入口',
        !!q('#btnConnectPhone') && !!q('#dlgConnect'), '');
     ck('★ 同步区已搬进独立的「连接」窗（不再是藏在导入导出里）',
@@ -69,6 +81,29 @@ PROBE = r"""
     var calibrated = Math.abs(hubClockNow() - (Date.now() + 7200000)) < 3000;
     store.set('dk.hub.clockoff', String(realOff));   // 还原，别影响下面的断言
     ck('★ 时钟校准：两端差 2 小时也能换算到同一坐标系（修同步不上的根因）', calibrated, hubClockNow() - Date.now());
+
+    /* ①c 手机连接弹窗精简：挂上 slim-connect 后，地址/上传/说明真的被 CSS 藏掉。
+       自检环境没有手机壳，bindConnect 不会自动挂类，这里手动挂一下验证规则本身。 */
+    (function(){
+      var d = q('#dlgConnect');
+      if(!d || !q('#hubAddr')) return;
+      d.classList.add('slim-connect');
+      var addrDisp = getComputedStyle(q('#hubAddr')).display;
+      var up = q('#btnHubUp');
+      var upDisp = up ? getComputedStyle(up).display : '(无)';
+      // 上传/拉取的 morelist 包裹（含 btnHubDown）也是 connectBody 的直接子元素
+      var down = q('#btnHubDown'), wrap = down && down.parentElement;
+      var wrapDisp = wrap && wrap !== q('#connectBody') ? getComputedStyle(wrap).display : '(无)';
+      var noteDisp = getComputedStyle(q('#hubNote')).display;
+      d.classList.remove('slim-connect');
+      ck('★ 手机精简模式：挂 slim-connect 后地址/上传/说明全被 CSS 藏起来',
+         addrDisp === 'none' && upDisp === 'none' && wrapDisp === 'none' && noteDisp === 'none',
+         addrDisp + '/' + upDisp + '/' + wrapDisp + '/' + noteDisp);
+    })();
+    ck('★ 手机壳加载时会挂 slim-connect、结果走 toast（源码级）',
+       /window\.AndroidApp && window\.AndroidApp\.findHub && \$\('#dlgConnect'\)/.test(document.documentElement.innerHTML) &&
+       /classList\.add\('slim-connect'\)/.test(document.documentElement.innerHTML) &&
+       /function hubPairToast/.test(document.documentElement.innerHTML), '');
 
     /* ② 地址规范化：用户多半只会抄 IP:端口，不带 http:// */
     store.set('dk.hub', '127.0.0.1:__PORT__');

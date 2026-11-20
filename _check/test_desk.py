@@ -348,6 +348,16 @@ def main():
         ck("数据台右上角状态标签换成「药」字标，不再只是绿点",
            '<i class="mini">药</i>' in hubui and ".pill .mini" in hubui
            and 'class="dot"' not in hubui)
+        # ---- 2026-11-20 晚用户要求：数据台只留「让手机连上来」+「更新分发」，其余全砍 ----
+        ck("★ 数据台只保留配对码框和更新分发两块",
+           "让手机连上来" in hubui and "更新分发" in hubui and 'id="pairCode"' in hubui,
+           "")
+        ck("★ 数据台不再显示主档统计/设备列表/数据路径（用户嫌信息太多）",
+           all(x not in hubui for x in ("主档里的数据", "连过的设备", "这份数据存在哪儿",
+                                        'id="devList"', 'id="pData"', 'id="nPeople"')),
+           "")
+        ck("数据台仍有服务状态标签和复制配对码按钮",
+           'id="srvPill"' in hubui and 'id="btnCopyCode"' in hubui, "")
         for bat in ("launch.bat", "启动数据台.bat"):
             raw = open(os.path.join(DESK, bat), "rb").read()
             nonascii = sum(1 for x in raw if x > 127)
