@@ -288,6 +288,25 @@ def main():
            and "deviceName: IS_DESK ? '电脑'" in page)
         ck("桌面专属的「数据台设置」按钮默认隐藏，只在桌面显示",
            'id="btnDeskHub"' in page and "classList.remove('hidden')" in page)
+
+        # ---- 2026-11-20 晚：图标统一 + 启动脚本编码（用户反馈乱码 / 不是内部命令）----
+        with open(os.path.join(DESK, "ui", "index.html"), encoding="utf-8") as f:
+            hubui = f.read()
+        ico = os.path.join(DESK, "yao.ico")
+        n_icon = mjs.count("icon: path.join(APP_DIR, 'yao.ico')")
+        ck("★ 两个窗口都用蓝底「药」字图标（标题栏 / 任务栏统一）",
+           n_icon == 2 and os.path.exists(ico)
+           and open(ico, "rb").read(4) == b"\x00\x00\x01\x00",
+           "main.js %d 处, ico %s" % (n_icon, os.path.exists(ico)))
+        ck("数据台右上角状态标签换成「药」字标，不再只是绿点",
+           '<i class="mini">药</i>' in hubui and ".pill .mini" in hubui
+           and 'class="dot"' not in hubui)
+        for bat in ("launch.bat", "启动数据台.bat"):
+            raw = open(os.path.join(DESK, bat), "rb").read()
+            nonascii = sum(1 for x in raw if x > 127)
+            ck("%s 纯英文 + CRLF（防 cmd 乱码 /「不是内部命令」）" % bat,
+               nonascii == 0 and b"\r\n" in raw and raw.count(b"\n") == raw.count(b"\r\n"),
+               "bytes=%d nonascii=%d crlf=%d" % (len(raw), nonascii, raw.count(b"\r\n")))
         check_desktop_dom()
 
         fails = [c for c in CASES if not c["pass"]]
