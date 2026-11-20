@@ -245,6 +245,16 @@ PROBE = r"""
     var tplBtn = q('#btnRxTpl');
     ck('底方录入弹窗里有「复制提示词」按钮', !!tplBtn);
     if(tplBtn){
+      // ★ 2026-11-20：用户截图指出按钮被折到第二行、且是白底描边的次要样式。
+      //   这里守三件事：实心带色 / 跟标题同一行 / 下面不再挂一段解释。
+      var _bcs = window.getComputedStyle(tplBtn);
+      ck('★ 「复制提示词」是实心带色按钮（不再是白底描边的次要按钮）',
+         !/rgba\(0, 0, 0, 0\)/.test(_bcs.backgroundColor) &&
+         !/rgb\(255, 255, 255\)/.test(_bcs.backgroundColor), _bcs.backgroundColor);
+      ck('第 1 步下面不再挂那段解释（用户要「直接按钮 + 提示词内容」）',
+         !tplBtn.closest('.rx-step').querySelector('.rx-step-d'));
+    }
+    if(tplBtn){
       tplBtn.click();
       await tick();
       ck('★ 点一下真把提示词写进了剪贴板（不是只改了个文案）',
@@ -592,6 +602,21 @@ PROBE = r"""
     fixtureBox(); openRx(); await null;
 
     var steps = document.querySelectorAll('#dlgRx .rx-step');
+    // 布局类的断言只能在这儿量：上面测剪贴板那段弹窗还没打开，元素高度都是 0。
+    var _dr = q('#dlgRx');
+    if(_dr && !_dr.open){ try{ _dr.showModal(); }catch(e){} }
+    await new Promise(function(r){ setTimeout(r, 40); });
+    (function(){
+      var b = q('#btnRxTpl'), t = q('#rxStep1 .rx-step-t');
+      if(!b || !t) return;
+      var bc = b.getBoundingClientRect(), tc = t.getBoundingClientRect();
+      ck('★ 复制按钮和标题在同一行（不再被挤到下一行）',
+         bc.height > 0 && Math.abs((bc.top + bc.height / 2) - (tc.top + tc.height / 2)) < 8,
+         '按钮中线 ' + (bc.top + bc.height / 2).toFixed(0) +
+         ' / 标题中线 ' + (tc.top + tc.height / 2).toFixed(0));
+      ck('按钮排在标题右边（不是压在标题上面）',
+         bc.left > tc.left + tc.width - 4, '按钮 left ' + bc.left.toFixed(0));
+    })();
     ck('弹窗里正好三步，用的是同一个 .rx-step 骨架（不再一块蓝一块绿）',
        steps.length === 3, steps.length + ' 步');
     var nos = [];
@@ -600,14 +625,9 @@ PROBE = r"""
       nos.push(n ? n.textContent.trim() : '?');
     }
     ck('三步的号码是 1 / 2 / 3，顺序没乱', nos.join('') === '123', nos.join('/'));
-    ck('每步都是「号码 + 大标题 + 一句解释」，一个都不缺',
-       (function(){
-         for(var k = 0; k < steps.length; k++){
-           if(!steps[k].querySelector('.rx-step-t')) return false;
-           if(!steps[k].querySelector('.rx-step-d')) return false;
-         }
-         return true;
-       })());
+    ck('第 1 步只留「号码 + 标题 + 按钮」，第 2/3 步仍各带一句解释',
+       !!steps[0].querySelector('.rx-step-t') && !steps[0].querySelector('.rx-step-d')
+       && !!steps[1].querySelector('.rx-step-d') && !!steps[2].querySelector('.rx-step-d'));
     ck('步骤标题依次是：复制提示词 / 打开一个 AI / 把回答粘到框里',
        /复制这段提示词/.test(steps[0].textContent)
        && /打开一个 AI/.test(steps[1].textContent)

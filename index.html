@@ -744,10 +744,15 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 .rx-no{flex:none;width:22px;height:22px;border-radius:50%;background:var(--brand);color:#fff;
   display:grid;place-items:center;font-size:12.5px;font-weight:700;line-height:1;
   font-variant-numeric:tabular-nums}
-.rx-step-t{margin:0;flex:1 1 180px;font-size:13.5px;font-weight:680;line-height:1.5;color:var(--text)}
+/* 标题用 flex:1 1 auto + min-width:0 —— 原来写死 flex-basis:180px，加上按钮就超出容器，
+   按钮被折到第二行（2026-11-20 用户截图指出的问题）。这样标题让位、按钮稳稳留在同一行。 */
+.rx-step-t{margin:0;flex:1 1 auto;min-width:0;font-size:13.5px;font-weight:680;
+  line-height:1.5;color:var(--text)}
 .rx-step-d{margin:6px 0 0;padding-left:31px;font-size:12px;line-height:1.75;color:#4b5563}
 .rx-step-d b{color:var(--text);font-weight:650}
-.rx-step .btn.sm{flex:none}
+.rx-step .btn.sm{flex:none;white-space:nowrap}
+/* 第 1 步那一行：按钮紧挨着标题右侧，别被 flex-wrap 甩下去 */
+.rx-step-h-tpl{flex-wrap:nowrap}
 /* 第 1 步：提示词原文就摆在按钮下面，可以直接看、直接选（不用先复制才能看见） */
 .rx-tpl-pre{margin:9px 0 0;padding:10px 12px;max-height:170px;overflow:auto;
   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
@@ -1377,14 +1382,14 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
            2026-11-20 用户要求统一格式：「圈一复制提示词，圈二打开 AI（DeepSeek Kimi 豆包）、
            拍照片、把提示词发过去，圈三把 AI 的回答粘到下边的框里」。 -->
       <section class="rx-step" id="rxStep1">
-        <div class="rx-step-h">
+        <!-- ★ 2026-11-20：用户说「复制提示词这个按钮被排到下一行了，做成带颜色的按钮，
+             跟标题同一行；下边的解释就不要了，直接按钮 + 提示词内容」。
+             所以这里只有三样：号码、标题、实心按钮（同一行），下面直接是提示词原文。 -->
+        <div class="rx-step-h rx-step-h-tpl">
           <span class="rx-no">1</span>
           <h4 class="rx-step-t">复制这段提示词</h4>
-          <button type="button" class="btn ghost sm" id="btnRxTpl">复制提示词</button>
+          <button type="button" class="btn primary sm" id="btnRxTpl">复制提示词</button>
         </div>
-        <p class="rx-step-d">后面几步要靠它。提示词把格式定死了 —— 第一行是<b>开方日期</b>，
-          之后<b>一味药一行</b>，7 个字段都写成「<b>字段名=值</b>」，中间用 <b>|</b> 隔开。
-          原文就在下面，也可以长按自己选。</p>
         <pre class="rx-tpl-pre" id="rxTplText"></pre>
       </section>
 
@@ -6628,7 +6633,11 @@ $('#btnRxTpl').addEventListener('click', function(){
   const btn = $('#btnRxTpl');
   const done = function(){
     btn.textContent = '已复制 ✓';
-    setTimeout(function(){ btn.textContent = '复制提示词'; }, 1400);
+    btn.classList.add('success');          // 变绿一下：实心蓝按钮上光改字不够醒目
+    setTimeout(function(){
+      btn.textContent = '复制提示词';
+      btn.classList.remove('success');
+    }, 1400);
   };
   if(navigator.clipboard && navigator.clipboard.writeText){
     navigator.clipboard.writeText(RX_PROMPT).then(done, function(){ fallbackCopy(RX_PROMPT, done); });
