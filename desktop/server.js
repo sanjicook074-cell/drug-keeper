@@ -12,12 +12,16 @@
  *   覆盖前把旧主档留一份 .bak —— 合错了一次还能捞回来。
  */
 const http = require('http');
+const dgram = require('dgram');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const os = require('os');
 
 const PORT = 8730;
+/* 手机输配对码后，在这个 UDP 端口上广播问「电脑在哪」；电脑回自己的局域网地址。
+   UDP 端口固定比 HTTP 端口大 1，自检换端口时也不会跟真机撞。 */
+const PAIR_PORT = 8731;
 const APP_ID = 'drug-keeper';
 const APP_NAME = '药品管家';
 const MAX_BODY = 8 * 1024 * 1024;      // 存档再大也就几百 KB，8MB 兜底
@@ -44,13 +48,19 @@ class Hub {
   constructor(getCfg){
     this.getCfg = getCfg;             // () => { projectDir, dataFile }
     this.state = readJson(getCfg().dataFile, null) || this.blank();
+    /* 配对码：第一次启动时生成一次，之后固定不变 —— 手机输一次就记住，
+       别每次开电脑都换码，那样等于每次都要重新配一遍。 */
+    if(!this.state.pairCode){
+      this.state.pairCode = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+      try { this.save(); } catch(e){}
+    }
     this._cache = null;               // 页面 md5 的小缓存，别每 2 秒算一次 370KB
   }
 
   blank(){
     return {
       updatedAt: 0, updatedBy: '', data: null, settings: null,
-      devices: {}, page: null, log: []
+      devices: {}, page: null, log: [], pairCode: ''
     };
   }
 
@@ -119,6 +129,7 @@ class Hub {
     const pg = this.pageInfo(), apk = this.apkInfo();
     const s = {
       ok: true, app: APP_ID, name: APP_NAME,
+      pairCode: this.state.pairCode,
       updatedAt: this.state.updatedAt,
       updatedBy: this.state.updatedBy,
       updatedAtText: this.state.updatedAt ? stamp(new Date(this.state.updatedAt)) : '',
@@ -271,6 +282,20 @@ function startServer(hub, onLog, port){
   });
 
   let running = false;
+  let udp = null;
+  function makeUdp(){
+    const s = dgram.createSocket('udp4');
+    s.on('error', function(){ /* 广播收不到就算了，不影响 HTTP 同步 */ });
+    s.on('message', function(msg, rinfo){
+      let code = '';
+      try { code = msg.toString('utf8').trim().slice(0, 16); } catch(e){ return; }
+      // 只有配对码对得上才回地址 —— 免得同一个 Wi-Fi 里别的机器乱连
+      if(code !== hub.state.pairCode) return;
+      const reply = Buffer.from(JSON.stringify({ addrs: lanAddresses(), port: usePort }));
+      try { s.send(reply, rinfo.port, rinfo.address); } catch(e){}
+    });
+    return s;
+  }
   return {
     start(){
       if(running) return Promise.resolve({ ok: true, port: usePort });
@@ -278,17 +303,22 @@ function startServer(hub, onLog, port){
         server.once('error', function(e){ resolve({ ok: false, error: e.message }); });
         server.listen(usePort, '0.0.0.0', function(){
           running = true;
+          if(!udp){ udp = makeUdp(); try { udp.bind(usePort + 1, '0.0.0.0'); } catch(e){} }
           resolve({ ok: true, port: usePort, addrs: lanAddresses() });
         });
       });
     },
-    stop(){ try { server.close(); } catch(e){} running = false; },
+    stop(){
+      try { server.close(); } catch(e){}
+      try { if(udp){ udp.close(); udp = null; } } catch(e){}
+      running = false;
+    },
     get running(){ return running; },
     port: usePort
   };
 }
 
-module.exports = { createHub, startServer, lanAddresses, PORT, md5 };
+module.exports = { createHub, startServer, lanAddresses, PORT, PAIR_PORT, md5 };
 
 /* 直接 `node server.js` 也能跑 —— 自检脚本就是这么起的（端口、目录、主档都能用环境变量改）。
    接 Electron 时不会走这里，那边自己 createHub + startServer。 */

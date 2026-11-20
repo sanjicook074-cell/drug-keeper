@@ -1058,6 +1058,7 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
   display:flex;align-items:center;gap:9px}
 .io-sep::after{content:'';flex:1 1 auto;height:1px;background:var(--line)}
 .hub-addr{display:flex;gap:7px;margin-bottom:9px}
+.hub-addr .btn{flex:none;white-space:nowrap}
 .hub-addr input{flex:1 1 auto;min-width:0;font-family:ui-monospace,Consolas,monospace;
   font-size:12.5px;padding:8px 10px;border:1px solid var(--line-2);border-radius:9px;
   background:#fff;color:var(--text)}
@@ -1215,9 +1216,14 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
     <!-- ★ 2026-11-20 用户要求三端互联：桌面版当数据主档，网页和手机往里归。
          这里只放最小的一组：地址 + 上传 + 拉取。地址填一次就记住。 -->
     <div class="io-sep" id="hubSep">局域网同步（桌面版「数据台」）</div>
+    <div class="hub-addr hidden" id="hubPairRow">
+      <input id="hubCode" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="6"
+             placeholder="电脑上的 6 位配对码" aria-label="电脑上数据台的配对码">
+      <button type="button" class="btn primary sm" id="btnHubPair">连上电脑</button>
+    </div>
     <div class="hub-addr">
       <input id="hubAddr" inputmode="url" autocomplete="off" spellcheck="false"
-             placeholder="192.168.1.38:8730" aria-label="电脑上数据台的地址">
+             placeholder="192.168.1.38:8730（备用：手动填地址）" aria-label="电脑上数据台的地址">
     </div>
     <!-- ★ 2026-11-20：桌面端专属入口。网页版/手机版里 default 隐藏（见下面的 .hidden），
          只有 window.desk（Electron 预加载注入）存在时才显示 —— 打开那个管设备、发 APK 的控制台。 -->
@@ -1895,6 +1901,16 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 const LS_DATA = 'medkeeper.data.v1';
 const LS_SET  = 'medkeeper.settings.v1';
 
+/* ---- 自动同步的时间戳（2026-11-20 配对码 + 双向自动同步）----
+   前置到 save() 之前声明：save() 会在页面初始化时被调用，若这些 const 放在后面的同步段，
+   TDZ 会让整份脚本在启动那一刻就 ReferenceError（这个坑 2026-11-20 踩过一次）。
+   HUB_APPLYING 是「正在把电脑/手机那份盖到本地」的抑制标志：整包替换时 save() 不该
+   记成本机改动，否则下一轮自动同步又把它当新数据推回去，两头来回打架。 */
+const LS_HUBLOCAL = 'dk.hub.local', LS_HUBSEEN = 'dk.hub.seen';
+let HUB_APPLYING = false;   // 正在把远端那份盖到本地：抑制 save() 记本机改动
+let HUB_SYNCING = false;    // 自动同步互斥：上一轮没结束不重入
+let hubAutoT = null;        // save() 后的 debounce 定时器
+
 // 只有一条线：偏少线。默认「剩余 ≤ 14 天」算偏少，同时就是该续方的信号。
 // miDays / miEarly 是医保锁的两个参数（见「医保锁」那一节）：开药间隔、提前几天解锁。
 const DEFAULT_SETTINGS = { alertDays: 14, targetDays: 30, miDays: 30, miEarly: 7 };
@@ -2141,6 +2157,12 @@ function save(){
   const ok = store.set(LS_DATA, JSON.stringify({
     v: 2, savedAt: new Date().toISOString(), currentId: currentId, people: people
   }));
+  // 记下「本机最后改动时间」，供自动同步比对谁更新。
+  // 整包套用远端数据时 HUB_APPLYING=true，这时候不记 —— 否则会被当成新改动又推回去。
+  if(ok && !HUB_APPLYING){
+    store.set(LS_HUBLOCAL, String(Date.now()));
+    scheduleHubAuto();   // 本机改动 → 过 1.2 秒自动推给电脑（函数声明会提升，这里能直接调）
+  }
   if(!ok && !$('#warn').style.display){
     $('#warn').style.display = 'block';
     $('#warn').textContent = '⚠️ 保存失败：浏览器不允许本地存储。请用 Chrome / Edge 打开，并点「导出备份」留存数据。';
@@ -6624,6 +6646,8 @@ $('#btnIOImport').addEventListener('click', function(){
    ★ 拉取是整包替换，必须问过（跟「从备份导入」同一个道理）。
    ★ 连不上只说人话：电脑上数据台开着没 / 是不是同一个 Wi-Fi —— 这两个占九成。 */
 const LS_HUB = 'dk.hub', LS_HUBDEV = 'dk.hub.dev', LS_HUBSYNC = 'dk.hub.sync';
+/* 自动同步的两枚时间戳已在文件顶部（save() 之前）声明 —— 见 LS_HUBLOCAL / LS_HUBSEEN。
+   规则：本机改动时间 或 电脑主档时间，谁比「上次对齐到的时间」新，就往谁那边对齐。 */
 // 当前页面的 md5 记在这里（壳里由 AndroidApp.pageMd5() 填；浏览器里是空的）
 const LS_PAGE = 'dk.page.md5';
 /* ★ 2026-11-20：同一份页面在三个地方跑。桌面版由 Electron 预加载注入 window.desk，
@@ -6715,7 +6739,8 @@ function hubRefresh(){
   if(IS_DESK){
     hubSay('已连上本机的<b>药品管家服务</b>（' + DESK_BASE + '）' +
       (last ? '，上次同步 ' + agoText(last.t) + '。' : '。') +
-      '<br>手机和电脑连同一个 Wi-Fi，在手机 App 里填数据台窗口显示的那个地址，就能共用这一份。');
+      '<br>手机和电脑连同一个 Wi-Fi，在手机 App 的「局域网同步」里输数据台窗口显示的 <b>6 位配对码</b>，' +
+      '就能自动连上并双向同步：哪边改了，另一边会自己跟上。');
     hubApkCheck(DESK_BASE);
     return;
   }
@@ -6736,11 +6761,13 @@ function agoText(ms){
   if(d < 86400e3) return Math.floor(d / 3600e3) + ' 小时前';
   return new Date(ms).toLocaleDateString();
 }
-async function hubCall(kind){
+async function hubCall(kind, opts){
+  opts = opts || {};
+  const silent = !!opts.silent;         // 自动同步：不弹确认、不刷屏提示，只在出错时留一句
   const base = hubBase();
   if(!base){
-    hubSay('先在上面填电脑上数据台的地址，比如 <b>192.168.1.38:8730</b>', 'bad');
-    $('#hubAddr').focus();
+    if(!silent) hubSay('先在上面填电脑上数据台的地址，或者输 6 位配对码连上电脑。', 'bad');
+    if(!silent && $('#hubAddr')) $('#hubAddr').focus();
     return;
   }
   const meta = hubCount();
@@ -6760,7 +6787,7 @@ async function hubCall(kind){
     body.settings = store.get(LS_SET) || '';
     body.force = true;
   }
-  hubSay('正在' + (kind === 'up' ? '上传' : '拉取') + '…');
+  if(!silent) hubSay('正在' + (kind === 'up' ? '上传' : '拉取') + '…');
   let r = null;
   try {
     const res = await fetch(base + '/api/sync', {
@@ -6771,62 +6798,186 @@ async function hubCall(kind){
     if(!res.ok) throw new Error('HTTP ' + res.status);
     r = await res.json();
   } catch(e){
-    hubSay('连不上 <b>' + base + '</b>。<br>① 电脑上「数据台」开着没？关掉窗口服务就停了；' +
+    if(!silent) hubSay('连不上 <b>' + base + '</b>。<br>① 电脑上「数据台」开着没？关掉窗口服务就停了；' +
            '② 两台机器是不是同一个 Wi-Fi？', 'bad');
-    return;
+    return false;
   }
   if(kind === 'up'){
     // 服务端如果没按「以这台为准」收下（老版本、或者 force 没生效），别报假成功
     if(r && r.action && r.action !== 'pushed'){
-      hubSay('电脑上那份比这台机器新，所以<b>没有覆盖</b>。' +
+      if(!silent) hubSay('电脑上那份比这台机器新，所以<b>没有覆盖</b>。' +
              '要弄清哪份才对，先点「从电脑拉取」看一眼，别两边各改各的。', 'bad');
-      return;
+      return false;
     }
+    // ★ 推成功 = 本机和主档对齐到这一刻。把两枚时间戳都推平，
+    //   否则 LS_HUBLOCAL 还停在旧值、下一轮自动同步又要重复推一遍。
+    const at = (r && Number(r.updatedAt)) || Date.now();
+    store.set(LS_HUBLOCAL, String(at));
+    store.set(LS_HUBSEEN, String(at));
     store.set(LS_HUBSYNC, JSON.stringify({ t: Date.now(), action: 'up' }));
-    hubSay('已存到电脑：<b>' + meta.people + ' 个人 / ' + meta.meds + ' 味药</b>。' +
+    if(!silent) hubSay('已存到电脑：<b>' + meta.people + ' 个人 / ' + meta.meds + ' 味药</b>。' +
            '<span class="ok">电脑上的主档现在就是这份。</span>');
-    return;
+    return true;
   }
 
-  // ---- 拉取：整包替换，必须问过 ----
+  // ---- 拉取：整包替换。手动点要问过；自动同步静默替换 ----
   if(!r || !r.data){
-    hubSay('电脑上还没有数据 —— 先在哪台设备上点一次「上传到电脑」。', 'bad');
-    return;
+    if(!silent) hubSay('电脑上还没有数据 —— 先在哪台设备上点一次「上传到电脑」。', 'bad');
+    return false;
   }
   let obj = null;
   try { obj = JSON.parse(r.data); } catch(e){ obj = null; }
   const m = obj ? migrate(obj) : null;
   if(!m){
-    hubSay('电脑上那份数据读不出来，先别替换。可以在电脑上导出主档看看。', 'bad');
-    return;
+    if(!silent) hubSay('电脑上那份数据读不出来，先别替换。可以在电脑上导出主档看看。', 'bad');
+    return false;
   }
-  const total = m.people.reduce(function(n, p){ return n + p.meds.length; }, 0);
-  const ok = await askConfirm({
-    title: '用电脑上那份数据替换这台机器？',
-    sub: '电脑上的主档：' + m.people.length + ' 个人、共 ' + total + ' 种药' +
-         (r.updatedAtText ? '（' + r.updatedAtText + ' 由 ' + (r.updatedBy || '某台设备') + ' 传上去的）' : '') + '。',
-    warn: '替换是整包覆盖 —— 这台机器上现在的所有人、所有药、所有药盒摆放都会被盖掉，不能撤销。',
-    okText: '全部替换',
-    danger: true
-  });
-  if(!ok) return;
+  if(!silent){
+    const total = m.people.reduce(function(n, p){ return n + p.meds.length; }, 0);
+    const ok = await askConfirm({
+      title: '用电脑上那份数据替换这台机器？',
+      sub: '电脑上的主档：' + m.people.length + ' 个人、共 ' + total + ' 种药' +
+           (r.updatedAtText ? '（' + r.updatedAtText + ' 由 ' + (r.updatedBy || '某台设备') + ' 传上去的）' : '') + '。',
+      warn: '替换是整包覆盖 —— 这台机器上现在的所有人、所有药、所有药盒摆放都会被盖掉，不能撤销。',
+      okText: '全部替换',
+      danger: true
+    });
+    if(!ok) return false;
+  }
 
-  people = m.people;
-  currentId = m.currentId;
-  syncMeds();
-  if(r.settings){
-    try {
-      const st = JSON.parse(r.settings);
-      settings = Object.assign({}, DEFAULT_SETTINGS, settings, st);
-      saveSettings();
-    } catch(e){}
+  // ★ 套用远端数据：掐掉 save() 的本机时间戳，否则拉完立刻被当成本机新改动推回去
+  HUB_APPLYING = true;
+  try {
+    people = m.people;
+    currentId = m.currentId;
+    syncMeds();
+    if(r.settings){
+      try {
+        const stt = JSON.parse(r.settings);
+        settings = Object.assign({}, DEFAULT_SETTINGS, settings, stt);
+        saveSettings();
+      } catch(e){}
+    }
+    save();
+    const at = (r && Number(r.updatedAt)) || Date.now();
+    store.set(LS_HUBLOCAL, String(at));
+    store.set(LS_HUBSEEN, String(at));
+  } finally {
+    HUB_APPLYING = false;
   }
-  save();
   render();
   store.set(LS_HUBSYNC, JSON.stringify({ t: Date.now(), action: 'down' }));
-  hubSay('已换成电脑上那份：<b>' + people.length + ' 个人 / 共 ' +
+  if(!silent) hubSay('已换成电脑上那份：<b>' + people.length + ' 个人 / 共 ' +
          people.reduce(function(n, p){ return n + p.meds.length; }, 0) + ' 味药</b>。' +
          '<span class="ok">这就是电脑上的主档。</span>');
+  return true;
+}
+
+/* ================= 配对码 + 自动双向同步（2026-11-20 用户要求）=================
+   用户原话：「手机版只要有更新就直接从桌面版推过去，只需输验证码连上就行；
+   连上后两边数据同步 —— 哪边更新了，另一边同样更新显示。」
+   · 配对：手机输 6 位码 → 原生 UDP 广播问电脑在哪 → 拿到 http 地址存起来；
+   · 同步：每隔几秒比一次时间戳，本机比「上次对齐点」新就推，主档比对齐点新就拉；
+   · 全程静默，不弹确认框（弹了就不叫自动了），但有人在弹窗或输入框里时先跳过，
+     免得整包替换把人正在填的东西盖掉。 */
+
+/* 现在能不能动数据：有弹窗 / 正在输入框里就不动。跟页面热更新同一个道理。 */
+function hubCanAuto(){
+  try {
+    if(document.querySelector('dialog[open]')) return false;
+    const t = (document.activeElement && document.activeElement.tagName) || '';
+    if(t === 'INPUT' || t === 'TEXTAREA') return false;
+  } catch(e){}
+  return true;
+}
+
+/* 比一次时间戳，该推就推、该拉就拉。返回 'up' / 'down' / ''（没动）/ null（连不上）。 */
+async function hubAutoSync(){
+  if(HUB_SYNCING) return null;
+  const base = hubBase();
+  if(!base) return null;                 // 还没配对/没填地址，不打扰
+  if(!hubCanAuto()) return null;         // 正在填东西，下一轮再说
+  HUB_SYNCING = true;
+  let acted = null;
+  try {
+    let st = null;
+    try {
+      const r = await fetch(base + '/api/state', { cache: 'no-store' });
+      if(!r.ok) return null;
+      st = await r.json();
+    } catch(e){ return null; }            // 电脑没开机/不在同一个 Wi-Fi，安静跳过
+
+    const masterAt = Number(st && st.updatedAt) || 0;
+    const seen = Number(store.get(LS_HUBSEEN) || 0);
+    const local = Number(store.get(LS_HUBLOCAL) || 0);
+    const hasLocal = !!store.get(LS_DATA);
+    if(!seen){
+      // 从没和主档对齐过（新设备/清过数据）：一律以主档为准。
+      // ★ 不能拿 local>seen 判断 —— 新设备本机 local 可能是页面初始化 save() 写的 now，
+      //   会比主档时间还大，结果把本机这份空/旧数据推上去，盖掉手机刚传的新数据。
+      if(masterAt > 0 && st && st.summary && st.summary.has){
+        // 主档有数据 → 静默拉下来当基准
+        const ok = await hubCall('down', { silent: true });
+        acted = ok ? 'down' : null;
+      } else if(hasLocal){
+        // 主档还是空的、本机有数据 → 用本机初始化主档
+        const ok = await hubCall('up', { silent: true });
+        acted = ok ? 'up' : null;
+      }
+    } else if(local > seen){
+      // 对齐过：本机自上次对齐后改过 —— 以本机为准（force），推上去
+      const ok = await hubCall('up', { silent: true });
+      acted = ok ? 'up' : null;
+    } else if(masterAt > seen){
+      // 对齐过：本机没改、主档更新了 —— 静默拉下来覆盖
+      const ok = await hubCall('down', { silent: true });
+      acted = ok ? 'down' : null;
+    }
+  } finally {
+    HUB_SYNCING = false;
+  }
+  return acted;
+}
+
+/* 本机一有改动就安排一次同步（debounce：连着改只推最后一版）。
+   save() 里在写 LS_HUBLOCAL 之后调它 —— 整包套用远端数据时 HUB_APPLYING=true，save 不写时间戳，也就不排程。 */
+function scheduleHubAuto(){
+  if(!hubBase()) return;
+  clearTimeout(hubAutoT);
+  hubAutoT = setTimeout(function(){ hubAutoSync(); }, 1200);
+}
+
+/* 配对：调原生 UDP 广播拿地址。只有手机壳（AndroidApp.findHub）能配对；
+   桌面端地址固定本机、网页版靠手填，都不显示配对码输入框。 */
+async function hubPair(){
+  const input = $('#hubCode');
+  const code = input ? (input.value || '').replace(/\D/g, '') : '';
+  if(!/^\d{6}$/.test(code)){
+    hubSay('配对码是电脑「数据台」窗口里那 <b>6 位数字</b>。', 'bad');
+    if(input) input.focus();
+    return;
+  }
+  const AA = window.AndroidApp;
+  if(!AA || !AA.findHub){
+    hubSay('配对码要在<b>手机 App</b>里输；电脑上已经连着自己的服务了。', 'bad');
+    return;
+  }
+  hubSay('正在按配对码找电脑…');
+  let base = '';
+  try { base = String(AA.findHub(code) || '').trim(); } catch(e){ base = ''; }
+  if(!base){
+    hubSay('没找到那台电脑。确认：① 电脑上的药品管家开着；② 手机和电脑连同一个 Wi-Fi；' +
+           '③ 配对码没输错。', 'bad');
+    return;
+  }
+  store.set(LS_HUB, base);
+  if($('#hubAddr')) $('#hubAddr').value = base;
+  hubSay('找到了 <b>' + base + '</b>，正在对齐数据…', 'ok');
+  // 连上立刻同步一轮：本机有数据就推上去，主档有数据就拉下来
+  const acted = await hubAutoSync();
+  if(acted === 'up')   hubSay('连上了，已把这台机器的数据<b>推到电脑</b>。', 'ok');
+  else if(acted === 'down') hubSay('连上了，已把电脑上的数据<b>取到这台机器</b>。', 'ok');
+  else hubSay('连上了 <b>' + base + '</b>。数据一样，不用改。', 'ok');
 }
 
 // 边打边存：只在 change（失焦）存的话，用户打完直接点「从电脑拉取」，
@@ -6845,6 +6996,20 @@ $('#hubAddr').addEventListener('change', function(){
 $('#hubAddr').addEventListener('change', function(){ hubRefresh(); });
 $('#btnHubUp').addEventListener('click', function(){ hubCall('up'); });
 $('#btnHubDown').addEventListener('click', function(){ hubCall('down'); });
+$('#btnHubPair').addEventListener('click', function(){ hubPair(); });
+if($('#hubCode')){
+  $('#hubCode').addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){ e.preventDefault(); hubPair(); }
+  });
+}
+// 配对码输入框只在手机壳里显示：桌面端地址固定本机、网页版手填地址，都没法用 UDP 广播配对
+if($('#hubPairRow')){
+  const canPair = !!(window.AndroidApp && window.AndroidApp.findHub);
+  if(canPair) $('#hubPairRow').classList.remove('hidden');
+}
+// 定时兜底：即使没人点按钮，也每 6 秒比一次（比如电脑那边被人推了新数据，手机要能自己跟上）。
+// 存下 timer id 是为了自检时能关掉它，避免和探针自己发起的同步抢占互斥锁。
+const HUB_AUTO_TIMER = setInterval(function(){ hubAutoSync(); }, 6000);
 // 全家偏少：只读聚合页。点「去这个药箱」= 切到那个人，顺手把弹窗关掉
 $('#btnFam').addEventListener('click', openFam);
 $('#btnFamClose').addEventListener('click', function(){ $('#dlgFam').close(); });

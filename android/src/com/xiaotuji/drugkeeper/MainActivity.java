@@ -24,7 +24,11 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
@@ -298,6 +302,38 @@ public class MainActivity extends Activity {
     String appVersion(){
         try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; }
         catch(Exception e){ return ""; }
+    }
+
+    /**
+     * 输配对码找电脑：往局域网广播这个码，只有码对得上的桌面服务才回自己的地址。
+     * 页面 JS 拿到的是 "http://192.168.x.x:8730" 这种完整地址；失败返回空串。
+     * ★ 这个方法不在主线程跑（Bridge 由 JavaBridge 线程调用），最多等 2.5 秒。
+     */
+    String findHub(String code){
+        DatagramSocket s = null;
+        try {
+            String c = code == null ? "" : code.trim();
+            if(!c.matches("\\d{6}")) return "";
+            s = new DatagramSocket();
+            s.setBroadcast(true);
+            s.setSoTimeout(2500);
+            byte[] ask = c.getBytes("UTF-8");
+            s.send(new DatagramPacket(ask, ask.length,
+                    InetAddress.getByName("255.255.255.255"), 8731));
+            byte[] buf = new byte[2048];
+            DatagramPacket reply = new DatagramPacket(buf, buf.length);
+            s.receive(reply);
+            String txt = new String(reply.getData(), reply.getOffset(), reply.getLength(), "UTF-8");
+            JSONObject o = new JSONObject(txt);
+            JSONArray a = o.getJSONArray("addrs");
+            if(a.length() < 1) return "";
+            int port = o.optInt("port", 8730);
+            return "http://" + a.getString(0) + ":" + port;
+        } catch(Exception e){
+            return "";
+        } finally {
+            if(s != null) s.close();
+        }
     }
 
     /** 下载安装包：直接交给系统浏览器/下载器，装的时候系统还会再问一次 */

@@ -151,6 +151,43 @@ def main():
         st, hd, body = req("/api/ping")
         ping = json.loads(body or b"{}")
         ck("★ /api/ping 认得自己是药品管家", ping.get("app") == "drug-keeper" and ping.get("ok"), ping.get("app"))
+
+        # ---- 配对码（2026-11-20：手机只输 6 位码就能连）----
+        code = str(ping.get("pairCode") or "")
+        ck("★ /api/ping 回一个 6 位数字配对码", re.fullmatch(r"\d{6}", code) is not None, code)
+        st, _, body = req("/api/state")
+        state_code = str(json.loads(body or b"{}").get("pairCode") or "")
+        ck("配对码在 /api/state 里也有，且与 ping 一致（桌面窗口显示的就是它）",
+           state_code == code and code != "", state_code)
+
+        # UDP 广播应答：用正确的码问，服务端要在 PAIR_PORT 回一段含局域网地址的 JSON
+        import socket as _sock
+        udp = _sock.socket(_sock.AF_INET, _sock.SOCK_DGRAM)
+        udp.settimeout(2.5)
+        try:
+            udp.sendto(code.encode("utf-8"), ("127.0.0.1", PORT + 1))   # UDP 端口 = HTTP 端口 + 1
+            reply, _ = udp.recvfrom(2048)
+            info = json.loads(reply.decode("utf-8", "replace"))
+            ck("★ 输对配对码，UDP 广播能问到电脑地址（手机靠它自动连）",
+               bool(info.get("addrs")) and int(info.get("port", 0)) == PORT, info)
+        except Exception as ex:
+            ck("★ 输对配对码，UDP 广播能问到电脑地址（手机靠它自动连）", False, repr(ex))
+        finally:
+            udp.close()
+        # 错码不该得到应答（否则同网段谁都能连）
+        udp2 = _sock.socket(_sock.AF_INET, _sock.SOCK_DGRAM)
+        udp2.settimeout(0.8)
+        try:
+            udp2.sendto(b"000000" if code != "000000" else b"999999", ("127.0.0.1", PORT + 1))
+            udp2.recvfrom(2048)
+            ck("配对码不对时不回地址（同网段乱连会被挡）", False, "竟然回了")
+        except _sock.timeout:
+            ck("配对码不对时不回地址（同网段乱连会被挡）", True, "超时，正确")
+        except Exception as ex:
+            ck("配对码不对时不回地址（同网段乱连会被挡）", True, repr(ex))
+        finally:
+            udp2.close()
+
         ck("★ 跨域头全开（file:// 页面靠它才连得上）",
            hd.get("access-control-allow-origin") == "*", hd.get("access-control-allow-origin"))
 

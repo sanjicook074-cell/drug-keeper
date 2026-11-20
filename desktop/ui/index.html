@@ -45,6 +45,7 @@
     background:#f2f7ff;border:1px solid #dbe7fb;border-radius:9px;padding:8px 11px;
     display:flex;align-items:center;gap:8px;margin-bottom:8px;word-break:break-all}
   .addr span{flex:1 1 auto;min-width:0}
+  .addr.code{font-size:18px;font-weight:700;letter-spacing:4px;color:#1d4ed8;background:#eff6ff}
   .hint{font-size:12px;color:var(--faint);line-height:1.7}
 
   .dev{display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px dashed var(--line)}
@@ -110,7 +111,9 @@
     <div class="card">
       <h2>让手机连上来</h2>
       <div class="addr"><span id="addr">—</span><button id="btnCopy" style="padding:4px 9px;font-size:11.5px">复制</button></div>
-      <div class="hint">手机和电脑要连同一个 Wi-Fi。在手机 App 的「设置 → 局域网同步」里填这个地址。</div>
+      <div class="addr code"><span id="pairCode">------</span><button id="btnCopyCode" style="padding:4px 9px;font-size:11.5px">复制</button></div>
+      <div class="hint">手机和电脑连同一个 Wi-Fi。手机 App 的「导入导出 → 局域网同步」里<b>只输这 6 位配对码</b>，
+        就会自动找到电脑并连上，不用手输上面那串地址。两边连上后按时间自动互相同步，谁那边新就更新另一边。</div>
       <div class="warnline" id="srvWarn" hidden></div>
     </div>
   </div>
@@ -194,6 +197,7 @@ function render(st){
     ? 'http://' + srv.addresses[0] + ':' + srv.port
     : '没找到局域网地址（先连上 Wi-Fi）';
   $('#addr').textContent = addr;
+  $('#pairCode').textContent = st.pairCode || '------';
 
   $('#nPeople').textContent = (st.summary && st.summary.people) || 0;
   $('#nMeds').textContent = (st.summary && st.summary.meds) || 0;
@@ -204,7 +208,7 @@ function render(st){
   const dl = $('#devList');
   const ds = st.devices || [];
   if(!ds.length){
-    dl.innerHTML = '<div class="empty">还没有设备连上来。<br>手机 App 里「设置 → 局域网同步」填上面那个地址，点「上传到电脑」。</div>';
+    dl.innerHTML = '<div class="empty">还没有设备连上来。<br>手机 App 里「导入导出 → 局域网同步」输上面那 6 位配对码，连上后自动同步。</div>';
   } else {
     dl.innerHTML = ds.map(function(d){
       return '<div class="dev">' +
@@ -241,6 +245,7 @@ async function copyText(t){
 }
 
 $('#btnCopy').onclick = function(){ if(S) copyText($('#addr').textContent); };
+$('#btnCopyCode').onclick = function(){ if(S) copyText(S.pairCode || ''); };
 $('#btnRescan').onclick = async function(){ render(await window.desk.rescan()); toast('已重新扫描'); };
 $('#btnOpenPage').onclick = function(){ window.desk.openPage(); };
 $('#btnOpenData').onclick = function(){ window.desk.openData(); };

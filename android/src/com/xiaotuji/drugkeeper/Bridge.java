@@ -70,4 +70,10 @@ class Bridge {
     public void openUrl(String url) {
         act.openUrl(url);
     }
+
+    /** 输 6 位配对码，广播问电脑在哪；拿到完整 http 地址，失败返回空串 */
+    @JavascriptInterface
+    public String findHub(String code) {
+        return act.findHub(code);
+    }
 }

@@ -122,6 +122,81 @@ PROBE = r"""
     var note3 = (q('#hubNote') || {}).textContent || '';
     ck('没填地址 → 提示先填地址，而不是默默没反应',
        /先在上面填/.test(note3), note3.slice(0, 40));
+
+    /* ⑥ 配对码 + 自动双向同步（2026-11-20 用户要求）
+       先关掉页面自己的定时器和 debounce，免得测试期间它们抢互斥锁、干扰判定。 */
+    store.set('dk.hub', '127.0.0.1:__PORT__');
+    try { clearInterval(HUB_AUTO_TIMER); } catch(e){}
+    try { clearTimeout(hubAutoT); } catch(e){}
+
+    ck('配对码输入框存在（手机壳里会显示）', !!q('#hubCode') && !!q('#btnHubPair'), '');
+
+    /* 配对码格式：不足 6 位要被挡下，不能真的去广播 */
+    q('#hubCode').value = '123';
+    store.set('dk.hub', '');
+    await hubPair();
+    ck('配对码不足 6 位 → 提示 6 位数字、不去连',
+       /6 位数字/.test((q('#hubNote') || {}).textContent || '') &&
+       !store.get('dk.hub'), ((q('#hubNote') || {}).textContent || '').slice(0, 30));
+    store.set('dk.hub', '127.0.0.1:__PORT__');
+
+    /* 注入假的 findHub：广播拿到地址 → 存下来 */
+    window.AndroidApp = { findHub: function(c){ return c === '123456' ? '__BASE__' : ''; } };
+    q('#hubCode').value = '123456';
+    await hubPair();
+    ck('★ 配对：输 6 位码广播拿到地址并存下来',
+       store.get('dk.hub') === '__BASE__', store.get('dk.hub'));
+
+    /* 自动同步决策：本机改动比 seen 新 → 自动推，且不弹确认框 */
+    // 上一步配对码出错时 focus 留在输入框，自动同步会因此跳过 —— 先移走焦点
+    if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    var t0 = Date.now();
+    store.set('dk.hub.seen', String(t0 - 5000));   // 上次对齐点在过去
+    store.set('dk.hub.local', String(t0));          // 本机刚改过，比 seen 新
+    var acted = await hubAutoSync();
+    ck('★ 本机有改动 → 自动同步自动推上去（acted=up）', acted === 'up', acted);
+    ck('自动同步推完，seen 被推平（不会反复推）',
+       Number(store.get('dk.hub.seen')) >= t0 - 1000, store.get('dk.hub.seen'));
+    ck('自动同步不弹确认框（静默）', !document.querySelector('dialog[open]'), '');
+
+    /* 主档更新、本机没改 → 自动静默拉 */
+    var seenNow = Number(store.get('dk.hub.seen'));
+    var masterTime = seenNow + 8000;           // 主档比本机 seen 新
+    var pushNew = JSON.stringify({
+      people: [{ id: 'z1', name: '自动来的', meds: [], box: ['', '', ''], stage: [] }],
+      currentId: 'z1'
+    });
+    await fetch(BASE + '/api/sync', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'remote', deviceName: '电脑', kind: 'desktop',
+        clientTime: masterTime, data: pushNew, settings: '{}',
+        people: 1, meds: 0, force: true })
+    });
+    // 本机时间戳压回 seen（不要被刚才的推干扰），让「主档 > seen」这一支生效
+    store.set('dk.hub.local', String(seenNow));
+    acted = await hubAutoSync();
+    ck('★ 主档更新、本机没改 → 自动静默拉下来（acted=down）', acted === 'down', acted);
+    ck('自动拉下来的数据真的进了本机', people.length === 1 && people[0].name === '自动来的',
+       people.length + ':' + ((people[0] || {}).name || ''));
+    ck('自动同步拉完，seen 也推平', Number(store.get('dk.hub.seen')) >= masterTime - 1000,
+       store.get('dk.hub.seen'));
+
+    /* 首启竞争：从没对齐过（seen=0）时以主档为准，不能被本机 local 误导推空数据上去 */
+    store.set('dk.hub.seen', '0');
+    store.set('dk.hub.local', String(Date.now() + 60000));   // 本机 local 故意造得很大
+    acted = await hubAutoSync();
+    ck('★ 首启 seen=0、主档有数据 → 以主档为准拉下来，不被本机时间戳带偏',
+       acted === 'down', acted);
+    ck('首启拉下来的还是主档那份', people.length === 1 && people[0].name === '自动来的',
+       people.length + ':' + ((people[0] || {}).name || ''));
+
+    /* 有弹窗开着时不自动动数据（免得盖掉正在填的东西） */
+    var dlg = q('#dlgAsk');
+    if(dlg && !dlg.open){ try { dlg.showModal(); } catch(e){} }
+    store.set('dk.hub.local', String(Date.now() + 20000));
+    acted = await hubAutoSync();
+    ck('弹窗开着时自动同步先跳过（不动数据）', acted === null, acted);
+    try { dlg.close(); } catch(e){}
   } catch(e){
     R.cases.push({ name: '探针自己抛异常了', pass: false,
                    got: String(e && e.message || e) });
