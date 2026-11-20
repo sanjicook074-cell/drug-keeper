@@ -639,8 +639,71 @@ PROBE = r"""
     var dropCs = drop ? window.getComputedStyle(drop, '::before') : null;
     ck('★ 边框那层真的在跑（::before 挂了旋转动画）',
        !!dropCs && /rxRun/.test(dropCs.animationName), dropCs && dropCs.animationName);
-    ck('跑马灯是彩色渐变（conic-gradient），不是纯黑边',
+    ck('跑马灯是渐变底（conic-gradient），不是一道死板的纯色边',
        !!dropCs && /gradient/.test(dropCs.backgroundImage), dropCs && dropCs.backgroundImage.slice(0, 34));
+    // ★ 2026-11-20 定稿：用户在页面里试完调色台，报的是
+    //   「整卷彩带 松绿 墨玉 亮度 90」。调色台整段已经拆掉，现在守的是：
+    //   ① 那套临时 UI 真的删干净了；② 渐变确实是松绿(h150)+墨玉(h170) 两段；
+    //   ③ 整圈没有大片深色（他嫌「黑占比太多」）；④ 首尾同色，转起来不跳；
+    //   ⑤ 峰值亮度落在「亮度 90」那一档，不是又暗回看不出光带。
+    function _stops(){
+      var b2 = window.getComputedStyle(drop, '::before').backgroundImage;
+      return (b2.match(/rgba?\([^)]+\)/g) || []).map(function(x){
+        return x.replace(/[^\d.,]/g, '').split(',').slice(0, 3).map(Number);
+      });
+    }
+    function _lum(c){
+      return (Math.max(c[0], c[1], c[2]) + Math.min(c[0], c[1], c[2])) / 510;
+    }
+    function _hue(c){
+      var r = c[0] / 255, g = c[1] / 255, b = c[2] / 255;
+      var mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+      if(!d) return -1;
+      var h;
+      if(mx === r) h = ((g - b) / d) % 6;
+      else if(mx === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60;
+      return h < 0 ? h + 360 : h;
+    }
+    ck('★ 调色台整套已拆干净（色板 / 铺法 / 滑块 / 那行配置文案都没了）',
+       !q('#lampSw') && !q('#lampLv') && !q('#lampOut') && !q('#lampModeRow'),
+       'sw=' + !!q('#lampSw') + ' lv=' + !!q('#lampLv') + ' out=' + !!q('#lampOut'));
+
+    var _sts = _stops();
+    var _hs = _sts.map(_hue).filter(function(h){ return h >= 0; });
+    var _sg = _hs.filter(function(h){ return h >= 142 && h <= 160; }).length;
+    var _my = _hs.filter(function(h){ return h >= 163 && h <= 180; }).length;
+    ck('★ 定稿是「松绿 + 墨玉」两段绿带（色相 150° / 170°），不是一圈彩',
+       _sg >= 2 && _my >= 2, _sts.length + ' 个色标，松绿 ' + _sg + ' / 墨玉 ' + _my +
+       '（色相 ' + _hs.map(function(h){ return h.toFixed(0); }).join('/') + '）');
+
+    function _minLum(){
+      var m = 1;
+      _sts.forEach(function(c){ if(_lum(c) < m) m = _lum(c); });
+      return m;
+    }
+    function _peak(){
+      var m = 0;
+      _sts.forEach(function(c){ if(_lum(c) > m) m = _lum(c); });
+      return m;
+    }
+    ck('★ 整圈都铺满颜色，最暗处也不发黑（用户嫌「黑占比太多」）',
+       _minLum() > 0.35, '最暗色标亮度 ' + _minLum().toFixed(2) + '（0.47 那条接缝）');
+
+    var _p0 = _sts[0], _pN = _sts[_sts.length - 1];
+    ck('首尾同色，转一圈接缝处不跳色',
+       _p0.join(',') === _pN.join(','), _p0.join(',') + ' vs ' + _pN.join(','));
+
+    var _pk = _peak();
+    ck('★ 峰值亮度是「亮度 90」那一档（0.58~0.67），看得见光带又不刺眼',
+       _pk > 0.58 && _pk < 0.67, '峰值 ' + _pk.toFixed(2));
+
+    ck('框底色也跟着松绿走（不再是那层蓝灰 #18202c）',
+       /rgb\(1[0-9], 2[0-9], 2[0-9]\)|rgb\(14, 27, 20\)/.test(window.getComputedStyle(drop).backgroundColor),
+       window.getComputedStyle(drop).backgroundColor);
+    ck('跑马灯转得慢一些（≥5 秒一圈），不晃眼',
+       parseFloat(dropCs && dropCs.animationDuration) >= 5, dropCs && dropCs.animationDuration);
 
     // ③ 三个旧按钮全没了：解析成药品 / 手动加一味 / 批量填用法
     ck('「解析成药品」按钮没了（粘进来就自动认）', !q('#btnRxParse'));

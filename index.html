@@ -755,29 +755,41 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
   border:1px solid var(--line-2);border-radius:9px;white-space:pre-wrap;
   word-break:break-word;cursor:text;-webkit-user-select:all;user-select:all}
 /* 第 3 步那个黑框 —— 整页最醒目的一格。
-   ① 黑底浅字，跟周围全是浅色卡片，反差最大；
-   ② 边框跑马灯：一圈光绕着框转（用户原话「边边上要跑马灯那种效果」）。
+   ① 深色边框，跟周围全是浅色卡片，反差最大；
+   ② 边框跑马灯：一整圈绿色彩带绕着框慢慢走（用户原话「边边上要跑马灯那种效果」）。
    ★ 跑马灯用「转一个超大的锥形渐变伪元素」做的，**故意不用 @property / registerProperty** ——
      那套写角度动画，老一点的 Android WebView 根本没实现，手机上会一动不动；
      transform 的旋转从 Android 4.4 起就有，稳。
-   ★ 伪元素要盖住整个矩形：正方形边长取 3 倍框宽（内切圆半径 1.5 倍框宽 > 半对角线）。 */
+   ★ 伪元素要盖住整个矩形：正方形边长取 3 倍框宽（内切圆半径 1.5 倍框宽 > 半对角线）。
+   ★ 2026-11-20 定稿：用户先在页面里试了「配色 × 铺法 × 亮度」的调色台（他嫌黑占比太多），
+     最后定的是「整圈彩带 · 松绿 + 墨玉 · 亮度 90」。所以这版直接写死，调色台已拆掉：
+     松绿 hsl(150,32%) 走半圈、墨玉 hsl(170,26%) 走另外半圈，
+     接缝亮度取整条量程的 72% —— 再低就会显出一条黑缝（第一版就是栽在这儿）；
+     转起来像一条绿绸在绕，边框基本没有大片深色。转速 6s 一圈，慢而稳。
+     亮度 90 的换算：亮处 60.8%、暗处 11.3%，框底色取暗处的七成 ≈ hsl(150,32%,7.9%)。 */
 .rx-drop{position:relative;margin-top:10px;padding:3px;border-radius:14px;
-  background:#0b0f17;overflow:hidden;
-  box-shadow:0 10px 28px rgba(15,23,42,.26), 0 0 0 0 rgba(59,130,246,0);
-  animation:rxBreath 3.2s ease-in-out infinite}
+  background:#0e1b14;overflow:hidden;
+  box-shadow:0 10px 28px rgba(15,23,42,.24), 0 0 0 0 rgba(64,110,86,0);
+  animation:rxBreath 5.2s ease-in-out infinite}
 .rx-drop::before{content:'';position:absolute;left:50%;top:50%;width:300%;height:0;
   padding-bottom:300%;z-index:0;transform:translate(-50%,-50%) rotate(0deg);
-  background:conic-gradient(#22d3ee,#6366f1,#a855f7,#ec4899,#f59e0b,#22d3ee);
-  animation:rxRun 4s linear infinite}
+  background:conic-gradient(from 0deg,
+    hsl(150,32%,47%) 0deg,
+    hsl(150,32%,61%) 90deg,
+    hsl(170,26%,47%) 180deg,
+    hsl(170,26%,61%) 270deg,
+    hsl(150,32%,47%) 360deg);
+  animation:rxRun 6s linear infinite}
 @keyframes rxRun{
   from{transform:translate(-50%,-50%) rotate(0deg)}
   to  {transform:translate(-50%,-50%) rotate(360deg)}
 }
 /* 外圈那点呼吸的光：跑马灯是「绕圈跑」，这层是「整体一跳一跳」，
-   两个节奏差着，眼睛更容易被拽过来。别太亮 —— 太亮会把黑框里的字压住。 */
+   两个节奏差着，眼睛更容易被拽过来。这里只给一点点墨绿灰的晕，
+   别调亮 —— 一亮就会把框里的字压住。 */
 @keyframes rxBreath{
-  0%,100%{box-shadow:0 10px 28px rgba(15,23,42,.26), 0 0 0 0 rgba(59,130,246,0)}
-  50%    {box-shadow:0 10px 28px rgba(15,23,42,.30), 0 0 0 4px rgba(59,130,246,.12)}
+  0%,100%{box-shadow:0 10px 28px rgba(15,23,42,.24), 0 0 0 0 rgba(64,110,86,0)}
+  50%    {box-shadow:0 10px 28px rgba(15,23,42,.28), 0 0 0 3px rgba(64,110,86,.10)}
 }
 @media (prefers-reduced-motion:reduce){
   .rx-drop,.rx-drop::before{animation:none}
