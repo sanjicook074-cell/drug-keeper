@@ -78,7 +78,7 @@ function createWindow(){
     width: 1280, height: 900, minWidth: 1000, minHeight: 640,
     backgroundColor: '#fff',
     title: '药品管家',
-    icon: path.join(APP_DIR, 'yao.ico'),
+    icon: path.join(APP_DIR, 'yao-clear.ico'),
     autoHideMenuBar: true,
     webPreferences: prefs()
   });
@@ -95,7 +95,7 @@ function createHubWindow(){
     parent: win,
     backgroundColor: '#f4f5f7',
     title: '药品管家 · 数据台',
-    icon: path.join(APP_DIR, 'yao.ico'),
+    icon: path.join(APP_DIR, 'yao-clear.ico'),
     autoHideMenuBar: true,
     webPreferences: prefs()
   });
