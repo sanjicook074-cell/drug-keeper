@@ -625,9 +625,26 @@ PROBE = r"""
       nos.push(n ? n.textContent.trim() : '?');
     }
     ck('三步的号码是 1 / 2 / 3，顺序没乱', nos.join('') === '123', nos.join('/'));
-    ck('第 1 步只留「号码 + 标题 + 按钮」，第 2/3 步仍各带一句解释',
-       !!steps[0].querySelector('.rx-step-t') && !steps[0].querySelector('.rx-step-d')
-       && !!steps[1].querySelector('.rx-step-d') && !!steps[2].querySelector('.rx-step-d'));
+    // ★ 2026-11-20 用户把三步统一成「只留标题」：第 2、3 步的解释段也删了。
+    ck('三步都只有「号码 + 标题」，下面不再挂解释段',
+       !!steps[0].querySelector('.rx-step-t') && !!steps[1].querySelector('.rx-step-t')
+       && !!steps[2].querySelector('.rx-step-t')
+       && !steps[0].querySelector('.rx-step-d') && !steps[1].querySelector('.rx-step-d')
+       && !steps[2].querySelector('.rx-step-d'));
+    // 删掉的不只是不许再出现的那两段文字 —— 连样式也一起清理了
+    ck('★ 解释段的样式 .rx-step-d 也一并删干净（不留死代码）',
+       document.styleSheets.length > 0 &&
+       (function(){
+         var hit = false;
+         for(var i = 0; i < document.styleSheets.length; i++){
+           var rs; try{ rs = document.styleSheets[i].cssRules; }catch(e){ continue; }
+           if(!rs) continue;
+           for(var j = 0; j < rs.length; j++){
+             if(rs[j].selectorText && rs[j].selectorText.indexOf('.rx-step-d') >= 0) hit = true;
+           }
+         }
+         return !hit;
+       })());
     ck('步骤标题依次是：复制提示词 / 打开一个 AI / 把回答粘到框里',
        /复制这段提示词/.test(steps[0].textContent)
        && /打开一个 AI/.test(steps[1].textContent)

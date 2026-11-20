@@ -748,8 +748,8 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
    按钮被折到第二行（2026-11-20 用户截图指出的问题）。这样标题让位、按钮稳稳留在同一行。 */
 .rx-step-t{margin:0;flex:1 1 auto;min-width:0;font-size:13.5px;font-weight:680;
   line-height:1.5;color:var(--text)}
-.rx-step-d{margin:6px 0 0;padding-left:31px;font-size:12px;line-height:1.75;color:#4b5563}
-.rx-step-d b{color:var(--text);font-weight:650}
+/* 三步统一成「号码 + 一行标题」，下面不再挂解释段（2026-11-20 用户要求），
+   原来的 .rx-step-d 样式随之删掉，别留着当没用的死代码。 */
 .rx-step .btn.sm{flex:none;white-space:nowrap}
 /* 第 1 步那一行：按钮紧挨着标题右侧，别被 flex-wrap 甩下去 */
 .rx-step-h-tpl{flex-wrap:nowrap}
@@ -1022,10 +1022,9 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
   #toast{bottom:calc(84px + env(safe-area-inset-bottom));max-width:86vw}
 
   /* ---- 底方录入：两块引导在手机上占掉半屏，一打开弹窗只见字不见药 ----
-     压字号、压留白（约省 2 行），其余不动：该说的还得说清，只是别用桌面那套行高。 */
+     压字号、压留白（约省 2 行）；三步现在只剩标题，留白比原来更省。 */
   .rx-step{padding:9px 11px;margin-bottom:9px}
   .rx-step-t{font-size:12.5px}
-  .rx-step-d{font-size:11.4px;line-height:1.7;padding-left:28px}
   .rx-no{width:19px;height:19px;font-size:11.5px}
   .rx-tpl-pre{font-size:10.8px;line-height:1.66;max-height:132px}
   .rx-step .btn.sm{font-size:11.5px;padding:5px 9px}
@@ -1430,14 +1429,15 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
       </section>
 
       <section class="rx-step" id="rxStep2">
+        <!-- ★ 2026-11-20 用户再砍一刀：第 2、3 步也「只保留上面那个标题（黑体字），下边的不用加」。
+             这两段解释（不认照片 / 没有后台 AI / 粘进来就自动认成药品）全部删掉，
+             三步统一成「号码 + 一行标题」，第 3 步后面直接跟粘贴框。
+             口径没丢：「后台 AI」那句仍在提示词正文里（AI 会把它当上下文读），
+             界面上的「照片先发给 AI」仍由弹窗开头那句 rxSub 交代。 -->
         <div class="rx-step-h">
           <span class="rx-no">2</span>
           <h4 class="rx-step-t">打开一个 AI（DeepSeek / Kimi / 豆包），拍下处方、把提示词发过去</h4>
         </div>
-        <p class="rx-step-d">这个页面<b>不认照片</b>，也没有藏着一个「后台 AI」—— 认字这一步要你自己找个
-          AI 来干，上面那几个都行。照片和提示词一条发过去，让它照着格式回你。<br>
-          手里已经有<b>文字版</b>的可以跳过这两步，直接去第 3 步。
-          <span style="color:var(--faint)">（有的 AI 会顺手回一条 <b>#rx=</b> 链接 —— 点开也一样。）</span></p>
       </section>
 
       <section class="rx-step" id="rxStep3">
@@ -1445,7 +1445,6 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
           <span class="rx-no">3</span>
           <h4 class="rx-step-t">把 AI 的回答整段粘到下面这个框里</h4>
         </div>
-        <p class="rx-step-d">粘进来就<b>自动认成药品</b>，不用再点别的；认出来的在下面逐味核对。</p>
         <div class="rx-drop">
           <textarea id="rxPaste" autocomplete="off" spellcheck="false"
                     aria-label="把 AI 的回答整段粘到这里"></textarea>

@@ -1457,11 +1457,19 @@ def main():
     # 2026-10-23 用户点明口径：「用户看到的就是这个界面，不存在什么这个界面后面还安排着一个后台 AI」。
     # 所以界面要按「用户手上的照片 + 一个他自己打开的 AI 聊天窗口」来写，并且**点名几个 AI**，
     # 让人一眼知道该把照片发给谁。
+    # 2026-11-20 用户又要求「第 2、3 步只留标题」——「不认照片 / 没有后台 AI」那段解释从界面上撤了，
+    # 但这句口径本身不能丢：它还在提示词正文里（AI 会照它回话），弹窗开头那句 rxSub 也仍在说
+    # 「照片先发给 AI」。所以这里改成盯「那句口径还留在页面的某个可见文本里」，不再绑死标题下的段落。
     data["cases"].append({
-        "name": "界面上写明「不认照片」+「没有后台 AI」+ 点名 DeepSeek / Kimi",
-        "pass": ("不认照片" in src) and ("后台 AI" in src)
-                and ("DeepSeek" in src) and ("Kimi" in src),
-        "got": "已写明" if ("不认照片" in src and "后台 AI" in src) else "(没写)",
+        "name": "「没有后台 AI」的口径仍在（提示词正文里）+ 标题点名 DeepSeek / Kimi / 豆包",
+        "pass": ("后台 AI" in src) and ("DeepSeek" in src)
+                and ("Kimi" in src) and ("豆包" in src),
+        "got": "口径与三个 AI 都在" if ("后台 AI" in src) else "(口径丢了)",
+    })
+    data["cases"].append({
+        "name": "弹窗开头仍交代「照片先发给 AI」（第三步之后不再重复解释）",
+        "pass": ("照片先发给 AI" in src) and ("rxSub" in src),
+        "got": "在 rxSub 里" if "照片先发给 AI" in src else "(没写)",
     })
     data["cases"].append({
         "name": "界面上不再暗示「页面自带一个助手」（这类话一句都不许留）",
