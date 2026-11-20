@@ -704,11 +704,13 @@ PROBE = r"""
   ck('给了提示', /大于 0/.test(R.alerts.join(' | ')), R.alerts[R.alerts.length - 1]);
   q('#dlgNum').close();
 
-  // ---- 9. 页脚署名：网页最下面「一条横线 + by 人间小土鸡」（2026-10-12 用户要求）----
+  // ---- 9. 页脚署名：网页最下面「一条横线 + by …」（2026-10-12 用户要求，2026-11-20 改文案）----
+  //   ★ 用户指定的新署名把协作者一并署上；& 在源码里是 &amp;，DOM 里读出来是 &。
+  var SIG_TXT = 'by 人间小土鸡 x Workbuddy x DeepSeek & Hy4';
   var sig = document.querySelector('.foot-sig');
   ck('页面底部有署名容器 .foot-sig', !!sig, sig ? '有' : '(无)');
-  ck('署名文案是「by 人间小土鸡」',
-     sig ? sig.textContent.trim() === 'by 人间小土鸡' : false,
+  ck('署名文案是「by 人间小土鸡 x Workbuddy x DeepSeek & Hy4」',
+     sig ? sig.textContent.trim() === SIG_TXT : false,
      sig ? sig.textContent.trim() : '(无)');
   ck('署名前面有一条可见的横线（border-top 且不是最淡的分隔色）',
      (function(){
