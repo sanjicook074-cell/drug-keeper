@@ -1351,8 +1351,9 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
           <span class="rx-tpl-t">复制这段提示词，发给 AI</span>
           <button type="button" class="btn ghost sm" id="btnRxTpl">复制提示词</button>
         </div>
-        <p>提示词把格式定死了 —— <b>一行一味</b>，药名 / 规格 / 开几盒 / 每次多少 / 多久一次 / 用法。
-          它照这个回你，粘进来点「解析成药品」就能一次认全，不用一格一格改。<br>
+        <p>提示词把格式定死了 —— <b>一味药一行</b>，7 个字段都写成「<b>字段名=值</b>」
+          （药品名称 / 单位剂量 / 每盒数量 / 盒数 / 每次用量 / 频次 / 用法），中间用 <b>|</b> 隔开。
+          每个数都顶着自己的名字，就不怕两个数挨在一起分不清了；少写一个字段也只是那格空着。<br>
            步骤：把它回的<b>整段复制</b> → 粘进下面那个框 → 点「解析成药品」，
            然后逐味核对药名和「够吃多少天」。</p>
       </div>
@@ -1406,6 +1407,11 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 两条路，任选：
   · **给文字**（最通用）：把药名和用量**一行一味**打成纯文字，让用户复制粘进「底方录入」的框里。
     格式随意，但每行至少要有「药名 + 每次几个 + 每天几次」，页面才解析得出「够吃几天」。
+    推荐按**字段名**写（页面弹窗里那份提示词就是这个），一行长这样：
+      药品名称=某某片 | 单位剂量=10mg | 每盒数量=24片 | 盒数=1 | 每次用量=10mg | 频次=每日一次 | 用法=口服
+    ★ 为什么强调字段名：靠「数到第几个」的写法，一旦两个数挨在一起（0.25ug36粒，
+      中间那个分隔符丢了），页面就分不清哪个是剂量、哪个是每盒几片 —— 只能猜，而猜出来的
+      数看着很正常，最容易骗过人。顶着自己的字段名，漏一个也只是那一格空着。
   · **给链接**（更好，但需要你能构造 URL）：按下面这份说明产出一条 `#rx=` 链接，
     用户点开，药就已经摆好在弹窗里等着入库，连粘都不用。
 
@@ -5115,6 +5121,9 @@ function rxHalf(s){
   return String(s == null ? '' : s)
     .replace(/[\uFF01-\uFF5E]/g, function(c){ return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
     .replace(/\u3000/g, ' ')
+    // 微克：处方和 AI 常常写 μg / µg（希腊字母 μ、微符号 µ），程序只认 ug。
+    // 不归一的话「0.25μg 每日2次」这一格整段认不出来，只能退回默认值 —— 宁可换字，不猜数。
+    .replace(/[\u03BC\u00B5]/g, 'u')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -5122,9 +5131,13 @@ function rxHalf(s){
    为什么非要有它：AI 按自己的习惯写，页面就读不懂。实测同一张底方的 5 味药，
    AI 回的是「某某片［某厂］40mg×28片/盒，1盒 — 每次 40mg，每日一次，口服」——
    逗号把「1盒」和药名隔开，启发式认成「本次开到 1 片」，5 味药全变成够吃 1 天。
-   把字段顺序和写法定死（空格分隔 + [药单开始]/[药单结束] 包起来）之后，
+   2026-10-23 把字段顺序和写法定死（空格分隔 + [药单开始]/[药单结束] 包起来）之后，
    同 5 味药总量 28 / 30 / 56 / 1 / 30、够吃 28 / 15 / 28 / 14 / 30 天，全对。
-   ★ 改这段文字之前先跑 _check/test_rx_tpl.py —— 那 7 个位置逐条有断言。
+   ★ 2026-11-20 再改一版：靠「位置」还是不够 —— AI 把规格写成 `[0.25ug36粒]`
+     （`*` 丢了），两个数挨在一起，程序没法知道 36 是"每盒 36 粒"，只能猜。
+     现在每个数都顶着字段名（`每盒数量=36粒`）：漏掉一个字段，也只是那一格空着，
+     不会连累旁边那个数。少了分隔符这种事故，从此不至于把 36 粒算成 1 粒。
+   ★ 改这段文字之前先跑 _check/test_rx_tpl.py —— 里面逐条有断言。
    ★ 这里**只管把药和用量读准**。什么时候吃、药盒怎么摆，一律不问 ——
      见下面 RX_SLOT_* 那段注释。 */
 const RX_PROMPT = [
@@ -5132,26 +5145,28 @@ const RX_PROMPT = [
   '这是程序要读的，写法请完全照抄，不要自己发挥。',
   '',
   '[药单开始]',
-  '示例片(某厂)[10mg*24片] 1盒 10mg 每日一次 口服',
-  '示例胶囊[0.25g*12粒] 2盒 1粒 每日2次 口服',
-  '示例注射液[100mg/1mL] 1支 100mg 每两周一次 皮下注射',
+  '药品名称=示例甲片 | 单位剂量=10mg | 每盒数量=24片 | 盒数=1 | 每次用量=10mg | 频次=每日一次 | 用法=口服',
+  '药品名称=示例乙胶囊 | 单位剂量=0.25g | 每盒数量=12粒 | 盒数=2 | 每次用量=1粒 | 频次=每日2次 | 用法=口服',
+  '药品名称=示例丙注射液 | 单位剂量=140mg | 每盒数量=2支 | 盒数=1 | 每次用量=140mg | 频次=每两周一次 | 用法=皮下注射',
   '[药单结束]',
   '',
-  '（上面三行只是格式示例 —— 药名、规格、数量都换成照片上真实的。）',
+  '（上面三行只是格式示例 —— 药名、数值都换成照片上真实的。）',
   '',
-  '一行一味药，每行 7 个位置，用一个空格隔开，顺序不能变：',
-  '1 药名：通用名，不带商品名和规格',
-  '2 商品名：写在圆括号里；没有就把整对括号省掉',
-  '3 规格：每片剂量*每盒几片，如 [40mg*28片]、[80mg*28粒]；不要写「/盒」',
-  '4 开几盒：如 1盒、5盒、1支',
-  '5 每次用量：如 40mg、1片、1贴',
+  '一味药一行，每行 7 个字段，一律写成「字段名=值」，字段之间用 | 隔开，顺序不能变：',
+  '1 药品名称：通用名，不带规格',
+  '2 单位剂量：一片/一粒/一支里含多少，带单位，如 10mg、0.25ug、140mg',
+  '3 每盒数量：一盒有几片，数字+单位，如 24片、12粒、6贴、2支',
+  '4 盒数：这次开回来几盒，只写数字，如 1、5',
+  '5 每次用量：每次吃多少，带单位，如 10mg、1片、1贴',
   '6 频次：每日一次、每日2次、每两周一次、每晚一次',
-  '7 用法：口服、外用、皮下注射、舌下含服',
+  '7 用法：口服、外用、皮下注射、纳肛',
   '',
   '几点要求：',
+  '· 每个数都要顶着自己的字段名：少了字段名，两个数挨在一起（0.25ug36粒）程序就分不清哪个是剂量、哪个是每盒数量',
+  '· 数和单位连着写（0.25ug、36粒），中间不要加 * × 这类符号，也不要把两个数并成一格',
   '· [药单开始] 和 [药单结束] 这两行原样保留 —— 程序靠它们找药单，少一行就整段认不出来',
-  '· 两行之间只放药，不要写表头、金额、诊断',
-  '· 药名、规格、数量、用量、频次**逐字照抄处方**，看不清就写 ?，不要猜',
+  '· 两行之间一味药占一行：不要折行、不要编号、不要表格、不要代码块',
+  '· 药名、数值**逐字照抄处方**，看不清就写 ?，不要猜',
   '· 不用写「饭前饭后」「早上晚上」这类服药时间，也不用算「够吃几天」—— 这两样程序不读',
   '· 药单之外你照常提醒我怎么吃、注意什么，那些我能看到，但不要写进药单里'
 ].join('\n');
@@ -5172,6 +5187,10 @@ const RX_SLOT_EZW = /早\s*[、,，+／/]?\s*中\s*[、,，+／/]?\s*晚/g;
 
 const RX_MASS = 'mg|g|ml|ug|iu';
 const RX_CNT  = '片|粒|支|贴|袋|滴|喷|丸|包';
+// 包装里能数的东西（比 RX_CNT 多了「瓶/板/罐/枚」——「1板 12片」这种包装也得认）
+const RX_PACK_CNT = RX_CNT + '|枚|罐|瓶|板';
+// 质量单位互换（只做 mg/g/ug 这三档；ml 和 iu 不能换，认不准就不换）
+const RX_MASS_FACTOR = { ug: 0.001, mg: 1, g: 1000 };
 // 明显不是药品的行（表头、金额、医师、说明…）→ 不当药品解析
 const RX_NOT_DRUG = /(处方|就诊|医嘱|金额|合计|医师|医生|审核|核对|打印|日期|登记号|机构|医保|科室|姓名|性别|年龄|诊断|备注|提示|有效期|取药|药房|窗口|单价|数量|用量|频次|用法|药品名称|规格|条码|条形码|编号|患者|社会保险|基金|自付|支付)/;
 
@@ -5181,6 +5200,86 @@ function rxIsDrugLine(line){
   if(!/[\u4e00-\u9fa5]/.test(s)) return false;          // 必须有中文
   if(RX_NOT_DRUG.test(s)) return false;
   return true;
+}
+
+/* ---- 规格拆解：一个多少剂量 / 每盒几个 ----
+   ★ 2026-11-20 的真实事故：AI 把规格写成 `[0.25ug36粒]` —— 少了一个 `*`。
+     原来的正则只认 `*N`，于是「每盒 36 粒」被当成"没认出来"，本次开到退成 1 粒，
+     余量算成 0 天。**一个分隔符丢了，整味药的数全错**，而且那一格不挂提示
+     （qty=1 时连"没认出每盒多少"都不提示）—— 数字看着正常，最容易骗过人。
+   所以这里三级退让：`*`/`×` 认 → 「剂量紧跟数量」认（0.25ug 36粒）→ 整格只有「36粒」也认。 */
+function rxSpecParts(spec){
+  const s = rxHalf(spec || '');
+  const out = { doseNum: 0, doseUnit: '', perPack: null, packUnit: '' };
+  const dm = s.match(new RegExp('(\\d+(?:\\.\\d+)?)\\s*(' + RX_MASS + ')', 'i'));
+  if(dm){ out.doseNum = Number(dm[1]); out.doseUnit = String(dm[2]).toLowerCase(); }
+  let pm = s.match(/[*×x]\s*(\d+)\s*([^\d\s]*)/);
+  if(!pm){
+    // 「剂量+单位」后面紧跟「数字+计数单位」：0.25ug36粒 / 20mg 28粒 / 0.43g30粒
+    pm = s.match(new RegExp('\\d\\s*(?:' + RX_MASS + ')\\s*(\\d+)\\s*(' + RX_PACK_CNT + ')', 'i'));
+  }
+  if(!pm){
+    // 整格只写了包装数量：36粒
+    pm = s.match(new RegExp('^(\\d+)\\s*(' + RX_PACK_CNT + ')$'));
+  }
+  if(pm){
+    out.perPack = Number(pm[1]);
+    // 「28片/盒」里的单位是「片」，`/盒` 只是包装说明 —— 只取开头那个计量词。
+    // 不取干净的话单位会变成「片/盒」，界面上就显示成「本次开到 28 片/盒」。
+    const u = (pm[2] || '').match(new RegExp('^(' + RX_PACK_CNT + ')'));
+    out.packUnit = u ? u[1] : '';
+  }
+  return out;
+}
+
+/* 频次 → 「每几天吃几次」。底方的「频次」列和字段化的 `频次=每日2次` 都走这一份，
+   免得两条路各算一套（改了一边忘了另一边，是这类项目最容易出的错）。 */
+const RX_CN_NUM = { '一':1, '二':2, '两':2, '三':3, '四':4, '五':5, '六':6, '七':7 };
+function rxCN(v){
+  if(v == null) return null;
+  return /^\d+$/.test(v) ? Number(v) : (RX_CN_NUM[v] == null ? null : RX_CN_NUM[v]);
+}
+function rxFreqOf(f){
+  let cycleDays = 1, timesPerCycle = 1, hit = false, m2;
+  m2 = f.match(/(?:每日|每天|一日)\s*([一二两三四五六七八九]|\d+)\s*次/);
+  if(m2){ timesPerCycle = rxCN(m2[1]) || 1; cycleDays = 1; hit = true; }
+  if(!hit && /(?:每日|每天|一日|qd)/.test(f)){ timesPerCycle = 1; cycleDays = 1; hit = true; }
+  // 「每晚」也是每日一次（安眠药底方上就这么写）
+  if(!hit && /(每晚|每夜|睡前|qn)/.test(f)){ timesPerCycle = 1; cycleDays = 1; hit = true; }
+  if(!hit && /(\d+)\s*次\s*[\/每]\s*(?:日|天)/.test(f)){
+    timesPerCycle = Number(RegExp.$1); cycleDays = 1; hit = true;
+  }
+  if(!hit && /隔[日天]/.test(f)){ cycleDays = 2; timesPerCycle = 1; hit = true; }
+  // 「每周2次」「每月1次」这种写法，量词前面可以不写数字 —— 前半段必须是可选(*)，
+  // 写成必选(+)的话这两种会整条漏掉、落到「每日 1 次」这个错值上。
+  if(!hit){
+    m2 = f.match(/每\s*([一二两三四五六七八九\d]*)\s*(?:周|星期)\s*([一二两三四五六七八九\d]+)?\s*次?/);
+    if(m2){ cycleDays = 7 * (rxCN(m2[1]) || 1); timesPerCycle = m2[2] ? (rxCN(m2[2]) || 1) : 1; hit = true; }
+  }
+  if(!hit){
+    m2 = f.match(/每\s*([一二两三四五六七八九\d]*)\s*个?\s*月\s*([一二两三四五六七八九\d]+)?\s*次?/);
+    if(m2){ cycleDays = 28 * (rxCN(m2[1]) || 1); timesPerCycle = m2[2] ? (rxCN(m2[2]) || 1) : 1; hit = true; }
+  }
+  if(!hit){
+    m2 = f.match(/每\s*([一二两三四五六七八九\d]+)\s*天\s*([一二两三四五六七八九\d]+)?\s*次?/);
+    if(m2){ cycleDays = Math.max(1, rxCN(m2[1]) || 1); timesPerCycle = m2[2] ? (rxCN(m2[2]) || 1) : 1; hit = true; }
+  }
+  if(!hit && /(\d+)\s*次\s*[\/每]\s*(?:周|星期)/.test(f)){
+    cycleDays = 7; timesPerCycle = Number(RegExp.$1); hit = true;
+  }
+  return { cycleDays: cycleDays, timesPerCycle: timesPerCycle, hit: hit };
+}
+
+// 药名 → 计数单位（认不出来返回空串，由调用方决定退到什么）
+function rxUnitGuess(name){
+  if(/注射|针剂|单抗/.test(name)) return '支';
+  if(/贴膏|贴剂|凝胶贴|巴布/.test(name)) return '贴';
+  if(/胶囊|软胶囊/.test(name)) return '粒';
+  if(/颗粒|散剂|冲剂/.test(name)) return '袋';
+  if(/滴剂|滴丸/.test(name)) return '滴';
+  if(/喷雾|气雾|鼻喷/.test(name)) return '喷';
+  if(/片|丸/.test(name)) return '片';
+  return '';
 }
 
 // 把底方上的**一行**拆成结构化字段。宁少勿错：认不出来的字段留默认值 + 给一句提醒，
@@ -5231,17 +5330,12 @@ function rxParseLine(line){
   let spec = pickSpec(tags) || pickSpec(parens) || extraSpec;
   if(!spec){ const m = rest.match(new RegExp('(\\d+(?:\\.\\d+)?\\s*(?:' + RX_MASS + '))', 'i')); if(m) spec = m[1]; }
 
-  // ⑤ 规格里拆出「每盒几个」和「一个多少剂量」
-  const perPackM  = spec.match(/[*×x]\s*(\d+)\s*([^\d\s]*)/);
-  const perPack   = perPackM ? Number(perPackM[1]) : null;
-  // 「28片/盒」里的单位是「片」，`/盒` 只是包装说明 —— 只取开头那个计量词。
-  // 不取干净的话单位会变成「片/盒」，界面上就显示成「本次开到 28 片/盒」。
-  const packUnitM = perPackM && perPackM[2]
-    ? rxHalf(perPackM[2]).match(/^(片|粒|支|贴|袋|滴|喷|丸|包|枚|罐|瓶|板)/) : null;
-  const packUnit  = packUnitM ? packUnitM[1] : '';
-  const doseM     = spec.match(new RegExp('(\\d+(?:\\.\\d+)?)\\s*(' + RX_MASS + ')', 'i'));
-  const doseUnit  = doseM ? String(doseM[2]).toLowerCase() : '';   // 单位（mg / g / ml）
-  const dosePerU  = doseM ? Number(doseM[1]) : 0;                  // 一个多少剂量
+  // ⑤ 规格里拆出「每盒几个」和「一个多少剂量」（少写 * 的也认，见 rxSpecParts）
+  const sp        = rxSpecParts(spec);
+  const perPack   = sp.perPack;
+  const packUnit  = sp.packUnit;
+  const doseUnit  = sp.doseUnit;    // 单位（mg / g / ml / ug）
+  const dosePerU  = sp.doseNum;     // 一个多少剂量
 
   // ⑥ 本次开了几个（盒/瓶…）
   const qtyM = rest.match(/(\d+(?:\.\d+)?)\s*(盒|瓶|袋|板|包|支|罐)/);
@@ -5257,56 +5351,22 @@ function rxParseLine(line){
   const byMass = amts.filter(function(a){ return a.u === doseUnit; })[0];
   if(byMass && dosePerU > 0){
     perDose = round2(byMass.v / dosePerU);            // 同单位才敢除
+  } else if(amts.length && dosePerU > 0 && RX_MASS_FACTOR[doseUnit] && RX_MASS_FACTOR[amts[0].u]){
+    // 单位不同但都是质量（规格写 0.25ug、用量写 0.5μg 却漏了 u）：先换成同一个单位再除
+    perDose = round2(amts[0].v * RX_MASS_FACTOR[amts[0].u] / (dosePerU * RX_MASS_FACTOR[doseUnit]));
   } else if(amts.length && new RegExp('^(?:' + RX_CNT + ')$').test(amts[0].u)){
     perDose = amts[0].v;                              // 「1 贴」这种直接就是每次用量
   }
   if(!(perDose > 0)) perDose = 1;
 
   // ⑧ 单位：规格里的包装单位 → 药名推断 → 用量单位 → 片
-  let unit = packUnit;
-  if(!unit){
-    if(/注射|针剂|单抗/.test(name)) unit = '支';
-    else if(/贴膏|贴剂|凝胶贴|巴布/.test(name)) unit = '贴';
-    else if(/胶囊|软胶囊/.test(name)) unit = '粒';
-    else if(/颗粒|散剂|冲剂/.test(name)) unit = '袋';
-    else if(/滴剂|滴丸/.test(name)) unit = '滴';
-    else if(/喷雾|气雾|鼻喷/.test(name)) unit = '喷';
-    else if(/片|丸/.test(name)) unit = '片';
-    else if(amts.length && new RegExp('^(?:' + RX_CNT + ')$').test(amts[0].u)) unit = amts[0].u;
-    else unit = '片';
-  }
+  let unit = packUnit || rxUnitGuess(name);
+  if(!unit && amts.length && new RegExp('^(?:' + RX_CNT + ')$').test(amts[0].u)) unit = amts[0].u;
+  if(!unit) unit = '片';
 
   // ⑨ 频次（底方的「频次」列）
-  const CN = { '一':1, '二':2, '两':2, '三':3, '四':4, '五':5, '六':6, '七':7 };
-  const cn = function(v){ if(v == null) return null; return /^\d+$/.test(v) ? Number(v) : (CN[v] == null ? null : CN[v]); };
-  const f = rest + ' ' + s;
-  let cycleDays = 1, timesPerCycle = 1, freqHit = false;
-  let m2 = f.match(/(?:每日|每天|一日)\s*([一二两三四五六七八九]|\d+)\s*次/);
-  if(m2){ timesPerCycle = cn(m2[1]) || 1; cycleDays = 1; freqHit = true; }
-  if(!freqHit && /(?:每日|每天|一日|qd)/.test(f)){ timesPerCycle = 1; cycleDays = 1; freqHit = true; }
-  // 「每晚」也是每日一次（氯雷他定这类安眠药底方上就这么写）
-  if(!freqHit && /(每晚|每夜|睡前|qn)/.test(f)){ timesPerCycle = 1; cycleDays = 1; freqHit = true; }
-  if(!freqHit && /(\d+)\s*次\s*[\/每]\s*(?:日|天)/.test(f)){
-    timesPerCycle = Number(RegExp.$1); cycleDays = 1; freqHit = true;
-  }
-  if(!freqHit && /隔[日天]/.test(f)){ cycleDays = 2; timesPerCycle = 1; freqHit = true; }
-  // 「每周2次」「每月1次」这种写法，量词前面可以不写数字 —— 前半段必须是可选(*)，
-  // 写成必选(+)的话这两种会整条漏掉、落到「每日 1 次」这个错值上。
-  if(!freqHit){
-    m2 = f.match(/每\s*([一二两三四五六七八九\d]*)\s*(?:周|星期)\s*([一二两三四五六七八九\d]+)?\s*次?/);
-    if(m2){ cycleDays = 7 * (cn(m2[1]) || 1); timesPerCycle = m2[2] ? (cn(m2[2]) || 1) : 1; freqHit = true; }
-  }
-  if(!freqHit){
-    m2 = f.match(/每\s*([一二两三四五六七八九\d]*)\s*个?\s*月\s*([一二两三四五六七八九\d]+)?\s*次?/);
-    if(m2){ cycleDays = 28 * (cn(m2[1]) || 1); timesPerCycle = m2[2] ? (cn(m2[2]) || 1) : 1; freqHit = true; }
-  }
-  if(!freqHit){
-    m2 = f.match(/每\s*([一二两三四五六七八九\d]+)\s*天\s*([一二两三四五六七八九\d]+)?\s*次?/);
-    if(m2){ cycleDays = Math.max(1, cn(m2[1]) || 1); timesPerCycle = m2[2] ? (cn(m2[2]) || 1) : 1; freqHit = true; }
-  }
-  if(!freqHit && /(\d+)\s*次\s*[\/每]\s*(?:周|星期)/.test(f)){
-    cycleDays = 7; timesPerCycle = Number(RegExp.$1); freqHit = true;
-  }
+  const fr = rxFreqOf(rest + ' ' + s);
+  const cycleDays = fr.cycleDays, timesPerCycle = fr.timesPerCycle, freqHit = fr.hit;
 
   // ⑩ 用法 → 备注（口服是常态，不写；外用 / 皮下注射 这类留着有用）
   let note = '';
@@ -5328,6 +5388,175 @@ function rxParseLine(line){
   });
 }
 
+/* ==================== 字段化药单：`字段名=值 | 字段名=值` ====================
+   为什么加这一版（2026-11-20）：原来那一版靠「位置」——第 3 段是规格、第 4 段是盒数。
+   位置一旦挤在一起就完了：AI 把规格写成 `[0.25ug36粒]`（`*` 丢了），
+   两个数挨在一块儿，程序分不清哪个是剂量、哪个是每盒几粒，**只能猜**。
+   现在每个数都顶着自己的字段名：`每盒数量=36粒`，就算哪个字段被漏掉，
+   也只是那一格空着（会挂提示），不会连累旁边那个数。
+   ★ 老格式（空格分隔那一版）继续认 —— 用户手里的旧回复、手打的底方行都不该作废。
+   ★ 字段名认中文，也认 AI 顺手回的一行 JSON（`{"药品名称":"…","每盒数量":"36粒"}`），
+     因为「键: 值」和「键=值」在这里是同一件事。 */
+
+// 字段名 → 内部字段。同一个意思的几种写法都要收（AI 每次叫法都不一样）
+const RX_KV_CANON = {
+  '药品名称':'name', '药名':'name', '名称':'name',
+  '商品名':'brand', '厂家':'brand', '生产厂家':'brand',
+  '单位剂量':'dose', '每片剂量':'dose', '每粒剂量':'dose', '每支剂量':'dose',
+  '每贴剂量':'dose', '规格':'dose', '剂量':'dose',
+  '每盒数量':'pack', '每盒片数':'pack', '每盒粒数':'pack', '每盒支数':'pack',
+  '每盒贴数':'pack', '包装数量':'pack', '每盒':'pack',
+  '盒数':'qty', '数量':'qty', '开几盒':'qty',
+  '每次用量':'per', '服用计量':'per', '服用剂量':'per', '每次剂量':'per', '用量':'per',
+  '频次':'freq', '服药频次':'freq', '频率':'freq',
+  '用法':'use', '给药途径':'use', '途径':'use'
+};
+// 键名长的排前面：「每盒数量」不能被「数量」抢走、「每次用量」不能被「用量」抢走。
+// `["']?` 是为了吃下 AI 直接回一行 JSON 的情况：`"每盒数量":"36粒"` —— 键后面先来个引号再是冒号。
+const RX_KV_RE = new RegExp('(' + Object.keys(RX_KV_CANON)
+  .sort(function(a, b){ return b.length - a.length; }).join('|') + ')\\s*["\']?\\s*[=:]', 'g');
+
+// 一行 → {name, dose, pack, qty, per, freq, use}；不像字段化写法就返回 null
+function rxKVFields(line){
+  const s = rxHalf(line);
+  RX_KV_RE.lastIndex = 0;
+  const hit = [];
+  let m;
+  while((m = RX_KV_RE.exec(s))){
+    if(RX_KV_CANON[m[1]]) hit.push({ k: RX_KV_CANON[m[1]], from: m.index, to: m.index + m[0].length });
+  }
+  if(hit.length < 2) return null;          // 只有一个冒号？那是人话，不是药单
+  const f = {};
+  hit.forEach(function(h, i){
+    const end = (i + 1 < hit.length) ? hit[i + 1].from : s.length;
+    // 掐掉字段之间的分隔符、引号、代码块的反引号、JSON 的花括号方括号 ——
+    // 这些都不是值的一部分，留着只会让「36粒」变成「"36粒"}」
+    const v = s.slice(h.to, end)
+      .replace(/^[\s,;|｜，；、"'“”‘’`*{}\[\]]+/, '')
+      .replace(/[\s,;|｜，；、"'“”‘’`*{}\[\]]+$/, '')
+      .trim();
+    if(!f[h.k]) f[h.k] = v;
+  });
+  return f;
+}
+
+function rxNumOf(s){
+  const m = String(s == null ? '' : s).match(/(\d+(?:\.\d+)?)/);
+  return m ? Number(m[1]) : null;
+}
+// 「36粒」→ {n:36, unit:'粒'}；「36」→ {n:36, unit:''}
+function rxPackOf(s){
+  const t = rxHalf(s || '');
+  const m = t.match(/(\d+(?:\.\d+)?)\s*([^\d\s]*)/);
+  if(!m) return { n: null, unit: '' };
+  const u = (m[2] || '').match(new RegExp('^(' + RX_PACK_CNT + ')'));
+  return { n: Number(m[1]), unit: u ? u[1] : '' };
+}
+// 「0.25μg」→ {v:0.25, u:'ug'}；「1片」→ {v:1, u:'片'}
+function rxAmtOf(s){
+  const t = rxHalf(s || '');
+  const m = t.match(new RegExp('(\\d+(?:\\.\\d+)?)\\s*(' + RX_MASS + '|' + RX_PACK_CNT + ')', 'i'));
+  if(!m) return { v: rxNumOf(t), u: '' };
+  return { v: Number(m[1]), u: String(m[2]).toLowerCase() };
+}
+
+// 字段 → 药品行。算不出来的那格留空/给默认值 + 一句话提醒，绝不猜一个像样的数。
+function rxRowFromFields(f){
+  const name = String(f.name || '').replace(/\s+/g, '');
+  if(!name) return null;
+
+  const sp = rxSpecParts(f.dose || '');          // 单位剂量 = 每片/每粒多少（也能吃下整段 `0.25ug*36粒`）
+  const pk = rxPackOf(f.pack);
+  const perPack  = (pk.n != null) ? pk.n : sp.perPack;
+  const packUnit = pk.unit || sp.packUnit;
+  const per      = rxAmtOf(f.per);
+  const qty      = rxNumOf(f.qty);
+  // AI 常在「用法」这一格后面顺手带一句「早饭后」「睡前」（提示词没要，它自己加的）。
+  // 跟老格式一样：擦掉、扔掉 —— 不擦的话备注会变成「口服 早饭后」，人看着莫名其妙。
+  const clean    = function(v){
+    return String(v == null ? '' : v)
+      .replace(RX_SLOT_RE, ' ').replace(RX_SLOT_EZW, ' ').replace(/\s+/g, ' ').trim();
+  };
+  const fr       = rxFreqOf(clean(f.freq));
+
+  // 每次几个：同单位就除（0.5g ÷ 0.25g = 2 片）；不同单位但都是质量，先换算再除；
+  // 写的是计数（1 贴 / 2 粒）就直接用；只写了数字、又正好等于单位剂量，就是 1 个。
+  let perDose = 1;
+  if(per.v != null && per.v > 0){
+    if(per.u && sp.doseUnit && per.u === sp.doseUnit && sp.doseNum > 0){
+      perDose = round2(per.v / sp.doseNum);
+    } else if(per.u && sp.doseUnit && sp.doseNum > 0
+              && RX_MASS_FACTOR[per.u] && RX_MASS_FACTOR[sp.doseUnit]){
+      perDose = round2(per.v * RX_MASS_FACTOR[per.u] / (sp.doseNum * RX_MASS_FACTOR[sp.doseUnit]));
+    } else if(per.u && new RegExp('^(?:' + RX_PACK_CNT + ')$').test(per.u)){
+      perDose = per.v;
+    } else if(!per.u && sp.doseNum > 0 && Math.abs(per.v - sp.doseNum) < 1e-9){
+      perDose = 1;
+    } else {
+      perDose = per.v;                            // 只剩「只有数字」这一种解释
+    }
+  }
+  if(!(perDose > 0)) perDose = 1;
+
+  let unit = packUnit || rxUnitGuess(name);
+  if(!unit && per.u && new RegExp('^(?:' + RX_PACK_CNT + ')$').test(per.u)) unit = per.u;
+  if(!unit) unit = '片';
+
+  // 规格：还原成「0.25ug*36粒」这一种写法，界面上跟老格式看起来一样（人好核对）
+  let spec = '';
+  if(sp.doseNum > 0) spec = fmtNum(sp.doseNum) + sp.doseUnit;
+  else if(f.dose) spec = String(f.dose).trim();
+  if(perPack != null) spec = (spec ? spec + '*' : '') + perPack + packUnit;
+
+  const use = clean(f.use);
+  const note = (use && use !== '口服') ? use : '';
+
+  const total = (qty != null ? qty : 1) * (perPack != null ? perPack : 1);
+  const warns = [];
+  if(perPack == null && (qty == null || qty > 1)) warns.push('没认出每盒多少' + unit + '，请核对「本次开到」');
+  if(qty == null) warns.push('没写开几盒，按 1 盒算，请核对');
+  if(!fr.hit) warns.push('没认出频次，默认「每日 1 次」，请核对');
+
+  return rxNewRow({
+    name: name, spec: spec, unit: unit,
+    perDose: perDose, cycleDays: fr.cycleDays, timesPerCycle: fr.timesPerCycle,
+    total: round2(total), note: note, warn: warns.join('；')
+  });
+}
+
+function rxParseKV(line){
+  const f = rxKVFields(line);
+  return f ? rxRowFromFields(f) : null;
+}
+
+/* AI 有时不按「一行一味」来，直接甩一段 JSON（还会套 ``` 代码块）。
+   能整段 parse 就整段 parse —— 每个对象转成 `键=值` 再走同一条路，
+   省得为「JSON 版」再写一套字段映射（两套映射迟早会走偏）。 */
+function rxParseJSONRows(block){
+  const t = String(block || '').trim()
+    .replace(/^```[a-zA-Z]*\s*/, '').replace(/```\s*$/, '').trim();
+  if(!/^[[{]/.test(t)) return null;
+  let j = null;
+  try { j = JSON.parse(t); } catch(e){ return null; }
+  let arr = null;
+  if(Array.isArray(j)) arr = j;
+  else if(j && typeof j === 'object'){
+    const keys = ['药品', '药单', 'rows', 'drugs', 'list', 'items'];
+    for(let i = 0; i < keys.length && !arr; i++){
+      if(Array.isArray(j[keys[i]])) arr = j[keys[i]];
+    }
+  }
+  if(!arr) return null;
+  const out = [];
+  arr.forEach(function(o){
+    if(!o || typeof o !== 'object') return;
+    const line = Object.keys(o).map(function(k){ return k + '=' + o[k]; }).join(' | ');
+    const r = rxParseKV(line);
+    if(r && r.name) out.push(r);
+  });
+  return out.length ? out : null;
+}
+
 // 把一段文字（整张处方粘进来）逐行解析成药品行。
 // ★ 先切「药单」：AI 按提示词回的话，药在 [药单开始] 和 [药单结束] 之间，
 //   外面那句「已按处方逐行整理，共 5 种药，金额合计 913.65 元」也带「金额/药」字样，
@@ -5342,8 +5571,16 @@ function rxCutDrugBlock(text){
 }
 
 function rxParseText(text){
+  const block = rxCutDrugBlock(text);
+  const asJSON = rxParseJSONRows(block);       // 整段 JSON（带不带代码块都行）
+  if(asJSON) return asJSON;
+
   const out = [];
-  rxCutDrugBlock(text).split(/\r?\n/).forEach(function(raw){
+  block.split(/\r?\n/).forEach(function(raw){
+    // 字段化那版先认：它自带药名，不用看「规格/数量/用量」这些字
+    // （这些字在 RX_NOT_DRUG 里，走老的逐行猜会被当成表头扔掉）
+    const kv = rxParseKV(raw);
+    if(kv){ if(kv.name) out.push(kv); return; }
     if(!rxIsDrugLine(raw)) return;
     const r = rxParseLine(raw);
     if(r && r.name) out.push(r);
