@@ -27,6 +27,8 @@ import java.io.OutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -328,11 +330,35 @@ public class MainActivity extends Activity {
             JSONArray a = o.getJSONArray("addrs");
             if(a.length() < 1) return "";
             int port = o.optInt("port", 8730);
+            // 电脑上可能有多个网卡，广播回包里带了全部地址。逐个 ping 一下，
+            // 用真正能连通的那个 —— 只取第一个的话，虚拟网卡地址会让手机一直连不上。
+            for(int i = 0; i < a.length(); i++){
+                String host = a.getString(i);
+                String base = "http://" + host + ":" + port;
+                if(pingOk(base)) return base;
+            }
+            // 都 ping 不通也返回第一个，让上层给出「连不上」的具体提示
             return "http://" + a.getString(0) + ":" + port;
         } catch(Exception e){
             return "";
         } finally {
             if(s != null) s.close();
+        }
+    }
+
+    /** 短超时地探一下这个地址是不是药品管家服务，通就返回 true */
+    private boolean pingOk(String base){
+        HttpURLConnection c = null;
+        try {
+            c = (HttpURLConnection) new URL(base + "/api/ping").openConnection();
+            c.setConnectTimeout(600);
+            c.setReadTimeout(600);
+            c.setRequestMethod("GET");
+            return c.getResponseCode() == 200;
+        } catch(Exception e){
+            return false;
+        } finally {
+            if(c != null) c.disconnect();
         }
     }
 

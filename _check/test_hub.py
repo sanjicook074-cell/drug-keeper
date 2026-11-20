@@ -47,6 +47,29 @@ PROBE = r"""
        /上传到电脑/.test((q('#btnHubUp') || {}).textContent || '') &&
        /从电脑拉取/.test((q('#btnHubDown') || {}).textContent || ''), '');
 
+    /* ①b 2026-11-20 用户要求：加号二选一 + 连接入口 + 时钟校准 */
+    ck('★ 加号菜单存在：底方录入(primary/蓝) + 添加药品(ghost/白)',
+       !!q('#dlgAdd') && !!q('#btnAddViaRx') && !!q('#btnAddViaOne') &&
+       /primary/.test(q('#btnAddViaRx').className) &&
+       /ghost/.test(q('#btnAddViaOne').className) &&
+       /底方录入/.test(q('#btnAddViaRx').textContent) &&
+       /添加药品/.test(q('#btnAddViaOne').textContent),
+       (q('#btnAddViaRx') || {}).className + ' / ' + (q('#btnAddViaOne') || {}).className);
+    ck('★ 桌面顶栏有「＋ 添加」和「连接手机」入口',
+       !!q('#btnAddMenu') && /连接手机/.test((q('#btnConnect') || {}).textContent || ''), '');
+    ck('★ 手机三个点旁有「连接电脑」入口',
+       !!q('#btnConnectPhone') && !!q('#dlgConnect'), '');
+    ck('★ 同步区已搬进独立的「连接」窗（不再是藏在导入导出里）',
+       !!(q('#connectBody') && q('#connectBody').querySelector('#hubCode')), '');
+    ck('底方录入在「更多」列表里也标蓝',
+       !!(q('.moreitem.act-rx') && /底方录入/.test(q('.moreitem.act-rx').textContent)), '');
+    // 时钟校准：喂一个和本机差 2 小时的服务端时间，hubClockNow 应该跟过去
+    var realOff = Number(store.get('dk.hub.clockoff') || 0);
+    hubCalibrate(Date.now() + 7200000);
+    var calibrated = Math.abs(hubClockNow() - (Date.now() + 7200000)) < 3000;
+    store.set('dk.hub.clockoff', String(realOff));   // 还原，别影响下面的断言
+    ck('★ 时钟校准：两端差 2 小时也能换算到同一坐标系（修同步不上的根因）', calibrated, hubClockNow() - Date.now());
+
     /* ② 地址规范化：用户多半只会抄 IP:端口，不带 http:// */
     store.set('dk.hub', '127.0.0.1:__PORT__');
     ck('★ 地址只写「IP:端口」也能用（自动补 http://）',

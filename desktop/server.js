@@ -129,6 +129,9 @@ class Hub {
     const pg = this.pageInfo(), apk = this.apkInfo();
     const s = {
       ok: true, app: APP_ID, name: APP_NAME,
+      // 服务端时钟：两端系统时间可能差好几个小时（实测电脑 23:41 / 主档 17:36），
+      // 客户端拿它算一个偏移，把本机改动时间换算到同一个坐标系再比较，否则同步判断全乱。
+      serverNow: Date.now(),
       pairCode: this.state.pairCode,
       updatedAt: this.state.updatedAt,
       updatedBy: this.state.updatedBy,
@@ -291,7 +294,19 @@ function startServer(hub, onLog, port){
       try { code = msg.toString('utf8').trim().slice(0, 16); } catch(e){ return; }
       // 只有配对码对得上才回地址 —— 免得同一个 Wi-Fi 里别的机器乱连
       if(code !== hub.state.pairCode) return;
-      const reply = Buffer.from(JSON.stringify({ addrs: lanAddresses(), port: usePort }));
+      // 按手机的来源 IP 挑同网段的那张网卡地址排在最前：电脑上常有虚拟网卡
+      // （VMware / Docker / 模拟器），first address 未必是手机能到达的网段。
+      let addrs = lanAddresses();
+      const peer = String(rinfo.address || '');
+      const p3 = peer.split('.').slice(0, 3).join('.');
+      if(p3 && p3 !== peer){
+        addrs = addrs.slice().sort(function(a, b){
+          const ha = a.split('.').slice(0, 3).join('.') === p3 ? 0 : 1;
+          const hb = b.split('.').slice(0, 3).join('.') === p3 ? 0 : 1;
+          return ha - hb;
+        });
+      }
+      const reply = Buffer.from(JSON.stringify({ addrs: addrs, port: usePort }));
       try { s.send(reply, rinfo.port, rinfo.address); } catch(e){}
     });
     return s;

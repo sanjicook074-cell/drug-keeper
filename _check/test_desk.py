@@ -152,6 +152,11 @@ def main():
         ping = json.loads(body or b"{}")
         ck("★ /api/ping 认得自己是药品管家", ping.get("app") == "drug-keeper" and ping.get("ok"), ping.get("app"))
 
+        # ---- 服务端时钟（2026-11-20 修「两端差几小时导致同步不上」）----
+        srv_now = int(ping.get("serverNow") or 0)
+        ck("★ 服务端下发 serverNow，供两端校准时钟（修同步不上的根因）",
+           abs(srv_now - int(time.time() * 1000)) < 5000, srv_now)
+
         # ---- 配对码（2026-11-20：手机只输 6 位码就能连）----
         code = str(ping.get("pairCode") or "")
         ck("★ /api/ping 回一个 6 位数字配对码", re.fullmatch(r"\d{6}", code) is not None, code)
