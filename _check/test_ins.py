@@ -76,7 +76,17 @@ PROBE = r"""
     setMeds([]);
     settings.alertDays = 14; settings.targetDays = 30;
     settings.miDays = 30;    settings.miEarly = 7;
-    saveSettings(); save(); render();
+    saveSettings();
+    // ★ 2026-11-20 起设置是**按人存**的：这个人的 cfg 不清掉，
+    //   上一小节在设置弹窗里存的数会盖住这里刚复位的那套。
+    if(curPerson()) curPerson().cfg = null;
+    save(); render();
+  }
+  // 直接改「当前这个人」的设置（等价于在设置弹窗里填一遍）
+  function setCfg(o){
+    curPerson().cfg = Object.assign(
+      { alertDays: 14, targetDays: 30, miDays: 30, miEarly: 7 }, curPerson().cfg || {}, o);
+    save(); render();
   }
   // 造一味药（直接进数据，不走表单）
   function mk(o){
@@ -147,16 +157,16 @@ PROBE = r"""
      miDaysToUnlock(miUnlockDate(mi)));
 
   // 间隔改大 → 所有已有的锁跟着延长（政策变了改一次就够）
-  settings.miDays = 60; saveSettings(); render();
+  setCfg({ miDays: 60 });
   ck('间隔改成 60 → 解锁日变成 今天 + 53', miUnlockDate(mi) === plusD(53), miUnlockDate(mi));
   ck('间隔改成 60 → 卡片上的天数跟着变（还有 53 天）',
      /还有 53 天/.test(metaOf('医保甲片')), metaOf('医保甲片'));
 
   // 提前量 0 = 到期当天才解锁
-  settings.miEarly = 0; render();
+  setCfg({ miDays: 60, miEarly: 0 });
   ck('提前 0 天 → 解锁日 = 开药日 + 60', miUnlockDate(mi) === plusD(60), miUnlockDate(mi));
   // 提前量大过间隔 → 夹到间隔（否则一开完就解，锁等于不存在）
-  settings.miDays = 10; settings.miEarly = 99; render();
+  setCfg({ miDays: 10, miEarly: 99 });
   ck('提前量填得比间隔还大 → 夹到间隔（解锁日 = 开药日 + 0）',
      miUnlockDate(mi) === plusD(0), miUnlockDate(mi));
   ck('这时候今天开今天就解锁（锁确实等于不存在，所以保存时会被拦）',
@@ -424,8 +434,8 @@ PROBE = r"""
   q('#formSet').miDays.value = '45';
   q('#formSet').miEarly.value = '10';
   await submitSettings({ preventDefault: function(){} });
-  ck('保存后 settings.miDays = 45', settings.miDays === 45, settings.miDays);
-  ck('保存后 settings.miEarly = 10', settings.miEarly === 10, settings.miEarly);
+  ck('保存后这个人的 miDays = 45', cfgOf(curPerson()).miDays === 45, cfgOf(curPerson()).miDays);
+  ck('保存后这个人的 miEarly = 10', cfgOf(curPerson()).miEarly === 10, cfgOf(curPerson()).miEarly);
   ck('新参数立刻生效：今天开的锁到 今天+35',
      miUnlockFrom(todayStr()) === plusD(35), miUnlockFrom(todayStr()));
 
@@ -433,7 +443,7 @@ PROBE = r"""
   q('#formSet').miEarly.value = '99';
   R.alerts = [];
   await submitSettings({ preventDefault: function(){} });
-  ck('提前量比间隔还大 → 被夹到间隔', settings.miEarly === 10, settings.miEarly);
+  ck('提前量比间隔还大 → 被夹到间隔', cfgOf(curPerson()).miEarly === 10, cfgOf(curPerson()).miEarly);
   ck('提前量比间隔还大 → 明确告诉用户夹成多少（不静默改数）',
      R.alerts.some(function(a){ return /提前解锁填得太多了/.test(a); }),
      R.alerts.join(' | ').slice(0, 80));

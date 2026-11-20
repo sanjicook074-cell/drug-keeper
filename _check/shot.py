@@ -221,7 +221,11 @@ HOOKS = {
     #   ⚠️ wiz4 要直接调 wizGo —— 那是"点第 4 段进度条"走的同一条路，不是另一套逻辑。
     "wiz1": "openEditor(meds[2].id);",
     "wiz4": "openEditor(meds[2].id); wizGo(WIZ.formMed, 3);",
-    "wizset": "openSettings();",
+    # 设置第一步「给谁设」：临时加一位「妈妈」，否则成品图上只有一个人名，
+    # 看不出「这些数是每人一份」——2026-11-20 用户就是要求先确定给谁设。
+    "wizset": "if(people.length < 2){ var mm2 = { id:uid(), name:'妈妈', note:'',"
+              " box:{ slots: defaultSlots(3) }, meds: [] }; people.push(mm2); save(); render(); }"
+              " openSettings();",
     # ★ 2026-11-19 新增：余量改成「按数量 / 按天数」二选一。edit 那张拍的是默认的「按数量」，
     #   这张切到「按天数」并填 30 天，把「填天数 → 数量当场算出来」的样子钉在图上。
     "stockdays": "openEditor(meds[2].id); wizGo(WIZ.formMed, 4);"

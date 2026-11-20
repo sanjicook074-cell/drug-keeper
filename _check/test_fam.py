@@ -268,6 +268,30 @@ PROBE = r"""
   ck('这时候「复制药名」是禁用的', q('#btnFamCopy').disabled === true,
      q('#btnFamCopy').disabled);
 
+  /* ---------------- 13. 偏少线是每人一条（2026-11-20 设置按人存之后） ----------------
+     同样的「还剩 10 天」，线 7 天的人看着够用，线 14 天的人看着偏少 ——
+     这一页必须各按各的线判，拿当前人的线去判别人家的药就会凭空多一味 / 少一味。 */
+  people.length = 0;
+  var pa = who('甲', [ mk('甲十天片', { stock: 10 }) ]);
+  pa.cfg = { alertDays: 7, targetDays: 30, miDays: 30, miEarly: 7 };
+  var pb = who('乙', [ mk('乙十天片', { stock: 10 }) ]);
+  pb.cfg = { alertDays: 14, targetDays: 30, miDays: 30, miEarly: 7 };
+  people.push(pa, pb);
+  currentId = pa.id;
+  syncMeds(); save(); render(); openFam();
+  ck('线 7 天的人：剩 10 天不算偏少，他那一组根本不出现',
+     allNames().indexOf('甲十天片') < 0, allNames().join('、'));
+  ck('线 14 天的人：同样剩 10 天就算偏少，列出来',
+     allNames().indexOf('乙十天片') >= 0, allNames().join('、'));
+  ck('两家的线不一样时，副标题说「各自的偏少线」，不写死一个数',
+     /各自的偏少线/.test(q('#famSub').textContent), q('#famSub').textContent);
+
+  // 两家线一样时还是把它写成一个数（读着更实在）
+  pb.cfg = { alertDays: 7, targetDays: 30, miDays: 30, miEarly: 7 };
+  save(); render(); openFam();
+  ck('两家线一样时写明「够吃 7 天以内」', /够吃 7 天以内/.test(q('#famSub').textContent),
+     q('#famSub').textContent);
+
   function finish(){
     var pre = document.createElement('pre');
     pre.id = '__T';

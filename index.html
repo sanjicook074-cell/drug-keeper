@@ -76,6 +76,8 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 .padd{border:1px dashed #cbd5e1;background:transparent;color:var(--muted);
   border-radius:999px;padding:7px 15px;cursor:pointer;transition:.15s}
 .padd:hover{border-color:var(--brand);color:var(--brand);background:#eff6ff}
+/* 设置第一步「给谁设」的人名：直接复用主页面那排 .ptab —— 同一个东西不该长两个样 */
+.setwho{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:3px}
 
 /* ---------- 设置里的成员管理 ---------- */
 .prow{display:flex;align-items:center;gap:9px;padding:7px 0}
@@ -1574,10 +1576,23 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
   <form id="formSet" novalidate>
     <div class="dlg-h">
       <h3>设置</h3>
-      <p>几个数分别管一件事，一次填一个。</p>
+      <!-- 这行会跟着第一步选的人变（setFill 里改）——后面的几步看不到人名条，
+           留一句「正在给谁设」，不至于填到一半忘了是在改谁的数。 -->
+      <p id="setSub">先选给谁设，再一个数一个数地填。</p>
     </div>
     <div class="dlg-b wizbody">
       <div class="grid2">
+        <!-- ★ 2026-11-20 用户要求：「这些信息都是按照不同的人，先确定这个设置针对的是谁，
+             然后才有后边的设置」。所以第一步不是填数，是选人 —— 下面四个数都是**每人一份**。 -->
+        <section class="wstep" data-wstep="who" data-name="给谁设">
+          <div class="sec-title">这些数是给谁设的</div>
+          <div class="full">
+            <div class="setwho" id="setWho"></div>
+            <span class="hintline"><b>这四个数每人各存一份。</b><br>
+              选谁就改谁；保存后页面也切到这个人。</span>
+          </div>
+        </section>
+
         <section class="wstep" data-wstep="alert" data-name="偏少线">
           <div class="sec-title">什么时候提醒你</div>
           <label class="full">偏少线（天）
@@ -1811,6 +1826,32 @@ const LS_SET  = 'medkeeper.settings.v1';
 // miDays / miEarly 是医保锁的两个参数（见「医保锁」那一节）：开药间隔、提前几天解锁。
 const DEFAULT_SETTINGS = { alertDays: 14, targetDays: 30, miDays: 30, miEarly: 7 };
 
+/* 这套数**按人存**（2026-11-20 用户要求）：
+   「设置里边的这些信息呢，都是按照这个不同的人，首先先确定这一个设置针对的是谁，
+     然后才有后边的设置。」
+
+   两层：
+     settings —— 全局兜底。老存档里那四个数就存在这儿（localStorage 的 medkeeper.settings.v1），
+                 升级后原样留着，所以**老用户一个数都不用重填**。
+     p.cfg    —— 这个人自己那套。设过就有了，没设过就照全局兜底。
+   ★ 为什么不做成「一升级就把全局的数抄给每个人」：那等于把「默认值」冒充成
+     「你给这个人设过的值」—— 以后改默认值，谁都影响不到；而且备份一导，
+     妈妈会莫名其妙多出一份和「我」一模一样的设置。
+   ★ 读的时候一律用 cfgOf(p) / cfg()，不要去读 settings.xxx —— 那样会把
+     「某个人调过偏少线」这件事悄悄抹平。 */
+function cfgOf(p){
+  const out = Object.assign({}, DEFAULT_SETTINGS, settings);
+  p = p || curPerson();
+  const c = (p && p.cfg && typeof p.cfg === 'object') ? p.cfg : null;
+  if(!c) return out;
+  ['alertDays', 'targetDays', 'miDays', 'miEarly'].forEach(function(k){
+    if(c[k] != null && isFinite(Number(c[k]))) out[k] = Number(c[k]);
+  });
+  return out;
+}
+// 当前这个人的那套数（绝大多数界面只关心他）
+function cfg(){ return cfgOf(curPerson()); }
+
 let settings = Object.assign({}, DEFAULT_SETTINGS);
 
 /* 数据模型 v2：people = 每个人一个独立药箱
@@ -1844,8 +1885,11 @@ function setMeds(arr){
    ★ 一个 id 可以出现在多个格里：早晚各吃一次的药，本来就该在两格。
    ★ 格子里残留的 id 在渲染时按「查不到就跳过」处理，删药时也会顺手剔一遍。 */
 const BOX_MIN = 1, BOX_MAX = 7;
-// 格子的默认名：按常见吃法排的。真按饭前饭后分，双击格名改成「早饭前 / 早饭后」即可。
-const SLOT_DEF = ['早', '中', '晚', '睡前', '加餐', '第6格', '第7格'];
+// 格子的默认名：前四格按常见吃法排，第五格起就老老实实叫「第N格」。
+// ★ 2026-11-20 用户：「这个加餐，这个就太离谱了，那个不是加餐」——
+//   第 5 格原来预设成「加餐」，可加餐不是一次「服药时间」，一天吃四顿的人本来也不多，
+//   摆在那儿只像个玩笑。改回中性名字，真要用就双击格名自己改。
+const SLOT_DEF = ['早', '中', '晚', '睡前', '第5格', '第6格', '第7格'];
 
 function defaultSlots(n){
   const out = [];
@@ -1953,6 +1997,18 @@ const store = {
   set(k, v){ try { localStorage.setItem(k, v); return true; } catch(e){ this.ok = false; return false; } }
 };
 
+// 每人那套设置：只收四个认识的数字。没设过就**不建这个键** ——
+// 空对象和"设过但都是默认值"在界面上一模一样，可迁移/导出时差一个键，
+// 以后真要改默认值就分不清谁该跟、谁不该跟了。
+function normCfg(c){
+  if(!c || typeof c !== 'object') return undefined;
+  const out = {};
+  ['alertDays', 'targetDays', 'miDays', 'miEarly'].forEach(function(k){
+    if(c[k] != null && isFinite(Number(c[k]))) out[k] = Number(c[k]);
+  });
+  return Object.keys(out).length ? out : undefined;
+}
+
 // 把任意版本的存档统一成 v2 结构；认不出来就返回 null
 function migrate(obj){
   if(!obj || typeof obj !== 'object') return null;
@@ -1964,7 +2020,8 @@ function migrate(obj){
         note: (p && p.note) ? String(p.note) : '',   // 就诊人的情况（右侧上面那个框，按人分开存）
         meds: (p && Array.isArray(p.meds)) ? p.meds : [],
         box: normBox(p && p.box),                     // 药盒：每一格放哪些药（老存档没有就补默认 3 格）
-        stage: normStage(p && p.stage)                // 摆药台：拖拽中转站（老存档没有就是空）
+        stage: normStage(p && p.stage),               // 摆药台：拖拽中转站（老存档没有就是空）
+        cfg: normCfg(p && p.cfg)                       // 这个人自己那套设置（没设过就是没有）
       };
     });
     return { people: list, currentId: obj.currentId || list[0].id };
@@ -2076,13 +2133,14 @@ function daysLeft(m){
   if(d <= 0) return Infinity;
   return round2(stockNow(m) / d);
 }
-// 状态
-function level(m){
+// 状态。第二个参数是「用谁的偏少线」—— 全家偏少那一页要拿每个人自己的线去判，
+// 不传就是当前人。★ 别在这里读 settings.alertDays：那是全局兜底，不是某个人的线。
+function level(m, p){
   if(isPrn(m)) return 'prn';                     // 备用药没有「够不够吃到下次」这回事
   const dl = daysLeft(m);
   if(!isFinite(dl)) return 'na';
   if(dl <= 0) return 'out';
-  if(dl <= settings.alertDays) return 'soon';   // 只有「偏少」一档，不再分红/黄两级
+  if(dl <= cfgOf(p).alertDays) return 'soon';   // 只有「偏少」一档，不再分红/黄两级
   return 'ok';
 }
 // 档位定稿（2026-09-28）：只有 已用完 / 偏少 / 充足（+未设用法）。
@@ -2102,9 +2160,9 @@ const LEVEL_ORDER = { out:0, soon:1, ok:2, na:3, prn:4 };   // prn 永远排在�
    ★ 别把这条线并进 level()：档位那一套还在按 alertDays 说话（统计栏写的就是「≤N天」），
      两者的答案本来就可以不一样 —— 卡片说「充足」，清单说「顺手开一个周期」，都不算错；
      卡片底色不跟着改，也是这个道理。 */
-function refillLine(m){
+function refillLine(m, p){
   const cap = rxCapDays(m);
-  return isFinite(cap) ? cap : settings.alertDays;
+  return isFinite(cap) ? cap : cfgOf(p).alertDays;
 }
 
 /* 「这味现在真的缺」—— 只看数量/天数这一条，**不看医保锁**。
@@ -2112,11 +2170,11 @@ function refillLine(m){
    所以这里用天数比，跟卡片上那句「剩 N 天」是同一把尺子。
    ★ 它和 inRefill 必须分开：锁着所以"不进清单" ≠ 锁着所以"不缺"。
      入库后那句「有几种还没凑满一个周期」问的是后者，用错就把锁着的药从账里抹掉了。 */
-function shortNow(m){
+function shortNow(m, p){
   const dl = daysLeft(m);
   if(!isFinite(dl)) return false;
   const cap = rxCapDays(m);
-  return isFinite(cap) ? dl < cap : dl <= settings.alertDays;
+  return isFinite(cap) ? dl < cap : dl <= cfgOf(p).alertDays;
 }
 
 /* 进「要开的药」清单 = **缺** 且 **医保锁已经开了**。
@@ -2160,10 +2218,10 @@ function lowDays(m){
    ★ 「自费买」永远不碰锁：自费补货不动 miStart，原来那把医保锁还在（本来就还在）。
    ★ 校准余量也不碰锁 —— 那只是「把数字改对」，不是「又开了一次药」。 */
 
-function miDays(){ return Math.max(1, Math.round(num(settings.miDays, 30)) || 30); }
-function miEarly(){
-  const e = Math.max(0, Math.round(num(settings.miEarly, 7)));
-  return Math.min(e, miDays());            // 提前量不能大过间隔，否则等于「开完就解锁」
+function miDays(p){ return Math.max(1, Math.round(num(cfgOf(p).miDays, 30)) || 30); }
+function miEarly(p){
+  const e = Math.max(0, Math.round(num(cfgOf(p).miEarly, 7)));
+  return Math.min(e, miDays(p));           // 提前量不能大过间隔，否则等于「开完就解锁」
 }
 function miIsMI(m){ return !!(m && m.ins === 'mi'); }
 function miStartOf(m){ return miIsMI(m) ? (m.miStart || '') : ''; }
@@ -2171,17 +2229,17 @@ function miStartOf(m){ return miIsMI(m) ? (m.miStart || '') : ''; }
 // 从「开药日」算解锁日：开药日 + 间隔 − 提前量。两个参数都在设置里。
 // ★ 界面上只认这一个日期，不另外区分「解锁」和「到期」——
 //   用户的原话就是「锁解开 = 可以再去医院开药了」，摆两个日期只会让人对着日历算。
-function miUnlockFrom(startStr){
+function miUnlockFrom(startStr, p){
   const d = parseDate(startStr);
   if(!d) return '';
-  d.setDate(d.getDate() + miDays() - miEarly());
+  d.setDate(d.getDate() + miDays(p) - miEarly(p));
   return fmtDate(d);
 }
 // 这味药的解锁日（没标成医保、或没记开药日 → ''）
-function miUnlockDate(m){ return miUnlockFrom(miStartOf(m)); }
+function miUnlockDate(m, p){ return miUnlockFrom(miStartOf(m), p); }
 // 现在锁着吗（锁着 = 这一趟不能用医保开它）
-function miLocked(m){
-  const u = miUnlockDate(m);
+function miLocked(m, p){
+  const u = miUnlockDate(m, p);
   return !!u && todayStr() < u;
 }
 // 还有几天解锁（0 = 已经开了）
@@ -2197,9 +2255,9 @@ function fmtMD(s){
 }
 
 // 卡片上药名旁边那枚小标：医保开的才有（自费是默认状态，多一枚标只会变成噪音）。
-function miBadge(m){
+function miBadge(m, p){
   if(!miIsMI(m)) return '';
-  return miLocked(m)
+  return miLocked(m, p)
     ? ' <span class="tag ins-lock" title="医保开的，还在锁定期 —— 这之前不能用医保再开">🔒 医保</span>'
     : ' <span class="tag ins-open" title="医保开的，已经可以再开了">医保</span>';
 }
@@ -2217,11 +2275,11 @@ function miMeta(m){
 
 // 要补多少（单位数）：把用量补到「够吃 targetDays 天」所需的量，向上取整
 // —— 不经过「盒」这一层：各厂家每盒片数不一样，知道总量就够了
-function needUnits(m){
+function needUnits(m, p){
   const d = dailyUse(m);
   const dl = daysLeft(m);
   if(d <= 0 || !isFinite(dl)) return 0;
-  return Math.max(0, Math.ceil((settings.targetDays - dl) * d - 1e-9));
+  return Math.max(0, Math.ceil((cfgOf(p).targetDays - dl) * d - 1e-9));
 }
 // 单次开药上限（**单位数**）—— 界面填的是天数，这里负责换算。
 // ★ 2026-10-27 用户要求：这一格改成「一次最多能开几天」。理由是开药按天说话
@@ -2275,10 +2333,10 @@ function fmtDays(dl){
   return String(Math.floor(dl));
 }
 // 进度条：剩余天数 / 目标天数
-function barPct(m){
+function barPct(m, p){
   const dl = daysLeft(m);
   if(!isFinite(dl)) return 0;
-  return Math.max(0, Math.min(1, dl / Math.max(1, settings.targetDays))) * 100;
+  return Math.max(0, Math.min(1, dl / Math.max(1, cfgOf(p).targetDays))) * 100;
 }
 // 用药频率的白话：每日 2 片 / 每 14 天 1 支
 function freqText(m){
@@ -2373,7 +2431,7 @@ function renderStats(){
   const box = [
     ['', daily.length, '每天吃的药', ''],
     ['out', c.out, '已用完', 'out'],
-    ['soon', c.soon, '偏少（≤' + settings.alertDays + '天）', 'soon'],
+    ['soon', c.soon, '偏少（≤' + cfg().alertDays + '天）', 'soon'],
     ['ok', c.ok, '充足', 'ok'],
     ['prn', meds.length - daily.length, '备用药（不按天算）', 'prn']
   ];
@@ -4038,7 +4096,7 @@ async function addPerson(){
   currentId = p.id;      // 新建后直接切过去，方便马上录药
   syncMeds();
   save(); render();
-  if($('#dlgSet').open) renderPeopleMgr();
+  if($('#dlgSet').open){ renderPeopleMgr(); setWhoRefresh(); }
 }
 
 /* 按给定名字直接建人 —— 走「底方上抄下来的姓名」那条路（addPerson 是弹 prompt 问名字的）。
@@ -4052,7 +4110,7 @@ function addPersonNamed(name){
   currentId = p.id;      // 底方上的药就记在他/她名下
   syncMeds();
   save(); render();
-  if($('#dlgSet').open) renderPeopleMgr();
+  if($('#dlgSet').open){ renderPeopleMgr(); setWhoRefresh(); }
   return p;
 }
 
@@ -4090,7 +4148,7 @@ async function delPerson(id){
   if(currentId === id) currentId = people[0].id;
   syncMeds();
   save(); render();
-  if($('#dlgSet').open) renderPeopleMgr();
+  if($('#dlgSet').open){ renderPeopleMgr(); setWhoRefresh(); }
 }
 
 function renderPeopleMgr(){
@@ -4554,7 +4612,7 @@ async function openDisp(){
   }
 
   $('#dispSub').textContent = '勾上的这 ' + plan.length + ' 种，每种按它自己的「一次最多能开几天」'
-    + '换算出默认数量（开满一个周期）；没填天数的就补满到够吃 ' + settings.targetDays + ' 天。'
+    + '换算出默认数量（开满一个周期）；没填天数的就补满到够吃 ' + cfg().targetDays + ' 天。'
     + '数量可以逐味改（留空回到默认，填 0 就是这一趟不开它）。确认即更新药库。';
 
   $('#dispList').innerHTML = plan.map(function(p){
@@ -4581,7 +4639,7 @@ async function openDisp(){
                     + (p.qty < nu
                         ? '，共需 ' + fmtNum(nu) + '，要开 ' + rxTrips(m) + ' 次'
                         : '')
-                  : '没填上限，补满 ' + settings.targetDays
+                  : '没填上限，补满 ' + cfg().targetDays
                     + ' 天需 ' + fmtNum(nu) + ' ' + esc(unit)) + '）</span>'
       +     '</div>'
       +   '</div>'
@@ -4662,13 +4720,15 @@ function familyLow(){
   const groups = [];
   let total = 0;
   // level / daysLeft / stockNow 都是只看单条药的纯函数，传别人的药照样成立
+  // ★ 偏少线是**每人一条**（2026-11-20 起），所以这里必须把 p 传进去 ——
+  //   按当前人的线去判别人家的药，会把"妈妈线是 7 天"的人按 14 天算成偏少。
   people.forEach(function(p){
     const rows = [];
     (p.meds || []).forEach(function(m){
       if(isPrn(m)) return;                       // 备用药不按天吃，没有「偏少」这回事
-      const lv = level(m);
+      const lv = level(m, p);
       if(lv !== 'out' && lv !== 'soon') return;  // na（没填用法）算不出天数，也不进
-      rows.push({ m: m, lv: lv, dl: daysLeft(m) });
+      rows.push({ m: m, p: p, lv: lv, dl: daysLeft(m) });
     });
     if(!rows.length) return;
     rows.sort(function(a, b){
@@ -4689,11 +4749,11 @@ function famRowHTML(x){
   return '<div class="disp-row" data-lv="' + x.lv + '">'
     +   '<div class="disp-info">'
     +     '<div class="disp-name"><span class="fam-mn">' + esc(m.name) + '</span>'
-    +       '<span class="tag ' + x.lv + '">' + LEVEL_LABEL[x.lv] + '</span>' + miBadge(m) + '</div>'
+    +       '<span class="tag ' + x.lv + '">' + LEVEL_LABEL[x.lv] + '</span>' + miBadge(m, x.p) + '</div>'
     +     '<div class="disp-meta">余量 <b>' + fmtNum(stockNow(m)) + '</b> ' + esc(unit)
     +       (freq ? '<span class="disp-src">　' + freq + '</span>' : '')
-    +       (miLocked(m) ? '<span class="disp-src mi-when lock">　医保锁到 '
-              + fmtMD(miUnlockDate(m)) + '</span>' : '')
+    +       (miLocked(m, x.p) ? '<span class="disp-src mi-when lock">　医保锁到 '
+              + fmtMD(miUnlockDate(m, x.p)) + '</span>' : '')
     +     '</div>'
     +   '</div>'
     +   '<div class="fam-day" data-lv="' + x.lv + '">' + day + '</div>'
@@ -4706,9 +4766,17 @@ function renderFam(){
   const sub = $('#famSub'), list = $('#famList'), note = $('#famNote');
 
   // 只有一个人时别写「把 1 个人药箱里」，读着别扭
+  // ★ 偏少线现在每人一条：全家人的线都一样才敢写成一个数，
+  //   有人调过就只说「各自的偏少线」—— 写死一个数会让另一半人对着数字怀疑漏了药。
+  const lineTxt = (function(){
+    const seen = {};
+    people.forEach(function(p){ seen[cfgOf(p).alertDays] = 1; });
+    const ks = Object.keys(seen);
+    return (ks.length === 1) ? ('够吃 ' + ks[0] + ' 天以内') : '够吃各自的偏少线以内';
+  })();
   sub.textContent = (n <= 1)
-    ? '你药箱里「已用完」和「够吃 ' + settings.alertDays + ' 天以内」的药。'
-    : '把 ' + n + ' 个人药箱里「已用完」和「够吃 ' + settings.alertDays + ' 天以内」的药摊在一页，'
+    ? '你药箱里「已用完」和「' + lineTxt + '」的药。'
+    : '把 ' + n + ' 个人药箱里「已用完」和「' + lineTxt + '」的药摊在一页，'
       + '这一趟该买哪些，看这里。';
 
   const copyBtn = $('#btnFamCopy');
@@ -4736,7 +4804,7 @@ function renderFam(){
   }).join('');
 
   let miN = 0;
-  r.groups.forEach(function(g){ g.rows.forEach(function(x){ if(miLocked(x.m)) miN++; }); });
+  r.groups.forEach(function(g){ g.rows.forEach(function(x){ if(miLocked(x.m, x.p)) miN++; }); });
   note.textContent = '备用药不按天吃，没有「偏少」这回事，所以不列在这里；'
     + '没填用法的药也算不出天数，同样漏掉 —— 要一起看的话，先在各自的药箱里把用法补上。'
     + (miN ? '带 🔒 的 ' + miN + ' 味还在医保锁定期，这一趟用医保开不了，得等解锁或自费买。' : '')
@@ -4757,7 +4825,7 @@ function famCopyText(){
     g.rows.forEach(function(x, i){
       const tail = (x.lv === 'out') ? '已用完' : ('还剩 ' + fmtDays(x.dl) + ' 天');
       // 锁着的顺带说一句「医保锁到几号」—— 收消息的人照着买/照着开时，这条最要紧
-      const lock = miLocked(x.m) ? ('，医保锁到 ' + fmtMD(miUnlockDate(x.m))) : '';
+      const lock = miLocked(x.m, x.p) ? ('，医保锁到 ' + fmtMD(miUnlockDate(x.m, x.p))) : '';
       L.push((i + 1) + '. ' + x.m.name + '（' + tail + lock + '）');
     });
   });
@@ -6150,7 +6218,7 @@ function exportJSON(){
   const payload = {
     app: 'drug-keeper', version: 2,
     exportedAt: new Date().toISOString(),
-    settings: settings,
+    settings: cfg(),          // 老版本（还没按人存设置）导入时也能拿到像样的四个数
     currentId: currentId,
     people: people            // 整包备份：所有人 + 各自药箱
   };
@@ -6257,39 +6325,111 @@ function importJSON(file){
   reader.readAsText(file, 'utf-8');
 }
 
-function openSettings(){
+/* 设置弹窗：先选人，再一个个填（2026-11-20 用户要求）。
+   ★ 四个数现在**每人一份**（p.cfg）。改动先记在 setDraft 里 ——
+     「给妈妈改到一半，切回我看看，再切回来」不能把刚敲的数丢掉；
+     点保存才一次性落到各自的 p.cfg 上，中途切人不会写盘。
+   ★ 保存后页面跟着切到这个人：刚设的数立刻在身上生效，不然关掉弹窗
+     看到的还是别人的线，会以为没保存。 */
+let setPid = '';        // 这次在给谁设（不是 currentId：可以给别人设完再切过去）
+let setDraft = {};      // pid → { alertDays, targetDays, miDays, miEarly }（原样存字符串，提交时才夹）
+
+function setWhoRender(){
+  const box = $('#setWho');
+  if(!box) return;
+  box.innerHTML = people.map(function(p){
+    return '<button type="button" class="ptab' + (p.id === setPid ? ' active' : '') + '"'
+      + ' data-spid="' + p.id + '" title="给「' + esc(p.name) + '」设">'
+      + '<span class="pnm">' + esc(p.name) + '</span></button>';
+  }).join('');
+}
+// 把某个人那套数填进四个输入框（没设过就是全局兜底那套）
+function setFill(pid){
+  const p = people.filter(function(x){ return x.id === pid; })[0] || curPerson();
+  if(!p) return;
+  setPid = p.id;
+  if(!setDraft[p.id]){
+    const c = cfgOf(p);
+    setDraft[p.id] = { alertDays: c.alertDays, targetDays: c.targetDays,
+                       miDays: c.miDays, miEarly: c.miEarly };
+  }
+  const d = setDraft[p.id], f = $('#formSet');
+  f.alertDays.value = d.alertDays;
+  f.targetDays.value = d.targetDays;
+  f.miDays.value = d.miDays;
+  f.miEarly.value = d.miEarly;
+  setWhoRender();
+  // 标题下面那句跟着人走：后面几步看不到人名条，也得知道在改谁的数
+  const sub = $('#setSub');
+  if(sub) sub.textContent = '正在给「' + p.name + '」设';
+}
+// 屏幕上这一刻的四个格子 → 草稿（切人前、提交前都调一次）
+function setPull(){
   const f = $('#formSet');
-  f.alertDays.value = settings.alertDays;
-  f.targetDays.value = settings.targetDays;
-  f.miDays.value = miDays();
-  f.miEarly.value = miEarly();
+  if(!setPid || !f) return;
+  setDraft[setPid] = {
+    alertDays: f.alertDays.value, targetDays: f.targetDays.value,
+    miDays: f.miDays.value, miEarly: f.miEarly.value
+  };
+}
+// 成员增删之后：重画人名条；被删掉的那个人如果正选着，退回到当前人
+function setWhoRefresh(){
+  if(!$('#dlgSet').open) return;
+  const alive = people.filter(function(p){ return p.id === setPid; })[0];
+  setFill(alive ? setPid : currentId);
+}
+
+function openSettings(){
+  setPid = '';
+  setDraft = {};
   renderPeopleMgr();
-  wizReset(WIZ.formSet);        // 设置也是一步一个数，从第一步开始
+  setFill(currentId);            // 默认就是正在看的这个人
+  wizReset(WIZ.formSet);         // 设置也是一步一个数，从第一步开始
   $('#dlgSet').showModal();
 }
 async function submitSettings(e){
   e.preventDefault();
   const f = $('#formSet');
-  const a = Math.max(0, num(f.alertDays.value, 14));
-  const t = Math.max(1, num(f.targetDays.value, 30));
-  const md = Math.max(1, Math.round(num(f.miDays.value, 30)) || 30);
-  let me = Math.max(0, Math.round(num(f.miEarly.value, 7)) || 0);
-  // 提前量一旦大过间隔，解锁日就早于开药日 —— 那把锁等于不存在。
-  // 不静默改数字：告诉人被夹成了多少，否则下次打开设置会发现填的数和存的不一样。
-  if(me > md){
+  setPull();                     // 屏幕上这一格先记进去（别指望 input 一定触发过）
+
+  // 每个人挨个夹一遍：负数、空、以及「提前解锁大过开药间隔」
+  // （提前量一旦大过间隔，解锁日就早于开药日 —— 那把锁等于不存在。）
+  let warn = null;
+  Object.keys(setDraft).forEach(function(pid){
+    const p = people.filter(function(x){ return x.id === pid; })[0];
+    const d = setDraft[pid];
+    if(!p || !d) return;
+    const a  = Math.max(0, Math.round(num(d.alertDays, 14)) || 0);
+    const t  = Math.max(1, Math.round(num(d.targetDays, 30)) || 30);
+    const md = Math.max(1, Math.round(num(d.miDays, 30)) || 30);
+    let   me = Math.max(0, Math.round(num(d.miEarly, 7)) || 0);
+    if(me > md){
+      // 只在「正给他设的这个人」身上弹提示，别人那几份默默夹住 ——
+      // 一次弹三个一模一样的框只会让人乱。
+      if(pid === setPid) warn = { me: me, md: md };
+      me = md;
+    }
+    p.cfg = { alertDays: a, targetDays: t, miDays: md, miEarly: me };
+    setDraft[pid] = p.cfg;
+  });
+
+  if(warn){
+    // 不静默改数字：告诉人被夹成了多少，否则下次打开设置会发现填的数和存的不一样。
     await askAlert({
       title: '提前解锁填得太多了',
-      sub: '提前解锁 ' + me + ' 天，比开药间隔 ' + md + ' 天还长 ——\n'
-        + '那样一开完就解锁，锁就没用了。\n\n已经按 ' + md + ' 天记下，想留一点就填小一点（比如 7）。'
+      sub: '提前解锁 ' + warn.me + ' 天，比开药间隔 ' + warn.md + ' 天还长 ——\n'
+        + '那样一开完就解锁，锁就没用了。\n\n已经按 ' + warn.md + ' 天记下，想留一点就填小一点（比如 7）。'
     });
-    me = md;
   }
-  settings.alertDays = a;      // 唯一的一条线：统计栏、清单、卡片文字全看它
-  settings.targetDays = t;
-  settings.miDays = md;
-  settings.miEarly = me;
-  saveSettings(); render();
+
+  if(setPid && setPid !== currentId){
+    currentId = setPid;      // 刚设的是谁，页面就切到谁
+    pickClear();             // 和 switchPerson 一个口径：勾选是「这个人的这一趟」
+    syncMeds();
+  }
+  save();                    // 设置随人一起存进 people（不再单独写 LS_SET）
   $('#dlgSet').close();
+  render();
 }
 
 /* -------------------- 绑定 -------------------- */
@@ -6301,6 +6441,18 @@ wizInit('formNum');
 
 $('#btnAdd').addEventListener('click', function(){ openEditor(null); });
 $('#btnSettings').addEventListener('click', openSettings);
+
+// 设置第一步：点人名就切到给谁设（先把当前这格记进草稿，免得白填）
+$('#setWho').addEventListener('click', function(e){
+  const b = e.target.closest('button[data-spid]');
+  if(!b) return;
+  const pid = b.getAttribute('data-spid');
+  if(!pid || pid === setPid) return;
+  setPull();
+  setFill(pid);
+});
+// 四个数边打边记进草稿 —— 这样「切人看别人怎么填的」不会把已经敲的丢掉
+$('#formSet').addEventListener('input', setPull);
 
 // 设置里的成员管理：删除 / 新增用点击，改名用实时 input
 $('#peopleMgr').addEventListener('click', function(e){

@@ -422,18 +422,70 @@ PROBE = r"""
 
   /* ================= 10. 设置也是引导式 ================= */
   openSettings();
-  ck('设置打开：5 段、亮在第 1 段', bar('formSet') === '5:1', bar('formSet'));
+  ck('设置打开：6 段、亮在第 1 段', bar('formSet') === '6:1', bar('formSet'));
+  // 2026-11-20 用户要求：先确定这些数是给谁设的，才有后面的数
+  ck('第一步是「给谁设」，不是某个数', stepOf('formSet') === 'who', stepOf('formSet'));
+  ck('人名条按人头列出来，当前那个人是亮的',
+     qa('#setWho .ptab').length === people.length && qa('#setWho .ptab.active').length === 1,
+     qa('#setWho .ptab').length + ' 个 / 亮 ' + qa('#setWho .ptab.active').length);
   var names = [];
-  for(var k = 0; k < 5; k++){
+  for(var k = 0; k < 6; k++){
     names.push((onStep('formSet') || { getAttribute: function(){ return '?'; } }).getAttribute('data-name'));
-    if(k < 4) tapNext('formSet');
+    if(k < 5) tapNext('formSet');
   }
-  ck('五步依次是：偏少线 / 补货目标 / 医保间隔 / 提前解锁 / 家庭成员',
-     names.join(' > ') === '偏少线 > 补货目标 > 医保间隔 > 提前解锁 > 家庭成员', names.join(' > '));
+  ck('六步依次是：给谁设 / 偏少线 / 补货目标 / 医保间隔 / 提前解锁 / 家庭成员',
+     names.join(' > ') === '给谁设 > 偏少线 > 补货目标 > 医保间隔 > 提前解锁 > 家庭成员',
+     names.join(' > '));
   ck('最后一步才轮到家庭成员那块', stepOf('formSet') === 'people', stepOf('formSet'));
   ck('此时的按钮是「保存」', txt(nextB('formSet')) === '保存', txt(nextB('formSet')));
   tapNext('formSet');
   ck('设置保存后弹窗关闭', !q('#dlgSet').open, String(q('#dlgSet').open));
+
+  /* ============ 10b. 设置按人存：先选人，再填（2026-11-20 用户要求） ============
+     「这些信息都是按照不同的人，先确定这个设置针对的是谁，然后才有后边的设置。」
+     四件事必须成立：① 打开时默认对着正在看的这个人；② 给妈妈填的不会串到我头上；
+     ③ 切人回填的是他自己那套；④ 切走再切回来，刚敲的数还在（草稿没丢）。 */
+  var meP = curPerson();
+  var momP = addPersonNamed('测试妈妈');       // 新建后 currentId 已经切到妈妈
+  ck('先造第二个人', !!momP && people.length === 2, people.length);
+  openSettings();
+  ck('打开设置时，默认选中的是正在看的那个人',
+     q('#setWho .ptab.active').getAttribute('data-spid') === momP.id, '');
+  tapNext('formSet');                          // 进「偏少线」
+  q('#formSet').alertDays.value = '7';
+  q('#formSet').alertDays.dispatchEvent(new Event('input', { bubbles: true }));
+  for(var m2 = 0; m2 < 4; m2++) tapNext('formSet');   // 一路走到最后一步
+  ck('给妈妈填完能走到最后一步（家庭成员）', stepOf('formSet') === 'people', stepOf('formSet'));
+  tapNext('formSet');                          // 保存
+  await null;
+  ck('妈妈那套偏少线 = 7', cfgOf(momP).alertDays === 7, cfgOf(momP).alertDays);
+  ck('★「我」那套一点没被带着改，还是 14', cfgOf(meP).alertDays === 14, cfgOf(meP).alertDays);
+  ck('保存后页面切到刚设的那个人', currentId === momP.id, currentId === momP.id);
+
+  // 切回「我」：格子里应该是我的 14，不是妈妈刚填的 7
+  openSettings();
+  q('#setWho button[data-spid="' + meP.id + '"]').click();
+  ck('★ 点「我」→ 偏少线回填的是我自己的 14', q('#formSet').alertDays.value === '14',
+     q('#formSet').alertDays.value);
+  // 敲一个新数，切到妈妈再切回来 —— 草稿不能丢
+  q('#formSet').alertDays.value = '21';
+  q('#formSet').alertDays.dispatchEvent(new Event('input', { bubbles: true }));
+  q('#setWho button[data-spid="' + momP.id + '"]').click();
+  ck('切到妈妈，格子换成她自己的 7', q('#formSet').alertDays.value === '7',
+     q('#formSet').alertDays.value);
+  q('#setWho button[data-spid="' + meP.id + '"]').click();
+  ck('★ 切回来，刚敲的 21 还在（切人不会把没保存的改动冲掉）',
+     q('#formSet').alertDays.value === '21', q('#formSet').alertDays.value);
+  for(var m3 = 0; m3 < 6; m3++) tapNext('formSet');   // 5 步走到最后 + 1 下保存
+  await null;
+  ck('保存后我这套 = 21', cfgOf(meP).alertDays === 21, cfgOf(meP).alertDays);
+  ck('妈妈那套不受影响，还是 7', cfgOf(momP).alertDays === 7, cfgOf(momP).alertDays);
+  ck('保存后页面切回「我」', currentId === meP.id, currentId === meP.id);
+
+  // 收尾：把测试用的人去掉，别影响后面的静态断言
+  people = people.filter(function(x){ return x.id !== momP.id; });
+  currentId = meP.id; syncMeds(); save(); render();
+  ck('收尾：人又回到 1 个', people.length === 1, people.length);
 
   /* ================= 11. 字段一个没少、name 一个没改 ================= */
   var wantInputs = ['name', 'spec', 'perDose', 'unit', 'cycleDays', 'timesPerCycle',

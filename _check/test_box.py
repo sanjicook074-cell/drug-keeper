@@ -297,6 +297,10 @@ PROBE = r"""
   ck('点 − 回到 3 格', slots().length === 3, slots().length);
   await setSlotCount(99);
   ck('格数上限 7（填 99 也只到 7）', slots().length === 7, slots().length);
+  // 2026-11-20 用户：「这个加餐，这个就太离谱了，那个不是加餐」→ 第 5 格改叫「第5格」
+  ck('第 5 格叫「第5格」，不再预设成「加餐」', slotNames()[4] === '第5格', slotNames().join('/'));
+  ck('第 6、7 格也照旧是「第6格 / 第7格」',
+     slotNames()[5] === '第6格' && slotNames()[6] === '第7格', slotNames().join('/'));
   ck('到上限后「＋」按钮是禁用的', q('#box button[data-box="inc"]').disabled === true, '');
   await setSlotCount(0);
   ck('格数下限 1（填 0 也留 1 格）', slots().length === 1, slots().length);
