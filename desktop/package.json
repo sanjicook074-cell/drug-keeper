@@ -1,0 +1,13 @@
+{
+  "name": "drug-keeper-desk",
+  "version": "1.0.0",
+  "description": "药品管家 · 数据台：局域网内的数据主档与更新分发",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "45.2.1"
+  }
+}

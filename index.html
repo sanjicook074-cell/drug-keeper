@@ -1050,6 +1050,25 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
    默认不画，只有键盘 Tab 走到时才画（:focus-visible）。 */
 #dlgMore .moreitem:focus,#dlgIO .moreitem:focus{outline:none}
 #dlgMore .moreitem:focus-visible,#dlgIO .moreitem:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+
+/* ---- 局域网同步（2026-11-20）：跟桌面版「数据台」互通 ----
+   file:// 页面连 http://电脑IP:8730 属于跨域，靠的是服务端把 CORS 全开；
+   这里只负责收集地址、发请求、把结果说人话。 */
+.io-sep{margin:16px 0 9px;font-size:11.5px;color:var(--faint);
+  display:flex;align-items:center;gap:9px}
+.io-sep::after{content:'';flex:1 1 auto;height:1px;background:var(--line)}
+.hub-addr{display:flex;gap:7px;margin-bottom:9px}
+.hub-addr input{flex:1 1 auto;min-width:0;font-family:ui-monospace,Consolas,monospace;
+  font-size:12.5px;padding:8px 10px;border:1px solid var(--line-2);border-radius:9px;
+  background:#fff;color:var(--text)}
+.hub-addr input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.hub-note{font-size:11.5px;color:var(--faint);margin-top:9px;line-height:1.75}
+.hub-note b{color:var(--muted);font-weight:600}
+.hub-note .ok{color:var(--ok)}
+.hub-apk{margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  font-size:11.5px;color:var(--muted)}
+.hub-apk b{color:var(--text);font-weight:600}
+.hub-note .bad{color:var(--out)}
 </style>
 </head>
 <body>
@@ -1179,7 +1198,7 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 <dialog id="dlgIO">
   <div class="dlg-h">
     <h3>导入导出</h3>
-    <p>数据只存在这台机器的浏览器里 —— 换手机、卸载重装前先导一份备份。</p>
+    <p>数据默认只留在这台机器上。要用电脑当主档、或者换手机，往下看「局域网同步」。</p>
   </div>
   <div class="dlg-b">
     <div class="morelist">
@@ -1190,6 +1209,23 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
         <span class="mt">从备份导入</span>
         <span class="ms">选一个之前导出的 json，按提示合并或整包替换</span></button>
     </div>
+
+    <!-- ★ 2026-11-20 用户要求三端互联：桌面版当数据主档，网页和手机往里归。
+         这里只放最小的一组：地址 + 上传 + 拉取。地址填一次就记住。 -->
+    <div class="io-sep">局域网同步（桌面版「数据台」）</div>
+    <div class="hub-addr">
+      <input id="hubAddr" inputmode="url" autocomplete="off" spellcheck="false"
+             placeholder="192.168.1.38:8730" aria-label="电脑上数据台的地址">
+    </div>
+    <div class="morelist">
+      <button type="button" class="moreitem" id="btnHubUp">
+        <span class="mt">上传到电脑</span>
+        <span class="ms">把这一份存到电脑上的主档里（以这台机器为准）</span></button>
+      <button type="button" class="moreitem" id="btnHubDown">
+        <span class="mt">从电脑拉取</span>
+        <span class="ms">用电脑上那份主档替换这台机器上的数据</span></button>
+    </div>
+    <div class="hub-note" id="hubNote">还没连过。手机和电脑要连同一个 Wi-Fi，地址在数据台窗口里能看到。</div>
   </div>
   <div class="dlg-f">
     <button type="button" class="btn ghost" id="btnIOClose">关闭</button>
@@ -6561,7 +6597,7 @@ $('#btnDownload').addEventListener('click', function(){
 });
 $('#btnPrint').addEventListener('click', function(){ window.print(); });
 // 导入导出：一个入口，里面再选是导出还是导入（2026-11-19 用户要求把两个按钮并成一个）
-$('#btnIO').addEventListener('click', function(){ $('#dlgIO').showModal(); });
+$('#btnIO').addEventListener('click', function(){ hubRefresh(); $('#dlgIO').showModal(); });
 $('#btnIOClose').addEventListener('click', function(){ $('#dlgIO').close(); });
 $('#btnIOExport').addEventListener('click', function(){
   $('#dlgIO').close();
@@ -6571,6 +6607,206 @@ $('#btnIOImport').addEventListener('click', function(){
   $('#dlgIO').close();
   $('#fileImport').click();      // 选文件这一步只能由浏览器的原生选择框来做
 });
+
+/* ---- 局域网同步（2026-11-20 用户要求三端互联）----
+   桌面版「数据台」在局域网里开一个 HTTP 服务（默认 8730），这里是它唯一的客户端入口。
+   ★ 上传带 force：用户点「上传到电脑」就是「以我这台为准」，不能因为手机时钟慢半小时
+     就被服务端退回主档 —— 那会让人以为没传上去，回头两份数据越差越远。
+   ★ 拉取是整包替换，必须问过（跟「从备份导入」同一个道理）。
+   ★ 连不上只说人话：电脑上数据台开着没 / 是不是同一个 Wi-Fi —— 这两个占九成。 */
+const LS_HUB = 'dk.hub', LS_HUBDEV = 'dk.hub.dev', LS_HUBSYNC = 'dk.hub.sync';
+// 当前页面的 md5 记在这里（壳里由 AndroidApp.pageMd5() 填；浏览器里是空的）
+const LS_PAGE = 'dk.page.md5';
+
+function hubDevId(){
+  let id = store.get(LS_HUBDEV);
+  if(!id){
+    id = 'web-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-3);
+    store.set(LS_HUBDEV, id);
+  }
+  return id;
+}
+function hubBase(){
+  let a = (store.get(LS_HUB) || '').trim();
+  if(!a) return '';
+  a = a.replace(/\/+$/, '');
+  if(!/^https?:\/\//i.test(a)) a = 'http://' + a;
+  return a;
+}
+function hubSay(html, cls){
+  const el = $('#hubNote');
+  if(!el) return;
+  el.innerHTML = html;
+  el.className = 'hub-note' + (cls ? ' ' + cls : '');
+}
+function hubCount(){
+  return {
+    people: people.length,
+    meds: people.reduce(function(n, p){ return n + p.meds.length; }, 0)
+  };
+}
+/* 电脑上有新安装包就提示一句（只在打开「导入导出」时查，不占启动时间）。
+   APK 没法静默装 —— 点「去下载」交给系统浏览器/下载器，装的时候系统还会再问一次。 */
+async function hubApkCheck(base){
+  if(!base) return;
+  let st = null;
+  try {
+    const r = await fetch(base + '/api/state', { cache: 'no-store' });
+    st = await r.json();
+  } catch(e){ return; }
+  if(!st || !st.apk || !st.apk.ver) return;
+  let mine = '';
+  const AA = window.AndroidApp;
+  try { mine = (AA && AA.appVersion) ? String(AA.appVersion()) : ''; } catch(e){ mine = ''; }
+  if(!mine || mine === st.apk.ver) return;          // 网页版没有"本机版本"这一说，不提示
+  const el = $('#hubNote');
+  if(!el || el.querySelector('.hub-apk')) return;
+  const box = document.createElement('div');
+  box.className = 'hub-apk';
+  box.innerHTML = '电脑上有新安装包 <b>v' + st.apk.ver + '</b>（本机 v' + mine + '）';
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'btn primary sm';
+  b.textContent = '去下载';
+  b.onclick = function(){
+    const u = base + '/api/apk';
+    if(AA && AA.openUrl) AA.openUrl(u); else window.open(u, '_blank');
+  };
+  box.appendChild(b);
+  el.appendChild(box);
+}
+
+function hubRefresh(){
+  const a = store.get(LS_HUB) || '';
+  if($('#hubAddr') && $('#hubAddr').value !== a) $('#hubAddr').value = a;
+  let last = null;
+  try { last = JSON.parse(store.get(LS_HUBSYNC) || 'null'); } catch(e){ last = null; }
+  if(!a){
+    hubSay('还没填地址。电脑上打开「数据台」，窗口右上角那串 <b>http://192.168.x.x:8730</b> 填到上面。');
+    return;
+  }
+  hubSay('连的是 <b>' + hubBase() + '</b>' +
+    (last ? '，上次同步 ' + agoText(last.t) + '。' : '。') +
+    '<br>只想备份/换手机就用上面的导出导入；想让三台机器共用一份，才用这里。');
+  hubApkCheck(hubBase());
+}
+function agoText(ms){
+  if(!ms) return '—';
+  const d = Date.now() - ms;
+  if(d < 60e3) return '刚刚';
+  if(d < 3600e3) return Math.floor(d / 60e3) + ' 分钟前';
+  if(d < 86400e3) return Math.floor(d / 3600e3) + ' 小时前';
+  return new Date(ms).toLocaleDateString();
+}
+async function hubCall(kind){
+  const base = hubBase();
+  if(!base){
+    hubSay('先在上面填电脑上数据台的地址，比如 <b>192.168.1.38:8730</b>', 'bad');
+    $('#hubAddr').focus();
+    return;
+  }
+  const meta = hubCount();
+  const inApp = !!window.AndroidApp;      // 同一份页面，壳里跑就叫「手机」，浏览器里叫「网页」
+  const body = {
+    deviceId: hubDevId(),
+    deviceName: inApp ? '手机' : '网页版',
+    kind: inApp ? 'phone' : 'web',
+    clientTime: Date.now(),
+    people: meta.people,
+    meds: meta.meds,
+    // 顺手报一下自己跑的是哪一版页面 —— 桌面端「连过的设备」里能看出手机是不是最新的
+    pageMd5: store.get(LS_PAGE) || ''
+  };
+  if(kind === 'up'){
+    body.data = store.get(LS_DATA) || '';
+    body.settings = store.get(LS_SET) || '';
+    body.force = true;
+  }
+  hubSay('正在' + (kind === 'up' ? '上传' : '拉取') + '…');
+  let r = null;
+  try {
+    const res = await fetch(base + '/api/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    r = await res.json();
+  } catch(e){
+    hubSay('连不上 <b>' + base + '</b>。<br>① 电脑上「数据台」开着没？关掉窗口服务就停了；' +
+           '② 两台机器是不是同一个 Wi-Fi？', 'bad');
+    return;
+  }
+  if(kind === 'up'){
+    // 服务端如果没按「以这台为准」收下（老版本、或者 force 没生效），别报假成功
+    if(r && r.action && r.action !== 'pushed'){
+      hubSay('电脑上那份比这台机器新，所以<b>没有覆盖</b>。' +
+             '要弄清哪份才对，先点「从电脑拉取」看一眼，别两边各改各的。', 'bad');
+      return;
+    }
+    store.set(LS_HUBSYNC, JSON.stringify({ t: Date.now(), action: 'up' }));
+    hubSay('已存到电脑：<b>' + meta.people + ' 个人 / ' + meta.meds + ' 味药</b>。' +
+           '<span class="ok">电脑上的主档现在就是这份。</span>');
+    return;
+  }
+
+  // ---- 拉取：整包替换，必须问过 ----
+  if(!r || !r.data){
+    hubSay('电脑上还没有数据 —— 先在哪台设备上点一次「上传到电脑」。', 'bad');
+    return;
+  }
+  let obj = null;
+  try { obj = JSON.parse(r.data); } catch(e){ obj = null; }
+  const m = obj ? migrate(obj) : null;
+  if(!m){
+    hubSay('电脑上那份数据读不出来，先别替换。可以在电脑上导出主档看看。', 'bad');
+    return;
+  }
+  const total = m.people.reduce(function(n, p){ return n + p.meds.length; }, 0);
+  const ok = await askConfirm({
+    title: '用电脑上那份数据替换这台机器？',
+    sub: '电脑上的主档：' + m.people.length + ' 个人、共 ' + total + ' 种药' +
+         (r.updatedAtText ? '（' + r.updatedAtText + ' 由 ' + (r.updatedBy || '某台设备') + ' 传上去的）' : '') + '。',
+    warn: '替换是整包覆盖 —— 这台机器上现在的所有人、所有药、所有药盒摆放都会被盖掉，不能撤销。',
+    okText: '全部替换',
+    danger: true
+  });
+  if(!ok) return;
+
+  people = m.people;
+  currentId = m.currentId;
+  syncMeds();
+  if(r.settings){
+    try {
+      const st = JSON.parse(r.settings);
+      settings = Object.assign({}, DEFAULT_SETTINGS, settings, st);
+      saveSettings();
+    } catch(e){}
+  }
+  save();
+  render();
+  store.set(LS_HUBSYNC, JSON.stringify({ t: Date.now(), action: 'down' }));
+  hubSay('已换成电脑上那份：<b>' + people.length + ' 个人 / 共 ' +
+         people.reduce(function(n, p){ return n + p.meds.length; }, 0) + ' 味药</b>。' +
+         '<span class="ok">这就是电脑上的主档。</span>');
+}
+
+// 边打边存：只在 change（失焦）存的话，用户打完直接点「从电脑拉取」，
+// change 还没轮到、hubCall 读到的还是空地址，会莫名其妙提示「先填地址」。
+$('#hubAddr').addEventListener('input', function(){
+  store.set(LS_HUB, this.value.trim());
+  // 只改提示这一句，不查安装包（输入过程中别一直发请求）
+  const v = this.value.trim();
+  hubSay(v ? ('连的是 <b>' + hubBase() + '</b>，点下面的按钮开始同步。')
+           : '还没填地址。电脑上打开「数据台」，窗口右上角那串 <b>http://192.168.x.x:8730</b> 填到上面。');
+});
+$('#hubAddr').addEventListener('change', function(){
+  store.set(LS_HUB, this.value.trim());
+  hubRefresh();
+});
+$('#hubAddr').addEventListener('change', function(){ hubRefresh(); });
+$('#btnHubUp').addEventListener('click', function(){ hubCall('up'); });
+$('#btnHubDown').addEventListener('click', function(){ hubCall('down'); });
 // 全家偏少：只读聚合页。点「去这个药箱」= 切到那个人，顺手把弹窗关掉
 $('#btnFam').addEventListener('click', openFam);
 $('#btnFamClose').addEventListener('click', function(){ $('#dlgFam').close(); });
@@ -6859,6 +7095,67 @@ render();          // 原本这里还有一条「URL 带参数就载入示例」
   const A = window.AndroidApp;
   if(!A) return;
   document.documentElement.classList.add('in-app');
+
+  /* ---------------- 换页面后的数据兜底（2026-11-20）----------------
+     壳里加载的是应用私有目录那份 index.html（不是 assets），换版本时整篇替换。
+     file:// 的 localStorage 在 WebView 里跨路径是共享的，正常数据不会掉；
+     可这是「正常」，不是「保证」—— 所以原生换页前会存一份 backup.json，
+     这里只在真的发现 localStorage 空了的时候才去要，最多重载一次，不会死循环。 */
+  (function(){
+    try {
+      if(store.get(LS_DATA)) return;
+      if(sessionStorage.getItem('dk.restored') === '1') return;
+      const raw = A.readBackup();
+      if(!raw) return;
+      const o = JSON.parse(raw);
+      if(!o || !o.data) return;
+      sessionStorage.setItem('dk.restored', '1');
+      store.set(LS_DATA, o.data);
+      if(o.settings) store.set(LS_SET, o.settings);
+      location.reload();
+    } catch(e){}
+  })();
+
+  /* ---------------- 桌面端推送的页面更新 ----------------
+     用户原话：「桌面版负责有更新了就发给手机端，让手机端自动更新」。
+     能真正无感换掉的只有**页面**（写进私有目录再 reload 就行）；
+     APK 本体在 Android 上没法静默装，只能在「导入导出」里提示一句、点一下走系统安装。
+     ★ 版本以原生报的 md5 为准（A.pageMd5()）—— localStorage 里那个只当记录，不作凭据。
+     ★ 正在开弹窗、正在输入框里时不换：那多半是在填「添加药品」，换掉就白填了。 */
+  const LS_PAGE_MD5 = 'dk.page.md5';
+  let pageMd5 = '';
+  try { pageMd5 = String(A.pageMd5() || ''); } catch(e){ pageMd5 = ''; }
+  if(pageMd5) store.set(LS_PAGE_MD5, pageMd5);
+
+  function canSwapPage(){
+    try {
+      if(document.querySelector('dialog[open]')) return false;
+      const t = (document.activeElement && document.activeElement.tagName) || '';
+      if(t === 'INPUT' || t === 'TEXTAREA') return false;
+    } catch(e){}
+    return true;
+  }
+  async function pullPageUpdate(){
+    const base = hubBase();
+    if(!base || !pageMd5) return;          // 没配地址就当没这回事，不打扰
+    let meta = null;
+    try {
+      const r = await fetch(base + '/api/page/meta', { cache: 'no-store' });
+      if(!r.ok) return;
+      meta = await r.json();
+    } catch(e){ return; }
+    if(!meta || !meta.md5 || meta.md5 === pageMd5) return;
+    if(!canSwapPage()) return;              // 有人在填东西，等下次
+    try { A.toast('电脑上有新版本，正在更新…'); } catch(e){}
+    let html = '';
+    try {
+      const r2 = await fetch(base + '/api/page', { cache: 'no-store' });
+      html = await r2.text();
+    } catch(e){ return; }
+    if(!html || html.length < 4096) return;
+    try { A.installPage(html, store.get(LS_DATA) || '', store.get(LS_SET) || ''); } catch(e){}
+  }
+  setTimeout(pullPageUpdate, 1500);
 
   // ① 导出：改走原生写文件
   downloadFile = function(filename, content){

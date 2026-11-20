@@ -212,12 +212,17 @@ def report(apk):
         ("dex 里有 JS 桥的名字 AndroidApp", "AndroidApp" in dex),
         ("dex 里有包名", APP_ID.replace(".", "/") in dex or APP_ID in dex),
         ("dex 里没有占位符 __TOKEN__", "__TOKEN__" not in dex),
-        ("没有申请 INTERNET 权限", True),
+        ("申请的是「局域网同步」那一份权限（INTERNET）", True),
     ]
     man = z.read("AndroidManifest.xml")
     def has(s):
         return s.encode("utf-8") in man or s.encode("utf-16-le") in man
-    checks[4] = ("没有申请 INTERNET 权限", not has("android.permission.INTERNET"))
+    # 2026-11-20 起：桌面端推送更新 + 局域网同步要联网，所以**要**有 INTERNET。
+    # 真正要守的是另一条 —— 「只连局域网」，也就是必须开 usesCleartextTraffic，
+    # 否则 Android 9+ 会把 http://192.168.x.x 直接掐断（表现是同步永远失败）。
+    checks[4] = ("有 INTERNET 权限（局域网同步要用）", has("android.permission.INTERNET"))
+    checks.append(("放行了明文 http（局域网是 http://192.168.x.x，不放行连不上）",
+                   has("usesCleartextTraffic")))
     checks.append(("manifest 里 .MainActivity 已导出", has(".MainActivity")))
 
     # ★ 最容易出的一类事故：编进去的还是上一次的网页。

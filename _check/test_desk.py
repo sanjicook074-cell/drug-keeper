@@ -1,0 +1,231 @@
+# -*- coding: utf-8 -*-
+"""
+drug-keeper：桌面端「数据台」的接口自检。
+
+用户 2026-11-20 的要求（原话大意）：
+    「再做一个桌面版，桌面版和手机 APP、网页版互联，起同步数据的作用；
+      三者在一个局域网里；桌面版还负责有更新了就发给手机端，让手机端自动更新。」
+
+桌面端 = Electron 窗口 + 一个局域网 HTTP 服务（desktop/server.js）。窗口那层是给人看的，
+**真正会被手机/网页调用的是 HTTP 接口**，所以这里直接起 node 把那套接口跑起来打。
+
+钉这几条（都是「错了就会静默丢数据」的地方）：
+  ① 手机网页（file://）能跨域访问 —— CORS 全开 + OPTIONS 预检要通，否则浏览器直接拦掉；
+  ② 首次上传收得下，主档落盘是合法 JSON；
+  ③ 之后传一份**更旧**的数据，不许覆盖主档 —— 得把主档发回去让它自己覆盖；
+  ④ 覆盖前留 .bak 快照（同步着把数据弄丢是最不能接受的失败）；
+  ⑤ 页面与安装包能取：/api/page 的字节 md5 必须等于 /api/page/meta 报的 md5，
+     不然手机端会「以为更新了、其实下载到半截」；
+  ⑥ 设备台账：谁来过、什么类型、几味药、最后什么时候。
+"""
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # = drug-keeper/
+DESK = os.path.join(ROOT, "desktop")
+PORT = 18730
+BASE = "http://127.0.0.1:%d" % PORT
+
+CASES = []
+
+
+def ck(name, cond, got=""):
+    CASES.append({"name": name, "pass": bool(cond), "got": got})
+
+
+def req(path, body=None, method=None, headers=None):
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    h = {"Content-Type": "application/json"}
+    if headers:
+        h.update(headers)
+    r = urllib.request.Request(BASE + path, data=data, headers=h,
+                               method=method or ("POST" if data is not None else "GET"))
+    try:
+        with urllib.request.urlopen(r, timeout=15) as resp:
+            return resp.status, dict((k.lower(), v) for k, v in resp.headers.items()), resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, dict((k.lower(), v) for k, v in e.headers.items()), e.read()
+
+
+def wait_ready(proc, secs=25):
+    t0 = time.time()
+    while time.time() - t0 < secs:
+        line = proc.stdout.readline()
+        if not line:
+            if proc.poll() is not None:
+                return None
+            continue
+        if line.startswith("READY"):
+            try:
+                return json.loads(line[5:].strip())
+            except Exception:
+                return {"raw": line.strip()}
+    return None
+
+
+def main():
+    node = shutil.which("node")
+    if not node:
+        print("没找到 node，跳过桌面端自检")
+        return 2
+    if not os.path.isfile(os.path.join(DESK, "server.js")):
+        print("desktop/server.js 不见了")
+        return 2
+
+    tmp = tempfile.mkdtemp(prefix="dk_desk_")
+    data_file = os.path.join(tmp, "main.json")
+    env = os.environ.copy()
+    env["DK_PORT"] = str(PORT)
+    env["DK_DIR"] = ROOT
+    env["DK_DATA"] = data_file
+
+    proc = subprocess.Popen([node, "server.js"], cwd=DESK, env=env,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, encoding="utf-8", errors="replace")
+    try:
+        ready = wait_ready(proc)
+        ck("★ 局域网服务起得来（端口 %d）" % PORT, ready and ready.get("ok"), ready)
+
+        st, hd, body = req("/api/ping")
+        ping = json.loads(body or b"{}")
+        ck("★ /api/ping 认得自己是药品管家", ping.get("app") == "drug-keeper" and ping.get("ok"), ping.get("app"))
+        ck("★ 跨域头全开（file:// 页面靠它才连得上）",
+           hd.get("access-control-allow-origin") == "*", hd.get("access-control-allow-origin"))
+
+        st, hd, _ = req("/api/ping", method="OPTIONS")
+        ck("OPTIONS 预检回 204 且带 CORS（不然浏览器里 POST 直接被拦）",
+           st == 204 and hd.get("access-control-allow-origin") == "*",
+           str(st) + " / " + str(hd.get("access-control-allow-origin")))
+
+        # ---- 页面版本：meta 与真实字节必须对得上 ----
+        disk = open(os.path.join(ROOT, "index.html"), "rb").read()
+        disk_md5 = hashlib.md5(disk).hexdigest()
+        st, _, body = req("/api/page/meta")
+        meta = json.loads(body or b"{}")
+        ck("★ /api/page/meta 报的 md5 就是磁盘上那份 index.html",
+           meta.get("md5") == disk_md5, (meta.get("md5") or "")[:12] + " vs " + disk_md5[:12])
+        st, hd, body = req("/api/page")
+        ck("★ /api/page 取回来的整页，字节 md5 和 meta 一致（不会发半截）",
+           hashlib.md5(body).hexdigest() == disk_md5 and "text/html" in (hd.get("content-type") or ""),
+           "%d 字节 / %s" % (len(body), (hd.get("content-type") or "")[:24]))
+
+        # ---- 安装包 ----
+        apk_path = os.path.join(ROOT, "android", "drug-keeper.apk")
+        st, hd, body = req("/api/apk")
+        if os.path.isfile(apk_path):
+            apk_size = os.path.getsize(apk_path)
+            ck("★ /api/apk 能把安装包整个发出去", st == 200 and len(body) == apk_size,
+               "%d / %d 字节" % (len(body), apk_size))
+        else:
+            ck("还没打包 APK 时 /api/apk 老实回 404，不是空文件", st == 404, st)
+
+        # ---- 同步：先上传 ----
+        data_str = json.dumps({"people": [{"id": "a", "name": "我", "meds": [{}, {}]}],
+                               "currentId": "a"}, ensure_ascii=False)
+        phone = {"deviceId": "phone-1", "deviceName": "小米手机", "kind": "phone",
+                 "clientTime": 1795000000000, "data": data_str, "settings": "{}",
+                 "people": 1, "meds": 2}
+        st, _, body = req("/api/sync", phone)
+        r1 = json.loads(body or b"{}")
+        ck("★ 手机第一次上传，主档收下了", r1.get("action") == "pushed", r1.get("action"))
+        ck("主档能解析出「1 个人 2 味药」",
+           (r1.get("summary") or {}).get("people") == 1 and (r1.get("summary") or {}).get("meds") == 2,
+           r1.get("summary"))
+        ck("设备台账里出现了这台手机（类型/药数/时间都在）",
+           bool(r1.get("devices")) and r1["devices"][0].get("kind") == "phone"
+           and r1["devices"][0].get("meds") == 2, (r1.get("devices") or [{}])[0].get("name"))
+
+        ck("主档真的落盘了，而且是合法 JSON",
+           os.path.isfile(data_file) and isinstance(json.load(open(data_file, encoding="utf-8")), dict),
+           os.path.basename(data_file))
+
+        # ---- 同步：再传一份更旧的 —— 不许覆盖 ----
+        older = dict(phone)
+        older["deviceId"] = "web-1"
+        older["deviceName"] = "旧网页"
+        older["kind"] = "web"
+        older["clientTime"] = 1794000000000       # 比上面早
+        older["data"] = json.dumps({"people": [{"id": "b", "name": "旧的", "meds": []}],
+                                    "currentId": "b"}, ensure_ascii=False)
+        older["people"] = 1
+        older["meds"] = 0
+        st, _, body = req("/api/sync", older)
+        r2 = json.loads(body or b"{}")
+        ck("★ 传上来一份更旧的数据 → 不覆盖，把主档发回去让它自己改",
+           r2.get("action") == "pulled", r2.get("action"))
+        ck("发回去的就是那份「2 味药」的主档，没被旧数据顶掉",
+           json.loads(r2.get("data") or "{}").get("people", [{}])[0].get("name") == "我",
+           (r2.get("data") or "")[:40])
+        ck("旧设备只是登记了一下，不占主档",
+           (r2.get("summary") or {}).get("meds") == 2, r2.get("summary"))
+
+        # ---- 覆盖时要留快照 ----
+        newer = dict(phone)
+        newer["clientTime"] = 1796000000000
+        newer["deviceName"] = "小米手机"
+        newer["data"] = json.dumps({"people": [{"id": "a", "name": "我", "meds": [{}, {}, {}]}],
+                                    "currentId": "a"}, ensure_ascii=False)
+        newer["meds"] = 3
+        req("/api/sync", newer)
+        bak = data_file.replace(".json", ".bak.json")
+        ck("★ 覆盖前留了一份 .bak 快照（改错了还能捞回来）",
+           os.path.isfile(bak) and json.load(open(bak, encoding="utf-8")).get("data") == data_str,
+           os.path.basename(bak))
+        st, _, body = req("/api/state")
+        st2 = json.loads(body or b"{}")
+        ck("新数据生效：主档变成 3 味", (st2.get("summary") or {}).get("meds") == 3,
+           (st2.get("summary") or {}).get("meds"))
+
+        # ---- force：不管时间戳，以发起的这端为准 ----
+        #   ★ 这条是补出来的。第一版少了 force，结果主档时间戳只要比手机新
+        #   （差几秒都算），手机点「上传到电脑」就被静默退回主档，页面却显示"已存到电脑"。
+        forced = dict(phone)
+        forced["deviceId"] = "web-2"
+        forced["deviceName"] = "网页版"
+        forced["kind"] = "web"
+        forced["clientTime"] = 1790000000000        # 比主档旧一大截
+        forced["data"] = json.dumps({"people": [{"id": "z", "name": "强推的", "meds": [{}]}],
+                                     "currentId": "z"}, ensure_ascii=False)
+        forced["people"] = 1
+        forced["meds"] = 1
+        forced["force"] = True
+        st, _, body = req("/api/sync", forced)
+        r3 = json.loads(body or b"{}")
+        ck("★ 带 force 时不看时间戳，直接以这端为准（否则「上传」会被静默退回）",
+           r3.get("action") == "pushed" and
+           json.loads(r3.get("data") or "{}").get("people", [{}])[0].get("name") == "强推的",
+           r3.get("action"))
+
+        # ---- 首页（手机浏览器手动测连通用） ----
+        st, hd, body = req("/")
+        ck("根地址有个小说明页，能直接在手机浏览器里确认「连上了」",
+           st == 200 and "药品管家".encode("utf-8") in body, str(st))
+
+        fails = [c for c in CASES if not c["pass"]]
+        for c in CASES:
+            print(("  OK  " if c["pass"] else "  FAIL") + "  " + c["name"] + "   → " + str(c["got"]))
+        print("\n" + "-" * 60)
+        print("通过 %d / %d" % (len(CASES) - len(fails), len(CASES)))
+        return 1 if fails else 0
+    finally:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+        time.sleep(0.4)
+        if proc.poll() is None:
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                           capture_output=True)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

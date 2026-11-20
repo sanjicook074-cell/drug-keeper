@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>药品管家 · 数据台</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --card:#fff; --line:#e5e7eb; --line-2:#d8dde5;
+    --text:#111827; --muted:#4b5563; --faint:#9ca3af;
+    --brand:#2563eb; --ok:#16a34a; --warn:#d97706; --out:#dc2626;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);overflow-y:auto;
+    font:14px/1.6 "Microsoft YaHei","PingFang SC",-apple-system,Segoe UI,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:900px;margin:0 auto;padding:22px 22px 40px}
+
+  header{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+  .brand{display:flex;align-items:center;gap:11px;flex:1 1 auto;min-width:0}
+  .brand i{width:38px;height:38px;border-radius:11px;background:var(--brand);color:#fff;
+    display:grid;place-items:center;font-style:normal;font-size:19px;font-weight:700;
+    box-shadow:0 2px 6px rgba(37,99,235,.28)}
+  .brand h1{margin:0;font-size:17px;font-weight:700;letter-spacing:.2px}
+  .brand p{margin:1px 0 0;font-size:12px;color:var(--faint)}
+  .pill{flex:none;display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 13px;
+    border-radius:999px;background:#fff;border:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+  .pill b{font-weight:600;color:var(--text)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--faint)}
+  .pill.on .dot{background:var(--ok);box-shadow:0 0 0 3px rgba(22,163,74,.14)}
+  .pill.off .dot{background:var(--out);box-shadow:0 0 0 3px rgba(220,38,38,.14)}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;
+    box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  .card h2{margin:0 0 12px;font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.3px}
+
+  .top{display:grid;grid-template-columns:1.15fr 1fr;gap:14px;margin-bottom:14px}
+  .stats{display:flex;gap:26px;margin:2px 0 10px}
+  .stat .n{font-size:26px;font-weight:700;line-height:1.15;font-variant-numeric:tabular-nums}
+  .stat .l{font-size:12px;color:var(--faint);margin-top:2px}
+  .meta{font-size:12.5px;color:var(--muted);border-top:1px dashed var(--line);padding-top:10px}
+  .meta b{color:var(--text);font-weight:600}
+
+  .addr{font-family:ui-monospace,Consolas,monospace;font-size:13px;color:var(--brand);
+    background:#f2f7ff;border:1px solid #dbe7fb;border-radius:9px;padding:8px 11px;
+    display:flex;align-items:center;gap:8px;margin-bottom:8px;word-break:break-all}
+  .addr span{flex:1 1 auto;min-width:0}
+  .hint{font-size:12px;color:var(--faint);line-height:1.7}
+
+  .dev{display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px dashed var(--line)}
+  .dev:last-child{border-bottom:none}
+  .dev .nm{flex:1 1 auto;min-width:0}
+  .dev .nm b{font-weight:600;font-size:13.5px}
+  .dev .nm small{display:block;color:var(--faint);font-size:11.5px;margin-top:1px}
+  .tag{flex:none;font-size:11px;padding:2px 8px;border-radius:999px;background:#f3f4f6;color:var(--muted)}
+  .tag.phone{background:#eef2ff;color:#4338ca}
+  .tag.web{background:#ecfdf5;color:#047857}
+  .tag.desktop{background:#fef3c7;color:#92400e}
+  .live{width:7px;height:7px;border-radius:50%;background:var(--line-2);flex:none}
+  .live.on{background:var(--ok)}
+  .empty{color:var(--faint);font-size:12.5px;line-height:1.8;padding:6px 0}
+
+  .row{display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px dashed var(--line)}
+  .row:last-of-type{border-bottom:none}
+  .row .k{flex:1 1 auto;min-width:0;font-size:12.5px;color:var(--muted)}
+  .row .v{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--text);
+    background:#f7f8fa;border:1px solid var(--line);border-radius:6px;padding:2px 7px}
+
+  .btns{display:flex;gap:9px;flex-wrap:wrap;margin-top:12px}
+  button{font-family:inherit;font-size:12.5px;border-radius:9px;padding:7px 13px;cursor:pointer;
+    border:1px solid var(--line-2);background:#fff;color:#374151;transition:.12s}
+  button:hover{background:#f9fafb;border-color:#cfd6e0}
+  button.primary{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600;
+    box-shadow:0 1px 2px rgba(37,99,235,.3)}
+  button.primary:hover{background:#1d4ed8}
+  button:active{transform:translateY(.5px)}
+
+  .paths{margin-top:14px}
+  .p{font-family:ui-monospace,Consolas,monospace;font-size:11.5px;color:var(--muted);
+    word-break:break-all;margin:0 0 4px}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;
+    font-size:12.5px;padding:9px 16px;border-radius:999px;opacity:0;pointer-events:none;transition:.2s}
+  .toast.show{opacity:.94}
+  .warnline{font-size:12px;color:var(--warn);margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <i>药</i>
+      <div>
+        <h1>药品管家 · 数据台</h1>
+        <p>局域网里的数据主档 —— 手机、网页都往这儿归，新版本也从这儿发出去</p>
+      </div>
+    </div>
+    <div class="pill" id="srvPill"><i class="dot"></i><span id="srvText">启动中…</span></div>
+  </header>
+
+  <div class="top">
+    <div class="card">
+      <h2>主档里的数据</h2>
+      <div class="stats">
+        <div class="stat"><div class="n" id="nPeople">0</div><div class="l">个人</div></div>
+        <div class="stat"><div class="n" id="nMeds">0</div><div class="l">味药</div></div>
+      </div>
+      <div class="meta" id="updMeta">还没有任何一端传过数据</div>
+    </div>
+
+    <div class="card">
+      <h2>让手机连上来</h2>
+      <div class="addr"><span id="addr">—</span><button id="btnCopy" style="padding:4px 9px;font-size:11.5px">复制</button></div>
+      <div class="hint">手机和电脑要连同一个 Wi-Fi。在手机 App 的「设置 → 局域网同步」里填这个地址。</div>
+      <div class="warnline" id="srvWarn" hidden></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:14px">
+    <h2>连过的设备</h2>
+    <div id="devList"><div class="empty">还没有设备连上来。</div></div>
+  </div>
+
+  <div class="card">
+    <h2>更新分发</h2>
+    <div class="row"><span class="k">页面（index.html）</span><span class="v" id="pageVer">—</span></div>
+    <div class="row"><span class="k">页面大小 / 改动时间</span><span class="v" id="pageInfo">—</span></div>
+    <div class="row"><span class="k">安装包（drug-keeper.apk）</span><span class="v" id="apkInfo">—</span></div>
+    <div class="btns">
+      <button class="primary" id="btnRescan">重新扫描</button>
+      <button id="btnOpenPage">在文件夹里看页面</button>
+      <button id="btnCopyApk">复制安装包下载地址</button>
+    </div>
+    <div class="hint" style="margin-top:10px">
+      手机端下一次打开就会问这里要新页面：版本不一样就自动换掉并重载。安装包不发自动装 —— 手机上会弹一条提示，点一下才装。
+    </div>
+  </div>
+
+  <div class="card paths">
+    <h2>这份数据存在哪儿</h2>
+    <p class="p" id="pData">—</p>
+    <p class="p" id="pProj">—</p>
+    <div class="btns">
+      <button id="btnExport">导出一份主档</button>
+      <button id="btnOpenData">打开数据文件夹</button>
+      <button id="btnPick">换个项目目录</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+let S = null;
+const $ = function(s){ return document.querySelector(s); };
+let toastT = null;
+function toast(t){
+  const el = $('#toast');
+  el.textContent = t;
+  el.classList.add('show');
+  clearTimeout(toastT);
+  toastT = setTimeout(function(){ el.classList.remove('show'); }, 1600);
+}
+function ago(ms){
+  if(!ms) return '—';
+  const d = Date.now() - ms;
+  if(d < 60e3) return '刚刚';
+  if(d < 3600e3) return Math.floor(d / 60e3) + ' 分钟前';
+  if(d < 86400e3) return Math.floor(d / 3600e3) + ' 小时前';
+  const dt = new Date(ms), p = function(n){ return String(n).padStart(2, '0'); };
+  return (dt.getMonth() + 1) + '-' + p(dt.getDate()) + ' ' + p(dt.getHours()) + ':' + p(dt.getMinutes());
+}
+function kb(n){
+  if(!n && n !== 0) return '—';
+  return n >= 1024 * 1024 ? (n / 1024 / 1024).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB';
+}
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){
+    return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' })[c];
+  });
+}
+function kindName(k){
+  return k === 'phone' ? '手机' : (k === 'desktop' ? '电脑' : '网页');
+}
+
+function render(st){
+  S = st;
+  const srv = st.server || {};
+  const pill = $('#srvPill');
+  pill.className = 'pill ' + (srv.running ? 'on' : 'off');
+  $('#srvText').textContent = srv.running ? ('在跑 · 端口 ' + srv.port) : '没起来';
+  $('#srvWarn').hidden = !!srv.running;
+  if(!srv.running) $('#srvWarn').textContent = '服务没起来：' + (srv.error || '端口可能被别的程序占了');
+
+  const addr = (srv.addresses && srv.addresses.length)
+    ? 'http://' + srv.addresses[0] + ':' + srv.port
+    : '没找到局域网地址（先连上 Wi-Fi）';
+  $('#addr').textContent = addr;
+
+  $('#nPeople').textContent = (st.summary && st.summary.people) || 0;
+  $('#nMeds').textContent = (st.summary && st.summary.meds) || 0;
+  $('#updMeta').innerHTML = st.updatedAt
+    ? ('最后更新 <b>' + ago(st.updatedAt) + '</b>，是 <b>' + esc(st.updatedBy || '某台设备') + '</b> 传上来的')
+    : '还没有任何一端传过数据 —— 手机连上来点一次「上传到电脑」就有了';
+
+  const dl = $('#devList');
+  const ds = st.devices || [];
+  if(!ds.length){
+    dl.innerHTML = '<div class="empty">还没有设备连上来。<br>手机 App 里「设置 → 局域网同步」填上面那个地址，点「上传到电脑」。</div>';
+  } else {
+    dl.innerHTML = ds.map(function(d){
+      return '<div class="dev">' +
+        '<i class="live ' + (d.online ? 'on' : '') + '"></i>' +
+        '<div class="nm"><b>' + esc(d.name) + '</b>' +
+          '<small>' + d.meds + ' 味药 · ' + d.people + ' 个人 · 最后同步 ' + ago(d.lastSync) + '</small></div>' +
+        '<span class="tag ' + esc(d.kind) + '">' + kindName(d.kind) + '</span>' +
+      '</div>';
+    }).join('');
+  }
+
+  const pg = st.page;
+  $('#pageVer').textContent = pg ? pg.md5.slice(0, 12) : '没找到 index.html';
+  $('#pageInfo').textContent = pg ? (kb(pg.size) + ' · ' + ago(pg.mtime)) : '—';
+  $('#apkInfo').textContent = st.apk ? kb(st.apk.size) : '还没打包';
+
+  $('#pData').textContent = '主档：' + st.paths.dataFile;
+  $('#pProj').textContent = '项目：' + st.paths.projectDir;
+  if(st.error) toast(st.error);
+}
+
+async function copyText(t){
+  try {
+    await navigator.clipboard.writeText(t);
+    toast('已复制');
+  } catch(e){
+    const ta = document.createElement('textarea');
+    ta.value = t;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); toast('已复制'); } catch(e2){ toast('复制失败，手动选一下吧'); }
+    ta.remove();
+  }
+}
+
+$('#btnCopy').onclick = function(){ if(S) copyText($('#addr').textContent); };
+$('#btnRescan').onclick = async function(){ render(await window.desk.rescan()); toast('已重新扫描'); };
+$('#btnOpenPage').onclick = function(){ window.desk.openPage(); };
+$('#btnOpenData').onclick = function(){ window.desk.openData(); };
+$('#btnPick').onclick = async function(){ render(await window.desk.pickDir()); };
+$('#btnExport').onclick = async function(){
+  const r = await window.desk.exportData();
+  toast(r && r.ok ? '已存到 ' + r.path : '取消了');
+};
+$('#btnCopyApk').onclick = async function(){
+  const u = await window.desk.apkUrl();
+  if(u) copyText(u); else toast('没找到局域网地址');
+};
+
+window.desk.onStatus(render);
+window.desk.status().then(render);
+</script>
+</body>
+</html>

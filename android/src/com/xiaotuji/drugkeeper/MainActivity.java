@@ -18,9 +18,14 @@ import android.webkit.WebView;
 import android.widget.FrameLayout;
 import android.widget.Toast;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.OutputStream;
+
+import org.json.JSONObject;
 
 /**
  * 唯一的 Activity：把 index.html 装进 WebView 跑起来。
@@ -83,7 +88,8 @@ public class MainActivity extends Activity {
 
         WebView.setWebContentsDebuggingEnabled(true);   // 自用 App：留着 chrome://inspect 能查
 
-        web.loadUrl("file:///android_asset/index.html");
+        ensurePage();
+        web.loadUrl(Uri.fromFile(pageFile).toString());
     }
 
     /* ---------------- 返回键：先关弹窗，再退出 ---------------- */
@@ -177,6 +183,140 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             toast("保存失败：" + e.getMessage());
             return "";
+        }
+    }
+
+    /* ---------------- 页面热更新（2026-11-20）----------------
+       用户要求「桌面版有更新了就发给手机端，让手机端自动更新」。
+       所以页面不再直接跑 assets 里那份 —— assets 是只读的，改不了；改成先在应用私有目录放一份，
+       以后桌面「数据台」发了新版本就整篇替换。
+
+       ★ 换页面之前先把当前数据写一份 backup.json。file:// 的 localStorage 在 WebView 里
+         是跨路径共享的，正常不会丢；但这条只值几百字节，留着当兜底 —— 真丢了不至于一片空白。
+       ★ 写文件一律「先写 .new 再 rename」：别让断电留下半篇 HTML，那会让 App 下次直接白屏。 */
+    private File pageDir;
+    private File pageFile;
+
+    private void ensurePage(){
+        pageDir = new File(getFilesDir(), "page");
+        if(!pageDir.exists()) pageDir.mkdirs();
+        pageFile = new File(pageDir, "index.html");
+        if(!pageFile.exists() || pageFile.length() < 4096){
+            copyAsset("index.html", pageFile);
+        }
+    }
+
+    private boolean copyAsset(String name, File dst){
+        try {
+            InputStream in = getAssets().open(name);
+            File tmp = new File(dst.getPath() + ".new");
+            FileOutputStream out = new FileOutputStream(tmp);
+            byte[] buf = new byte[8192];
+            int n;
+            while((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            out.flush();
+            out.close();
+            in.close();
+            if(dst.exists()) dst.delete();
+            return tmp.renameTo(dst);
+        } catch(Exception e){
+            toast("页面准备失败：" + e.getMessage());
+            return false;
+        }
+    }
+
+    /** 当前跑着的那份页面的 md5 —— 页面拿它跟桌面上的比，判断有没有新版本 */
+    String pageMd5(){
+        try {
+            if(pageFile == null) return "";
+            InputStream in = new FileInputStream(pageFile);
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+            byte[] buf = new byte[8192];
+            int n;
+            while((n = in.read(buf)) > 0) md.update(buf, 0, n);
+            in.close();
+            byte[] d = md.digest();
+            StringBuilder sb = new StringBuilder();
+            for(int i = 0; i < d.length; i++){
+                String h = Integer.toHexString(0xff & d[i]);
+                if(h.length() == 1) sb.append('0');
+                sb.append(h);
+            }
+            return sb.toString();
+        } catch(Exception e){ return ""; }
+    }
+
+    /** 换页面：备份数据 → 原子替换 → 重载 */
+    void installPage(String html, String data, String settings){
+        if(html == null || html.length() < 4096){
+            toast("新页面不完整，这次先不换");
+            return;
+        }
+        try {
+            if(data != null && data.length() > 0){
+                JSONObject o = new JSONObject();
+                o.put("data", data);
+                o.put("settings", settings == null ? "" : settings);
+                File bak = new File(pageDir, "backup.json");
+                FileOutputStream fo = new FileOutputStream(bak);
+                fo.write(o.toString().getBytes("UTF-8"));
+                fo.flush();
+                fo.close();
+            }
+            File tmp = new File(pageDir, "index.html.new");
+            FileOutputStream out = new FileOutputStream(tmp);
+            out.write(html.getBytes("UTF-8"));
+            out.flush();
+            out.close();
+            if(pageFile.exists()) pageFile.delete();
+            if(!tmp.renameTo(pageFile)){
+                toast("新页面写不进去");
+                return;
+            }
+        } catch(Exception e){
+            toast("更新失败：" + e.getMessage());
+            return;
+        }
+        runOnUiThread(new ReloadTask(this));
+    }
+
+    /** 页面启动时如果发现 localStorage 是空的，就来这儿要上一份 */
+    String readBackup(){
+        try {
+            File bak = new File(pageDir, "backup.json");
+            if(!bak.exists()) return "";
+            InputStream in = new FileInputStream(bak);
+            ByteArrayOutputStream bo = new ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+            in.close();
+            return bo.toString("UTF-8");
+        } catch(Exception e){ return ""; }
+    }
+
+    String appVersion(){
+        try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; }
+        catch(Exception e){ return ""; }
+    }
+
+    /** 下载安装包：直接交给系统浏览器/下载器，装的时候系统还会再问一次 */
+    void openUrl(String url){
+        try {
+            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(i);
+        } catch(Exception e){
+            toast("没有能打开链接的程序");
+        }
+    }
+
+    /** ★ 顶层 static 类 —— 和 ToastTask 同理，d8 不接受匿名内部类 */
+    static class ReloadTask implements Runnable {
+        private final MainActivity act;
+        ReloadTask(MainActivity a){ act = a; }
+        public void run(){
+            if(act.web != null) act.web.reload();
         }
     }
 

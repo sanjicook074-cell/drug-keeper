@@ -3,7 +3,7 @@ package com.xiaotuji.drugkeeper;
 import android.webkit.JavascriptInterface;
 
 /**
- * 页面能调到的全部原生能力，就这四个方法。
+ * 页面能调到的全部原生能力。
  *
  * ★ 这些方法**不在主线程**上执行（WebView 的 JavaBridge 线程），
  *   所以这里只做转发，凡是碰界面的（Toast）都由 MainActivity 转回主线程。
@@ -39,5 +39,35 @@ class Bridge {
     @JavascriptInterface
     public void toast(String msg) {
         act.toast(msg);
+    }
+
+    /* ---- 以下五个是 2026-11-20 为「桌面端推送更新 + 局域网同步」加的 ---- */
+
+    /** 当前跑着的页面 md5（空串 = 还没准备好） */
+    @JavascriptInterface
+    public String pageMd5() {
+        return act.pageMd5();
+    }
+
+    /** 把新页面换上并重载；换之前先把当前数据存一份兜底 */
+    @JavascriptInterface
+    public void installPage(String html, String data, String settings) {
+        act.installPage(html, data, settings);
+    }
+
+    /** 页面启动时 localStorage 是空的 → 用这份恢复 */
+    @JavascriptInterface
+    public String readBackup() {
+        return act.readBackup();
+    }
+
+    @JavascriptInterface
+    public String appVersion() {
+        return act.appVersion();
+    }
+
+    @JavascriptInterface
+    public void openUrl(String url) {
+        act.openUrl(url);
     }
 }

@@ -32,3 +32,7 @@ android/drug-keeper.apk
 # apksigner 会在 apk 旁边再落一个 .idsig（v4 签名的旁路文件），同样是二进制产物
 android/*.idsig
 android/drugkeeper.jks
+
+# 桌面端依赖与运行时数据（几十上百 MB，不进仓库）
+desktop/node_modules/
+desktop/.selftest-main.json
