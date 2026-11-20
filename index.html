@@ -120,7 +120,32 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
   .col-side{position:sticky;top:var(--side-top,16px);align-self:start;
     display:flex;flex-direction:column;max-height:calc(100vh - 32px)}
   .col-side .panel-h{flex:none}
-  .col-side .panel-b{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain}
+  /* 面板内部改成一列 flex：情况 / 清单（可伸缩）/ 按钮组。
+     滚动**只发生在清单里**（.refill-scroll），按钮组 flex:none 常驻底部 ——
+     药再多，「复制给医生 / 下载 / 打印」也不会被挤出可视区（2026-11-20 用户要求）。
+     panel-b 自己的 overflow 只是兜底：窗口矮到连标题+按钮都放不下时才轮到它滚。 */
+  .col-side .panel-b{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;
+    overflow:auto;overscroll-behavior:contain}
+  /* ⚠️ 这两条要按优先级排好：`.panel-b > .blk{flex:none}` 会把 blk-refill 一起钉成
+     none（3 个类 > 2 个类），清单就永远撑开、不收缩 —— 表现是"清单没滚动条、
+     面板自己溢出"。所以那一条必须写成 `> .blk-refill` 的特异度来压住。 */
+  .col-side .panel-b > .blk{flex:none}
+  .col-side .panel-b > .blk-refill{flex:1 1 auto;min-height:0;
+    display:flex;flex-direction:column}
+  .col-side .side-actions{flex:none}
+  /* 104px ≈ 5 行清单。窗口再矮也留得下这么多，剩下的交给滚动，不会缩成一条缝。 */
+  .col-side .refill-scroll{flex:1 1 auto;min-height:104px;overflow:auto;
+    overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin}
+  /* 默认滚动条在浅灰清单上太重，会抢药名的视线；调细、调淡。
+     scrollbar-gutter:stable 让滚动条出现/消失时右侧不跳（不然"剩 X 天"会左右抖）。 */
+  .col-side .refill-scroll::-webkit-scrollbar{width:9px}
+  .col-side .refill-scroll::-webkit-scrollbar-thumb{background:#d7dce4;border-radius:5px;
+    border:2px solid transparent;background-clip:content-box}
+  .col-side .refill-scroll::-webkit-scrollbar-thumb:hover{background:#c2c9d4;
+    background-clip:content-box}
+  .col-side .refill-scroll::-webkit-scrollbar-track{background:transparent}
+  /* 高度归 wrapper 管了：pre 自己再来一层 54vh 上限的话，会出现「框里再套一个滚动条」 */
+  .col-side .blk-refill .refill{max-height:none}
 }
 
 /* ---------- 药品卡片 ---------- */
@@ -840,7 +865,10 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
   .panel{border:none;box-shadow:none}
   /* 打印没有"视口"这回事：sticky + 高度上限会把右栏裁成一张纸那么高 */
   .col-side{position:static !important;max-height:none !important;display:block !important}
-  .col-side .panel-b{overflow:visible !important}
+  .col-side .panel-b{overflow:visible !important;display:block !important}
+  /* 清单的滚动框同理还原：打印要的是全部 10 行，不是"能看见的那 5 行" */
+  .col-side .blk-refill{display:block !important}
+  .col-side .refill-scroll{overflow:visible !important;min-height:0 !important}
   .panel-h{border-bottom:1px solid #ddd}
   /* 打印时输入框换成等价的静态文本，避免被滚动区裁掉 */
   #noteBox{display:none}
@@ -1037,13 +1065,20 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
           <div class="note-print" id="notePrint"></div>
         </div>
 
-        <div class="blk">
+        <div class="blk blk-refill">
           <div class="blk-h">
             <span class="blk-t">可以开的药</span>
             <span class="blk-tip" id="drugTip"></span>
           </div>
-          <pre class="refill" id="refillText"></pre>
-          <div class="rq-note" id="refillStar" hidden></div>
+          <!-- ★ 只让这一块自己滚（2026-11-20 用户要求：「这个清单去做成可滚动就可以了」）。
+               药一多，清单变长 → 面板被 max-height 封住 → 原来是整个面板内滚，
+               结果最下面的「下载 / 打印」被挤出可视区，得把鼠标移到面板上滚一下才够得着。
+               现在把滚动关在清单里：标题「可以开的药 N 种」和下面的按钮组都常驻，
+               滚的只有清单本身。星号解释也在这个框里 —— 它是清单的脚注，跟着清单一起滚。 -->
+          <div class="refill-scroll">
+            <pre class="refill" id="refillText"></pre>
+            <div class="rq-note" id="refillStar" hidden></div>
+          </div>
         </div>
 
         <div class="side-actions">

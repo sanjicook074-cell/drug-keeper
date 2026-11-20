@@ -682,8 +682,11 @@ PROBE = r"""
   render();
   var rHtml = q('#refillText').innerHTML;
   var sBox = q('#refillStar');
-  ck('★ 区块标题叫「可以开的药」', q('#refillText').parentNode.querySelector('.blk-t').textContent === '可以开的药',
-     q('#refillText').parentNode.querySelector('.blk-t').textContent);
+  // ★ 用 closest('.blk') 而不是 parentNode：2026-11-20 起清单外面包了一层
+  //   .refill-scroll（负责滚动），parentNode 已经指不到那个 blk 了。
+  ck('★ 区块标题叫「可以开的药」',
+     q('#refillText').closest('.blk').querySelector('.blk-t').textContent === '可以开的药',
+     q('#refillText').closest('.blk').querySelector('.blk-t').textContent);
   ck('★ 没填上限的那味药名后面挂了星', /没填上限片<i class="rstar"/.test(rHtml), rHtml.replace(/\n/g, ' / '));
   ck('  填了上限的那味不带星', rHtml.indexOf('填了上限片<i') < 0, rHtml.replace(/\n/g, ' / '));
   // ★ 2026-11-20 用户把这句砍成一行：「* 没有「一次能开几天」的数据」。

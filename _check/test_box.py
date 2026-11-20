@@ -1079,6 +1079,50 @@ PROBE = r"""
        r.top.toFixed(1) + ' ~ ' + r.bottom.toFixed(1) + ' / vh=' + vh);
     window.scrollTo(0, y0);
     pad.remove();
+
+    /* ★ 2026-11-20 用户：「这个清单去做成可滚动就可以了」。
+       起因是药一多（10 味就够），面板被 max-height 封住后是**整个面板**在滚，
+       最下面的「下载 .txt / 打印」被挤出可视区 —— 而复制是这一栏的主要动作。
+       现在滚动关在清单里（.refill-scroll），标题和按钮组 flex:none 常驻。
+       ★ 测试窗口 1400 高，视口压不矮，所以直接把面板 max-height 改成 600px
+         模拟"窗口很矮"—— 量的是 flex 收缩行为，跟屏幕多大无关。
+       ★ 不碰 people、不调 render()：render 重建 #box 会让后面缓存的 pkBtn 引用失效。
+         这里只往清单里塞几行假的 .rq-line 撑高度，测完删掉。 */
+    (function(){
+      var pre = q('#refillText');
+      var made = [];
+      for(var k = 0; k < 12; k++){
+        var d = document.createElement('div');
+        d.className = 'rq-line';
+        d.innerHTML = '<span class="rq-n">' + (k + 1) + '.</span>'
+          + '<span class="rq-name">撑高度用第' + (k + 1) + '味</span>'
+          + '<em class="rq-why">剩 5 天 · 上限 30 天</em>';
+        pre.appendChild(d); made.push(d);
+      }
+      side.style.maxHeight = '600px';
+      var rs = q('.refill-scroll'), pbb = side.querySelector('.panel-b');
+      var sr = side.getBoundingClientRect();
+      ck('★ 清单很长、面板只有 600 高时，清单自己出现滚动',
+         rs.scrollHeight - rs.clientHeight > 40,
+         rs.clientHeight + ' 可见 / ' + rs.scrollHeight + ' 全长');
+      ck('★ 面板本身不再溢出（滚动关进清单里，不是整块在滚）',
+         pbb.scrollHeight - pbb.clientHeight <= 1,
+         pbb.clientHeight + ' / ' + pbb.scrollHeight);
+      var pr0 = q('#btnPrint').getBoundingClientRect();
+      ck('★ 清单再长，「下载 / 打印」也留在面板可视区内',
+         pr0.bottom <= sr.bottom + 1 && pr0.top >= sr.top,
+         pr0.top.toFixed(1) + ' ~ ' + pr0.bottom.toFixed(1)
+           + ' / 面板 ' + sr.top.toFixed(1) + '~' + sr.bottom.toFixed(1));
+      rs.scrollTop = 99999;
+      var pr1 = q('#btnPrint').getBoundingClientRect();
+      ck('★ 清单滚到底，按钮组纹丝不动（滚的不是按钮区）',
+         Math.abs(pr1.top - pr0.top) <= 0.5 && Math.abs(pr1.bottom - pr0.bottom) <= 0.5,
+         pr0.top.toFixed(1) + ' → ' + pr1.top.toFixed(1));
+      ck('  滚的确实是清单本身（scrollTop 变了）', rs.scrollTop > 0, rs.scrollTop);
+      rs.scrollTop = 0;
+      made.forEach(function(e){ e.remove(); });
+      side.style.removeProperty('max-height');
+    })();
   })();
 
   pkBtn.click();
