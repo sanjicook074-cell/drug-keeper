@@ -166,8 +166,8 @@ PROBE = r"""
        (RX_PROMPT || '').length + ' 字');
     ck('提示词里给了起止标记 [药单开始] / [药单结束]',
        RX_PROMPT.indexOf('[药单开始]') >= 0 && RX_PROMPT.indexOf('[药单结束]') >= 0);
-    ck('提示词写明了「这两行原样保留，程序靠它们找药单」',
-       RX_PROMPT.indexOf('原样保留') >= 0 && RX_PROMPT.indexOf('程序靠它们') >= 0);
+    ck('提示词要求这两行原样保留（现在只留一句，不再解释「程序靠它们」）',
+       RX_PROMPT.indexOf('原样保留') >= 0);
     ck('提示词含 7 个字段名：药品名称 / 单位剂量 / 每盒数量 / 盒数 / 每次用量 / 频次 / 用法',
        ['药品名称', '单位剂量', '每盒数量', '盒数', '每次用量', '频次', '用法']
          .every(function(k){ return RX_PROMPT.indexOf(k) >= 0; }));
@@ -176,14 +176,18 @@ PROBE = r"""
        RX_PROMPT.split('\n').filter(function(x){ return /字段名=值|隔开/.test(x); }).join(' / '));
     ck('★ 提示词写明了「数要和单位连着写、中间不要加 * ×」—— 就是这次栽的那个坑',
        RX_PROMPT.indexOf('中间不要加 * ×') >= 0);
-    ck('★ 提示词说清了为什么不能省字段名（两个数挨在一起就分不清）',
-       RX_PROMPT.indexOf('分不清') >= 0);
-    ck('★ 提示词里的示例行本身就是字段化的（3 行、每行 7 个「=」）',
+    ck('★ 提示词是功能性写法：开场一句祈使句，通篇没有「为什么 / 因为」这类自我解释',
+       /^把这张处方整理成下面的格式/.test(RX_PROMPT)
+       && RX_PROMPT.indexOf('为什么') < 0 && RX_PROMPT.indexOf('因为') < 0,
+       RX_PROMPT.split('\n')[0]);
+    ck('★ 示例段是「1 行开方日期 + 3 行药」，药行各 7 个「=」（给 AI 对着抄的样板）',
        (function(){
          var m = RX_PROMPT.match(/\[药单开始\]([\s\S]*?)\[药单结束\]/);
          if(!m) return false;
          var lines = m[1].split('\n').filter(function(x){ return x.trim(); });
-         return lines.length === 3 && lines.every(function(x){ return (x.match(/=/g) || []).length === 7; });
+         return lines.length === 4
+           && /^开方日期=\d{4}-\d{2}-\d{2}$/.test(lines[0].trim())
+           && lines.slice(1).every(function(x){ return (x.match(/=/g) || []).length === 7; });
        })(), (function(){
          var m = RX_PROMPT.match(/\[药单开始\]([\s\S]*?)\[药单结束\]/);
          return m ? m[1].trim().split('\n').length + ' 行' : '(没有示例段)';
@@ -197,9 +201,9 @@ PROBE = r"""
          .every(function(k){ return RX_PROMPT.indexOf(k) < 0; }),
        ['早饭前', '早饭后', '午饭前', '午饭后', '晚饭前', '晚饭后', '睡前']
          .filter(function(k){ return RX_PROMPT.indexOf(k) >= 0; }).join('/'));
-    ck('★ 提示词明说了不用写服药时间、不用算天数',
-       /不用写[^\n]*服药时间/.test(RX_PROMPT) && RX_PROMPT.indexOf('不用算') >= 0,
-       RX_PROMPT.split('\n').filter(function(x){ return /不用写|不用算/.test(x); }).join(' / '));
+    ck('★ 提示词里同样不提「够吃几天」（那是页面自己算的）',
+       RX_PROMPT.indexOf('够吃') < 0 && RX_PROMPT.indexOf('天数') < 0,
+       RX_PROMPT.split('\n').filter(function(x){ return /够吃|天数/.test(x); }).join(' / '));
     ck('提示词的示例行只有 7 个位置（示例段里没有时段词）',
        (function(){
          var m = RX_PROMPT.match(/\[药单开始\]([\s\S]*?)\[药单结束\]/);
@@ -210,13 +214,15 @@ PROBE = r"""
     ck('提示词要求看不清就写 ?、不许猜', RX_PROMPT.indexOf('不要猜') >= 0);
     ck('提示词允许在药单之外写提醒（那些不该进药单）',
        RX_PROMPT.indexOf('不要写进药单里') >= 0);
-    ck('提示词的例子用的是占位药名（示例甲片），不是真底方上的药名',
-       RX_PROMPT.indexOf('示例甲片') >= 0 && RX_PROMPT.indexOf('换成照片上真实的') >= 0);
+    ck('提示词的例子用的是占位药名（样例甲片），不是真底方上的药名',
+       RX_PROMPT.indexOf('样例甲片') >= 0 && RX_PROMPT.indexOf('换成处方上真实的') >= 0);
     /* ★ 提示词和解析器必须是同一套写法 —— 否则人家照着抄了，页面还是读不懂。
        把整段提示词原样喂回解析器：示例那 3 味要一味不少、数要对。 */
     var ex = rxParseText(RX_PROMPT);
     ck('★ 把提示词里的示例段喂回解析器 → 认出 3 味（提示词与解析器是同一套写法）',
        ex.length === 3, ex.length + ' 味：' + ex.map(function(r){ return r.name; }).join('/'));
+    ck('★ 示例段第一行的开方日期也捡出来了（不是当成第 4 味药）',
+       ex.rxDate === '2026-03-08', ex.rxDate);
     ck('示例第一味：10mg*24片 1盒 → 24 片 / 够 24 天',
        ex[0] && ex[0].total === 24 && rxDaysOf(ex[0]) === 24,
        ex[0] && (ex[0].total + ' 片 / ' + rxDaysOf(ex[0]) + ' 天'));
@@ -414,6 +420,46 @@ PROBE = r"""
        kvSlot && (kvSlot.total + ' / ' + kvSlot.timesPerCycle));
 
 
+    /* ============ ⑥b 开方日期（2026-11-20 用户要求） ============
+       原话：「拍下来的这个处方单呢，它上面有这个日期，这个日期也需要解析出来，
+              之后用来作为医保开药的这个时间节点。」
+       处方上打印的是「开方那天」，而底方录入原来是**按今天上锁**的 ——
+       一张三天前开的单子会白锁三天，年初开的甚至锁到今天还没解。
+       ★ 这条只管医保锁（miStart）；「余量」的基准仍然是今天，别顺手一起改。 */
+    ck('提示词要求写开方日期（给了 YYYY-MM-DD 的样子）',
+       RX_PROMPT.indexOf('开方日期') >= 0 && RX_PROMPT.indexOf('YYYY-MM-DD') >= 0);
+    ck('提示词说清了这个日期是处方上打印的那天（不是今天）',
+       RX_PROMPT.indexOf('处方上打印的开具日期') >= 0,
+       RX_PROMPT.split('\n').filter(function(x){ return x.indexOf('开方日期：') >= 0; }).join(' / '));
+
+    var DATE_CASES = [
+      ['开方日期=2026-11-19', '2026-11-19'],
+      ['日期：2026/3/8', '2026-03-08'],
+      ['处方日期: 2026年11月19日', '2026-11-19'],
+      ['开方日期=2026.11.9', '2026-11-09'],
+      ['开方日期=2026-11-19 10:23', '2026-11-19'],
+      ['开方日期=2026-02-30', ''],          // 不存在的日子别收
+      ['开方日期=看不清', ''],
+      ['药品名称=样例甲片 | 单位剂量=10mg', '']   // 药行不是日期行
+    ];
+    DATE_CASES.forEach(function(c){
+      ck('日期写法「' + c[0] + '」→「' + c[1] + '」', rxKVDate(c[0]) === c[1], rxKVDate(c[0]));
+    });
+
+    var typedDate = rxParseText('日期：2026-10-02\n'
+      + '样例甲片(某厂)[10mg*24片] 1盒 10mg 每日一次 口服\n'
+      + '样例乙胶囊[0.25g*12粒] 2盒 1粒 每日2次 口服');
+    ck('★ 手打的文字里夹一行「日期：」→ 还是 2 味药，日期不当第 3 味',
+       typedDate.length === 2, typedDate.length + ' 味');
+    ck('手打那行日期也捡出来了', typedDate.rxDate === '2026-10-02', typedDate.rxDate);
+
+    var jsonDate = rxParseText('```json\n{"开方日期":"2026-11-19","药品":['
+      + '{"药品名称":"样例甲片","单位剂量":"10mg","每盒数量":"24片","盒数":1,'
+      + '"每次用量":"10mg","频次":"每日一次","用法":"口服"}]}\n```');
+    ck('整段 JSON（对象上带开方日期）也认：1 味 + 日期',
+       jsonDate.length === 1 && jsonDate.rxDate === '2026-11-19',
+       jsonDate.length + ' 味 / ' + jsonDate.rxDate);
+
     /* ============ ⑦ 入库不碰药盒 ============ */
 
     function fixtureBox(){
@@ -499,6 +545,44 @@ PROBE = r"""
     ck('两味药都进药箱了',
        meds.some(function(m){ return m.name === '样例己片'; })
        && meds.some(function(m){ return m.name === '样例庚胶囊'; }));
+
+    /* ============ ⑧ 开方日期 → 医保锁从哪天起算（真实点按钮这条路） ============ */
+    fixtureBox(); rxReset();
+    q('#rxPaste').value = '[药单开始]\n开方日期=2026-01-05\n'
+      + '药品名称=样例子片 | 单位剂量=10mg | 每盒数量=30片 | 盒数=1 | '
+      + '每次用量=10mg | 频次=每日一次 | 用法=口服\n[药单结束]';
+    q('#btnRxParse').click();
+    ck('点「解析成药品」→ 日期格自动填成处方上的 2026-01-05',
+       q('#rxDate').value === '2026-01-05', q('#rxDate').value);
+    ck('★ 医保条上的解锁日按开方日算（不是按今天）',
+       q('#rxInsTip').textContent.indexOf(fmtMD(miUnlockFrom('2026-01-05'))) >= 0,
+       q('#rxInsTip').textContent);
+    ck('日期不是今天时，格下小字改说「按 X 开的那张单子起算」',
+       /不是今天/.test(q('#rxDateTip').textContent), q('#rxDateTip').textContent);
+
+    await settle(submitRx({ preventDefault: function(){} }), ['知道了']);
+    var sub1 = meds.filter(function(m){ return m.name === '样例子片'; })[0];
+    ck('★ 入库的 miStart = 开方日期，不是 todayStr()',
+       !!sub1 && sub1.miStart === '2026-01-05' && sub1.miStart !== todayStr(),
+       sub1 && sub1.miStart);
+    ck('★ 年初开的单子按「开方日 + 23 天」早该解锁 —— 不会白锁到今天',
+       !!sub1 && !miLocked(sub1), sub1 && ('锁着=' + miLocked(sub1)));
+
+    // 自费那批：日期对它没意义，miStart 留空
+    fixtureBox(); rxReset();
+    q('#rxPaste').value = '开方日期=2026-01-05\n'
+      + '药品名称=样例丑片 | 单位剂量=10mg | 每盒数量=30片 | 盒数=1 | '
+      + '每次用量=10mg | 频次=每日一次 | 用法=口服';
+    q('#btnRxParse').click();
+    rxRows.forEach(function(r){ r.ins = ''; });
+    await settle(submitRx({ preventDefault: function(){} }), ['知道了']);
+    var sub2 = meds.filter(function(m){ return m.name === '样例丑片'; })[0];
+    ck('自费那批不记 miStart（日期对它没意义）',
+       !!sub2 && sub2.miStart === '', sub2 && ('「' + sub2.miStart + '」'));
+
+    rxSetDate('2026-13-40');
+    ck('日期格填了不存在的日子 → 退回今天（不会带着 13 月去算锁）',
+       rxDateStart() === todayStr(), rxDateStart());
 
   } catch(err){
     R.cases.push({ name: '★ 测试脚本抛异常中断（后面的断言都没跑）', pass: false,

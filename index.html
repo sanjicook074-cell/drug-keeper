@@ -816,6 +816,12 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
   border:1px solid var(--line);border-radius:5px;padding:1px 5px;background:#f3f4f6;white-space:nowrap}
 /* 行上「医保 / 自费」小标：点一下就把这一味翻过来（不改别的行） */
 .rx-insbar{margin:12px 0 2px;border-top:1px solid var(--line-2)}
+/* 开方日期：处方上打印的那天，医保锁从这天起算（2026-11-20） */
+.rx-datebar{margin:12px 0 2px;padding-top:12px}
+.rx-datebar input[type=date]{font:inherit;font-size:13px;padding:5px 9px;border:1px solid var(--line);
+  border-radius:7px;background:var(--card);color:var(--ink)}
+.rx-datebar input[type=date]:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.rx-datebar .hintline{flex-basis:auto}
 .rx-row .rx-insb{flex:none;font:inherit;font-size:10.5px;font-weight:650;line-height:1.6;
   padding:1px 7px;border-radius:5px;cursor:pointer;white-space:nowrap;
   border:1px solid var(--line-2);background:#f1f3f6;color:#6b7280}
@@ -1353,11 +1359,11 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
           <span class="rx-tpl-t">复制这段提示词，发给 AI</span>
           <button type="button" class="btn ghost sm" id="btnRxTpl">复制提示词</button>
         </div>
-        <p>提示词把格式定死了 —— <b>一味药一行</b>，7 个字段都写成「<b>字段名=值</b>」
-          （药品名称 / 单位剂量 / 每盒数量 / 盒数 / 每次用量 / 频次 / 用法），中间用 <b>|</b> 隔开。
-          每个数都顶着自己的名字，就不怕两个数挨在一起分不清了；少写一个字段也只是那格空着。<br>
+        <p>提示词把格式定死了 —— 第一行是<b>开方日期</b>，之后<b>一味药一行</b>，
+          7 个字段都写成「<b>字段名=值</b>」
+          （药品名称 / 单位剂量 / 每盒数量 / 盒数 / 每次用量 / 频次 / 用法），中间用 <b>|</b> 隔开。<br>
            步骤：把它回的<b>整段复制</b> → 粘进下面那个框 → 点「解析成药品」，
-           然后逐味核对药名和「够吃多少天」。</p>
+           然后逐味核对药名和「够吃多少天」。处方上的日期会填进「开方日期」，医保从那天的间隔起算。</p>
       </div>
 
       <div class="rx-paste">
@@ -1369,6 +1375,15 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
           <button type="button" class="btn ghost sm" id="btnRxUse">批量填用法 / 天数</button>
         </div>
         <div class="rx-note" id="rxNote"></div>
+      </div>
+
+      <!-- 开方日期（2026-11-20 用户要求）：处方单上打印的日期要解析出来，当医保开药的
+           时间节点。AI 按提示词把它写在药单第一行，解析时捡出来填在这儿；手打没写的
+           就是今天。一律按今天算的话，一张三天前开的单子会白锁三天。 -->
+      <div class="num-ins rx-datebar" id="rxDateBar">
+        <span class="lt">开方日期</span>
+        <input type="date" id="rxDate">
+        <span class="hintline" id="rxDateTip">处方上打印的日期。医保开药间隔从这天起算。</span>
       </div>
 
       <!-- 这批药是医保开的还是自费买的（2026-10-28）。这里是**默认值**，
@@ -1409,8 +1424,10 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 两条路，任选：
   · **给文字**（最通用）：把药名和用量**一行一味**打成纯文字，让用户复制粘进「底方录入」的框里。
     格式随意，但每行至少要有「药名 + 每次几个 + 每天几次」，页面才解析得出「够吃几天」。
-    推荐按**字段名**写（页面弹窗里那份提示词就是这个），一行长这样：
+    推荐按**字段名**写（页面弹窗里那份提示词就是这个），头一行写开方日期，之后一行一味：
+      开方日期=2026-11-19
       药品名称=某某片 | 单位剂量=10mg | 每盒数量=24片 | 盒数=1 | 每次用量=10mg | 频次=每日一次 | 用法=口服
+    ★ 开方日期是处方上打印的那天，页面拿它当**医保开药的时间节点**（医保锁从这天起算，不是今天）。
     ★ 为什么强调字段名：靠「数到第几个」的写法，一旦两个数挨在一起（0.25ug36粒，
       中间那个分隔符丢了），页面就分不清哪个是剂量、哪个是每盒几片 —— 只能猜，而猜出来的
       数看着很正常，最容易骗过人。顶着自己的字段名，漏一个也只是那一格空着。
@@ -1442,7 +1459,7 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 
 ■ 产出什么
     <页面URL>#rx=<base64url(JSON)>
-    · JSON 形如 {"v":1,"from":"助手","patient":{…},"sheets":[ {…} ],"rows":[ {…}, {…} ]}
+    · JSON 形如 {"v":1,"from":"助手","date":"2026-11-19","patient":{…},"sheets":[ {…} ],"rows":[ {…}, {…} ]}
     · base64url = UTF-8 编码 → base64 → 把 '+' 换成 '-'、'/' 换成 '_'、去掉结尾的 '=' 补位
     · 一定用 hash（# 后面）而不是 query：hash 不会发往服务器，药品数据不出用户本机；
       也能直接贴在聊天里发给用户。
@@ -1475,6 +1492,12 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
       某张对不上 → 标红并提示"先别入库"。页面手上没有照片，只能核你自报的数自不自洽，
       够不够还得用户拿照片扫一眼 —— 但至少"有没有人核过"这件事，从此是看得见的。
     ★ 手机端认照片那条路最容易省这一步（"8 味都在"看着就对了）—— 那正是那次事故的直接原因。
+
+■ date —— 开方日期（**顶层**，YYYY-MM-DD）
+    处方单上打印的开具日期（不是「今天」，也不是就诊日期 —— 底方上通常两个日期都有，
+    取「开具/开方」那个）。页面拿它当**医保开药的时间节点**：医保锁 = 开方日 + 间隔 − 提前。
+    · 抄不到就不写，页面按今天算。写错了比不写更麻烦 —— 锁会把用户的多算或少算几天。
+    · 走「给文字」那条路时，写成药单第一行的 `开方日期=2026-11-19`，效果一样。
 
 ■ rows 每一味的字段（都可省，省了用默认值）
     name           药名（必填，中文，**逐字照抄**，如 "阿奇霉素片"）
@@ -5209,34 +5232,33 @@ function rxHalf(s){
    ★ 这里**只管把药和用量读准**。什么时候吃、药盒怎么摆，一律不问 ——
      见下面 RX_SLOT_* 那段注释。 */
 const RX_PROMPT = [
-  '我在用「药品管家」记药。我发你一张处方（底方）照片，帮我把上面的药整理成下面这个格式 ——',
-  '这是程序要读的，写法请完全照抄，不要自己发挥。',
+  '把这张处方整理成下面的格式。只回药单，不要前言、不要解释。',
   '',
   '[药单开始]',
-  '药品名称=示例甲片 | 单位剂量=10mg | 每盒数量=24片 | 盒数=1 | 每次用量=10mg | 频次=每日一次 | 用法=口服',
-  '药品名称=示例乙胶囊 | 单位剂量=0.25g | 每盒数量=12粒 | 盒数=2 | 每次用量=1粒 | 频次=每日2次 | 用法=口服',
-  '药品名称=示例丙注射液 | 单位剂量=140mg | 每盒数量=2支 | 盒数=1 | 每次用量=140mg | 频次=每两周一次 | 用法=皮下注射',
+  '开方日期=2026-03-08',
+  '药品名称=样例甲片 | 单位剂量=10mg | 每盒数量=24片 | 盒数=1 | 每次用量=10mg | 频次=每日一次 | 用法=口服',
+  '药品名称=样例乙胶囊 | 单位剂量=0.25g | 每盒数量=12粒 | 盒数=2 | 每次用量=1粒 | 频次=每日2次 | 用法=口服',
+  '药品名称=样例丙注射液 | 单位剂量=140mg | 每盒数量=2支 | 盒数=1 | 每次用量=140mg | 频次=每两周一次 | 用法=皮下注射',
   '[药单结束]',
   '',
-  '（上面三行只是格式示例 —— 药名、数值都换成照片上真实的。）',
+  '上面 3 味是示例，药名和数值换成处方上真实的。字段：',
+  '开方日期：处方上打印的开具日期，YYYY-MM-DD，整张单只写这一行',
+  '药品名称：通用名，不带规格，不带括号里的商品名和厂家',
+  '单位剂量：每片 / 粒 / 支含多少，如 10mg、0.25ug',
+  '每盒数量：一盒几片，数字+单位，如 24片、6贴、2支',
+  '盒数：这次开几盒，只写数字',
+  '每次用量：每次吃多少，如 10mg、1片、1贴',
+  '频次：每日一次、每日2次、每两周一次、每晚一次',
+  '用法：口服、外用、皮下注射、纳肛',
   '',
-  '一味药一行，每行 7 个字段，一律写成「字段名=值」，字段之间用 | 隔开，顺序不能变：',
-  '1 药品名称：通用名，不带规格',
-  '2 单位剂量：一片/一粒/一支里含多少，带单位，如 10mg、0.25ug、140mg',
-  '3 每盒数量：一盒有几片，数字+单位，如 24片、12粒、6贴、2支',
-  '4 盒数：这次开回来几盒，只写数字，如 1、5',
-  '5 每次用量：每次吃多少，带单位，如 10mg、1片、1贴',
-  '6 频次：每日一次、每日2次、每两周一次、每晚一次',
-  '7 用法：口服、外用、皮下注射、纳肛',
+  '例子：处方上的一行「样例甲片(某厂)[10mg*24片] 1盒 10mg 每日一次 口服」，对应示例第 1 味。',
   '',
-  '几点要求：',
-  '· 每个数都要顶着自己的字段名：少了字段名，两个数挨在一起（0.25ug36粒）程序就分不清哪个是剂量、哪个是每盒数量',
-  '· 数和单位连着写（0.25ug、36粒），中间不要加 * × 这类符号，也不要把两个数并成一格',
-  '· [药单开始] 和 [药单结束] 这两行原样保留 —— 程序靠它们找药单，少一行就整段认不出来',
-  '· 两行之间一味药占一行：不要折行、不要编号、不要表格、不要代码块',
-  '· 药名、数值**逐字照抄处方**，看不清就写 ?，不要猜',
-  '· 不用写「饭前饭后」「早上晚上」这类服药时间，也不用算「够吃几天」—— 这两样程序不读',
-  '· 药单之外你照常提醒我怎么吃、注意什么，那些我能看到，但不要写进药单里'
+  '要求：',
+  '1 一味药一行，7 个字段都写成 字段名=值，字段之间用 | 隔开，顺序不变',
+  '2 数和单位连着写（0.25ug、36粒），中间不要加 * ×，不要把两个数并成一格',
+  '3 药名、数值照抄处方；看不清写 ?，不要猜',
+  '4 [药单开始] / [药单结束] 原样保留，两行之间只放开方日期和药',
+  '5 用药提醒写在 [药单结束] 之后，不要写进药单里'
 ].join('\n');
 
 /* 药单的起止标记。容忍 AI 加粗（**[药单开始]**）和全角方括号（【药单开始】）——
@@ -5508,6 +5530,33 @@ function rxKVFields(line){
   return f;
 }
 
+/* ---- 开方日期：整张处方一个，不属于任何一味药 ----
+   用户 2026-11-20：「拍下来的处方单上有日期，这个日期也需要解析出来，用来作为医保开药的
+   时间节点」—— 医保那把锁是从**开方那天**起算的（miUnlockFrom(miStart)）。原来底方录入
+   一律按今天上锁，一张三天前开的单子就会白锁三天。
+   AI 按提示词会把 `开方日期=2026-03-08` 写在药单第一行；手打的文字里写「日期：2026/3/8」
+   也认。认出来就记在**整批**上（数组的 rxDate 属性），不作为药行 —— 当药解析会多出一味空药。 */
+const RX_DATE_LINE = /^(?:开方|处方|开具|开单|开药|就诊|填开|打印)?日期\s*[=:：]\s*(.+)$/;
+
+// 各种写法 → 'YYYY-MM-DD'；认不出或不存在的日子（2026-02-30）返回 ''
+function rxDateOf(v){
+  const t = rxHalf(String(v == null ? '' : v))
+    .replace(/[年月]/g, '-').replace(/日/g, '').replace(/[./]/g, '-');
+  const m = t.match(/(\d{4})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})/);
+  if(!m) return '';
+  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  const dt = new Date(y, mo - 1, d);
+  if(dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return '';
+  return y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+}
+
+// 这一整行只在说日期 → 返回 'YYYY-MM-DD'；否则 ''
+function rxKVDate(line){
+  const s = rxHalf(line).replace(/^[\s|｜]+|[\s|｜]+$/g, '');
+  const m = s.match(RX_DATE_LINE);
+  return m ? rxDateOf(m[1]) : '';
+}
+
 function rxNumOf(s){
   const m = String(s == null ? '' : s).match(/(\d+(?:\.\d+)?)/);
   return m ? Number(m[1]) : null;
@@ -5615,6 +5664,13 @@ function rxParseJSONRows(block){
     }
   }
   if(!arr) return null;
+  // 整段 JSON 有时把日期写在对象上：{"开方日期":"2026-11-19","药品":[…]}
+  let dstr = '';
+  if(j && typeof j === 'object' && !Array.isArray(j)){
+    ['开方日期', '处方日期', '日期'].forEach(function(k){
+      if(!dstr && j[k]) dstr = rxDateOf(j[k]);
+    });
+  }
   const out = [];
   arr.forEach(function(o){
     if(!o || typeof o !== 'object') return;
@@ -5622,6 +5678,7 @@ function rxParseJSONRows(block){
     const r = rxParseKV(line);
     if(r && r.name) out.push(r);
   });
+  if(dstr && out.length) out.rxDate = dstr;
   return out.length ? out : null;
 }
 
@@ -5644,7 +5701,11 @@ function rxParseText(text){
   if(asJSON) return asJSON;
 
   const out = [];
+  let rxDate = '';
   block.split(/\r?\n/).forEach(function(raw){
+    // 「开方日期=2026-11-19」单独一行：记在整批上，不当药（当药会多出一味空药）
+    const dt = rxKVDate(raw);
+    if(dt){ if(!rxDate) rxDate = dt; return; }
     // 字段化那版先认：它自带药名，不用看「规格/数量/用量」这些字
     // （这些字在 RX_NOT_DRUG 里，走老的逐行猜会被当成表头扔掉）
     const kv = rxParseKV(raw);
@@ -5653,6 +5714,7 @@ function rxParseText(text){
     const r = rxParseLine(raw);
     if(r && r.name) out.push(r);
   });
+  if(rxDate) out.rxDate = rxDate;
   return out;
 }
 
@@ -5718,6 +5780,28 @@ function renderRx(){
   rxSyncFoot();
 }
 
+/* 这批药按哪天上锁：解析出「开方日期」就按那天，没写就是今天。
+   ★ 只影响医保锁（miStart）；「余量」的基准仍是今天（stockDate）—— 那几天已经吃掉的量
+     是另一回事，用户没让动，别顺手改。 */
+function rxDateStart(){
+  const el = $('#rxDate');
+  const v = el ? el.value : '';
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : todayStr();
+}
+// 填日期 + 把下面那行小字跟着换（「按 11-19 那张单子起算」，比写死「从这天起算」实在）
+function rxSetDate(d){
+  const el = $('#rxDate');
+  if(!el) return;
+  el.value = d || todayStr();
+  const d0 = rxDateStart();
+  const tip = $('#rxDateTip');
+  if(tip){
+    tip.textContent = (d0 === todayStr())
+      ? '处方上打印的日期。医保开药间隔从这天起算。'
+      : '按 ' + fmtMD(d0) + ' 开的那张单子起算，不是今天。';
+  }
+}
+
 /* 「这批药是医保还是自费」那条：radio 跟着 rxInsMode 走（关掉弹窗再打开会回到默认的医保），
    后面那行小字按当前勾了几味医保算解锁日 —— 光写「会上锁」，人不知道锁到哪天。 */
 function syncRxInsBar(){
@@ -5729,7 +5813,7 @@ function syncRxInsBar(){
   if(!tip) return;
   const cnt = rxRows.filter(function(r){ return r.ins === 'mi'; }).length;
   tip.textContent = (rxInsMode === 'mi')
-    ? '勾着的 ' + cnt + ' 味会一起上锁，' + fmtMD(miUnlockFrom(todayStr())) + ' 之后才解锁'
+    ? '勾着的 ' + cnt + ' 味会一起上锁，' + fmtMD(miUnlockFrom(rxDateStart())) + ' 之后才解锁'
     : '自费的都不上锁；单独哪味是医保开的，点那行药名后面的小标翻过来';
 }
 
@@ -5902,6 +5986,7 @@ function openUse(){
 function rxReset(){
   rxRows = [];
   rxInsMode = 'mi';          // 下次打开回到「医保开的」这个默认（医院开的药大概率走医保）
+  rxSetDate('');             // 开方日期回落到今天；解析出「开方日期=」会再盖上
   rxSay('');
   const wh = $('#rxWho');
   if(wh){ wh.innerHTML = ''; wh.hidden = true; }
@@ -6057,7 +6142,11 @@ function rxAudit(sheets, rows, fromWho, patient){
 
 async function openRx(rows, fromWho, patient, sheets){
   rxReset();
+  // 助手给的链接可以带开方日（`#rx=` 里的 date，或某一行上的 rxDate）——
+  // rxNewRow 只取药的字段，日期得从原始数组上取，map 之后就没了。
+  const dIn = (rows && (rows.rxDate || (rows[0] && rows[0].rxDate))) || '';
   const t = await rxResolveTarget(patient);       // 会先问"这份底方是谁的"（含新建），await 之后再铺数据
+  rxSetDate(dIn);
   const list = (rows || []).map(function(x){ return rxNewRow(x); });
   const dup = rxMarkExisting(list, t.person);     // ← 去重：已有的取消勾选
   rxRows = list;
@@ -6094,6 +6183,7 @@ async function submitRx(e){
     return;
   }
 
+  const startD = rxDateStart();        // 医保锁从开方日起算（解析出来的那天，没解析到就是今天）
   picked.forEach(function(r){
     meds.push({
       id: uid(),
@@ -6106,10 +6196,11 @@ async function submitRx(e){
       stockBase: round2(Math.max(0, num(r.total))),   // 这次开回来的量 = 今天的余量
       stockDate: todayStr(),
       rxMax: 0,
-      // 医保 / 自费（2026-10-28）：医保开的从今天起上锁。
-      // ★ 底方录入没有「开药日」这一格 —— 底方就是今天开的那张，基准日已经是今天了。
+      // 医保 / 自费（2026-10-28）：医保开的从这里上锁。
+      // ★ 2026-11-20 起不再是「今天」：处方单上打的那天才算 —— 一张三天前开的单子，
+      //   按今天上锁就白锁三天。日期从弹窗那个格子来（解析出的「开方日期」）。
       ins: (r.ins === 'mi') ? 'mi' : '',
-      miStart: (r.ins === 'mi') ? todayStr() : '',
+      miStart: (r.ins === 'mi') ? startD : '',
       note: (r.note || '').trim()
     });
   });
@@ -6121,8 +6212,8 @@ async function submitRx(e){
     title: '已加入 ' + picked.length + ' 味药',
     sub: (who ? '记到「' + who.name + '」的药箱里。' : '')
       + '\n\n「余量」记的是这次开回来的量，基准日是今天；卡片上的「剩 N 天」按你确认的天数走，之后每天自动往下扣。'
-      + (miN ? '\n\n其中 ' + miN + ' 味按「医保开的」记：'
-          + fmtMD(miUnlockFrom(todayStr())) + ' 之后才解锁，那之前不能用医保再开这几味。' : '')
+      + (miN ? '\n\n其中 ' + miN + ' 味按「医保开的」记：从开方日 ' + fmtMD(startD) + ' 起算，'
+          + fmtMD(miUnlockFrom(startD)) + ' 之后才解锁，那之前不能用医保再开这几味。' : '')
   });
   rxReset();
 }
@@ -6655,6 +6746,12 @@ $('#btnRxParse').addEventListener('click', async function(){
     });
     return;
   }
+  // 药单里那行「开方日期=」→ 上面那个日期格子；医保锁从这天起算（不是今天）
+  if(got.rxDate){
+    rxSetDate(got.rxDate);
+    syncRxInsBar();
+    rxSay('按处方上的开方日期 <b>' + fmtMD(got.rxDate) + '</b> 记 —— 医保从这天的间隔起算。', 'ok');
+  }
   const added = rxAddRows(got);
   $('#rxPaste').value = '';
   if(!added){
@@ -6741,6 +6838,11 @@ $('#rxInsBar').addEventListener('change', function(e){
   rxInsMode = (e.target.value === 'mi') ? 'mi' : '';
   rxRows.forEach(function(r){ r.ins = rxInsMode; });
   renderRx();
+});
+// 开方日期手改了 → 那行小字和解锁日跟着换（填成非法值 rxSetDate 会退回今天）
+$('#rxDate').addEventListener('change', function(){
+  rxSetDate($('#rxDate').value);
+  syncRxInsBar();
 });
 $('#btnRxCancel').addEventListener('click', function(){ $('#dlgRx').close(); });
 $('#formRx').addEventListener('submit', submitRx);
@@ -6871,6 +6973,9 @@ render();          // 原本这里还有一条「URL 带参数就载入示例」
   const preset = rxDecodeHash();
   if(!preset) return;
   try { history.replaceState(null, '', location.pathname + location.search); } catch(e){}
+  // 链接里带的开方日期（顶层 date）挂到 rows 上 —— openRx 会拿它填那个日期格，
+  // 医保锁从这天起算。挂在数组属性上不进 JSON，所以只能在这儿挂一次。
+  if(preset.rows && preset.date) preset.rows.rxDate = rxDateOf(preset.date) || '';
   openRx(preset.rows, preset.from || '助手', preset.patient, preset.sheets);
 })();
 
