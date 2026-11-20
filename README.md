@@ -1057,7 +1057,9 @@ python android/build.py
 
 ![桌面版主窗口就是完整应用](docs/screenshot-main.png)
 
-**怎么开**：双击 `desktop/启动数据台.bat`（第一次要先在 `desktop/` 里跑一次 `npm install`）。
+**怎么开**：Windows 桌面上的「药品管家」快捷方式（图标在 `desktop/app.ico`）双击即可；
+它指向 `desktop/launch.bat`，效果等同于项目里的 `desktop/启动数据台.bat`
+（第一次要先在 `desktop/` 里跑一次 `npm install`）。
 打开就是完整的药品管家，所有功能和网页版一样；局域网服务在后台一起起来。
 「导入导出 → 局域网同步」里地址**已经自动指向本机**，不用手填，设备会登记成「电脑」。
 
@@ -1110,6 +1112,8 @@ desktop/preload.js       给页面注入 window.desk：本机服务地址 + 打�
 desktop/server.js        那个局域网服务本体：主档读写、设备台账、/api/page 与 /api/apk 分发（不懂业务结构，只搬字符串）
 desktop/ui/index.html    数据台设置窗口（主档概览、连过的设备、更新分发）
 desktop/启动数据台.bat     双击启动（清掉 ELECTRON_RUN_AS_NODE 再拉 electron）
+desktop/launch.bat         纯英文名的同一份启动脚本，供桌面快捷方式指向（避开中文路径在 .lnk 里的编码坑）
+desktop/app.ico            桌面快捷方式用的图标（蓝底白十字）
 _check/test_desk.py      桌面端自检 —— 26 条（跨域全开、页面 md5 与字节对得上、安装包发得出去、旧数据不许顶掉新主档、覆盖前留 .bak、force 真的强制覆盖；另有桌面形态体检：主窗口加载完整 index.html、数据台退成设置窗口、并用无头 Chrome 塞假 window.desk 实测按钮显示 / 本机地址锁定 / 提示语）
 _check/test_hub.py       网页端「局域网同步」端到端 —— 11 条（真起服务、真开 Chrome：地址补全、上传真到、拉取真换、空地址说人话）
 android/                  Android 壳：WebView 里装**同一个** index.html，编成能装的 APK
