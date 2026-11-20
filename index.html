@@ -734,26 +734,64 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 .disp-name .tag{margin-left:6px;vertical-align:1px}
 .disp-sum b{color:#374151}
 
-/* ---------- 底方录入（2026-10-13 起只走「助手通道」，页面不认照片） ---------- */
+/* ---------- 底方录入（2026-10-13 起只走「助手通道」，页面不认照片） ----------
+   2026-11-20 用户要求重排版：原来一块蓝（不认照片）一块绿（复制提示词）一块白（粘贴），
+   颜色不一致看着乱。现在三步全用同一副骨架：**号码 + 大标题 + 一句解释**，
+   只有黑框（第 3 步的粘贴框）是整页唯一的重色块。 */
 #dlgRx{width:min(880px,94vw)}
-.rx-howto{margin-bottom:14px;padding:12px 14px 12px 13px;
-  border:1px solid var(--line-2);border-left:3px solid var(--brand);border-radius:11px;
-  background:#f8f9fb;font-size:12.5px;color:#4b5563;line-height:1.8}
-.rx-howto b{color:var(--text)}
-.rx-howto .tip{color:var(--faint)}
-/* 「让 AI 按固定格式回你」那一块。左边框用绿色而不是上面的蓝色：
-   蓝色那条是「先读这个」（说明页面不认照片），绿色这条是「照做就行」（照抄提示词）。 */
-.rx-tpl{margin:-4px 0 14px;padding:11px 13px;border:1px solid #cfe8d6;border-left:3px solid var(--ok);
-  border-radius:11px;background:#f5fbf7}
-.rx-tpl-h{display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap}
-.rx-tpl-t{flex:1 1 180px;font-size:12.5px;font-weight:650;color:var(--text)}
-.rx-tpl p{margin:6px 0 0;font-size:12px;line-height:1.75;color:#4b5563}
-.rx-tpl p b{color:var(--text)}
-.rx-paste{display:flex;flex-direction:column;gap:7px;margin-bottom:14px}
-.rx-paste .lt{font-size:12.5px;color:#4b5563}
-#rxPaste{font:inherit;font-size:12.5px;line-height:1.7;padding:9px 11px;min-height:92px;
-  resize:vertical;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--text)}
-#rxPaste:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.rx-step{margin:0 0 12px;padding:12px 14px;border:1px solid var(--line-2);border-radius:12px;background:#fff}
+.rx-step-h{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.rx-no{flex:none;width:22px;height:22px;border-radius:50%;background:var(--brand);color:#fff;
+  display:grid;place-items:center;font-size:12.5px;font-weight:700;line-height:1;
+  font-variant-numeric:tabular-nums}
+.rx-step-t{margin:0;flex:1 1 180px;font-size:13.5px;font-weight:680;line-height:1.5;color:var(--text)}
+.rx-step-d{margin:6px 0 0;padding-left:31px;font-size:12px;line-height:1.75;color:#4b5563}
+.rx-step-d b{color:var(--text);font-weight:650}
+.rx-step .btn.sm{flex:none}
+/* 第 1 步：提示词原文就摆在按钮下面，可以直接看、直接选（不用先复制才能看见） */
+.rx-tpl-pre{margin:9px 0 0;padding:10px 12px;max-height:170px;overflow:auto;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:11.5px;line-height:1.72;color:#374151;background:#f7f8fa;
+  border:1px solid var(--line-2);border-radius:9px;white-space:pre-wrap;
+  word-break:break-word;cursor:text;-webkit-user-select:all;user-select:all}
+/* 第 3 步那个黑框 —— 整页最醒目的一格。
+   ① 黑底浅字，跟周围全是浅色卡片，反差最大；
+   ② 边框跑马灯：一圈光绕着框转（用户原话「边边上要跑马灯那种效果」）。
+   ★ 跑马灯用「转一个超大的锥形渐变伪元素」做的，**故意不用 @property / registerProperty** ——
+     那套写角度动画，老一点的 Android WebView 根本没实现，手机上会一动不动；
+     transform 的旋转从 Android 4.4 起就有，稳。
+   ★ 伪元素要盖住整个矩形：正方形边长取 3 倍框宽（内切圆半径 1.5 倍框宽 > 半对角线）。 */
+.rx-drop{position:relative;margin-top:10px;padding:3px;border-radius:14px;
+  background:#0b0f17;overflow:hidden;
+  box-shadow:0 10px 28px rgba(15,23,42,.26), 0 0 0 0 rgba(59,130,246,0);
+  animation:rxBreath 3.2s ease-in-out infinite}
+.rx-drop::before{content:'';position:absolute;left:50%;top:50%;width:300%;height:0;
+  padding-bottom:300%;z-index:0;transform:translate(-50%,-50%) rotate(0deg);
+  background:conic-gradient(#22d3ee,#6366f1,#a855f7,#ec4899,#f59e0b,#22d3ee);
+  animation:rxRun 4s linear infinite}
+@keyframes rxRun{
+  from{transform:translate(-50%,-50%) rotate(0deg)}
+  to  {transform:translate(-50%,-50%) rotate(360deg)}
+}
+/* 外圈那点呼吸的光：跑马灯是「绕圈跑」，这层是「整体一跳一跳」，
+   两个节奏差着，眼睛更容易被拽过来。别太亮 —— 太亮会把黑框里的字压住。 */
+@keyframes rxBreath{
+  0%,100%{box-shadow:0 10px 28px rgba(15,23,42,.26), 0 0 0 0 rgba(59,130,246,0)}
+  50%    {box-shadow:0 10px 28px rgba(15,23,42,.30), 0 0 0 4px rgba(59,130,246,.12)}
+}
+@media (prefers-reduced-motion:reduce){
+  .rx-drop,.rx-drop::before{animation:none}
+  .rx-drop{box-shadow:0 10px 28px rgba(15,23,42,.28)}
+}
+/* ★ 2026-11-20 第二轮：用户说的「黑框」是**只有边上那道框是黑的，里面是白的** ——
+   别把整个框涂黑（第一版就是这么理解的，被当场纠正）。现在 =
+   跑马灯那圈光当边框（他后来又点名要的），里面是白底黑字，跟别的输入框一样好读。 */
+#rxPaste{position:relative;z-index:1;display:block;width:100%;box-sizing:border-box;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:12.5px;line-height:1.75;padding:13px 14px;min-height:134px;resize:vertical;
+  border:none;border-radius:11px;background:#fff;color:var(--text);caret-color:var(--brand)}
+#rxPaste::selection{background:#dbeafe;color:var(--text)}
+#rxPaste:focus{outline:none;box-shadow:inset 0 0 0 1px rgba(37,99,235,.5)}
 .rx-list{display:flex;flex-direction:column;gap:9px;max-height:40vh;overflow:auto}
 .rx-row{border:1px solid var(--line);border-left-width:4px;border-radius:10px;padding:10px 12px;background:#fff}
 .rx-row[data-lv=out]{border-left-color:var(--out);background:#fffafa}
@@ -831,39 +869,12 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
   padding-top:13px;border-top:1px solid var(--line-2);font-size:12.5px;color:var(--muted)}
 .rx-act .sp{flex:1}
 
-/* ---------- 批量填用法（底方录进来之后，把吃法/天数一次填掉） ---------- */
+/* ---------- 黑框下面那句提示（认出几味 / 为什么一处都没认出来） ---------- */
 .rx-note{font-size:11.5px;color:var(--muted);line-height:1.7;margin-top:6px;min-height:17px}
 .rx-note.busy{color:var(--brand)}
 .rx-note.ok{color:var(--ok)}
 .rx-note.warn{color:var(--soon)}
 
-#dlgUse{width:min(760px,94vw)}
-.use-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:12.5px;color:#4b5563;
-  padding:11px 13px;border:1px dashed var(--line);border-radius:10px;background:#f8f9fb;margin-bottom:14px}
-.use-bar .lt{font-weight:600;color:var(--text)}
-.use-bar input[type=number]{font:inherit;font-size:12.5px;width:60px;text-align:center;padding:6px 8px;
-  border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text)}
-.use-bar select{font:inherit;font-size:12.5px;padding:6px 8px;border:1px solid var(--line);
-  border-radius:8px;background:#fff;color:var(--text)}
-.use-list{display:flex;flex-direction:column;gap:8px;max-height:46vh;overflow:auto}
-.use-row{display:flex;align-items:center;gap:7px;flex-wrap:wrap;border:1px solid var(--line);
-  border-left-width:4px;border-radius:10px;padding:8px 11px;background:#fff;font-size:12.5px}
-.use-row[data-lv=out]{border-left-color:var(--out);background:#fffafa}
-.use-row[data-lv=soon]{border-left-color:var(--soon);background:#fffdf6}
-.use-row[data-lv=ok]{border-left-color:var(--ok)}
-.use-row[data-lv=na]{border-left-color:var(--na)}
-.use-row input,.use-row select{font:inherit;font-size:12.5px;padding:5px 8px;
-  border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text)}
-.use-row input:focus,.use-row select:focus{outline:none;border-color:var(--brand);
-  box-shadow:0 0 0 3px rgba(37,99,235,.12)}
-.use-row input.mini{width:56px;text-align:center}
-.use-row .un{flex:1;min-width:104px;font-weight:620;color:var(--text);word-break:break-word}
-.use-row .lb{color:#4b5563}
-.use-row .tot{margin-left:auto;color:var(--muted);background:#f8f9fb;border:1px solid var(--line-2);
-  border-radius:9px;padding:5px 10px}
-.use-row .tot b{color:#374151;font-weight:650}
-.use-empty{text-align:center;padding:22px 10px;color:var(--faint);font-size:13px}
-.use-note{margin-top:9px;font-size:12px;color:var(--brand)}
 
 /* ---------- 打印 ---------- */
 @media print{
@@ -995,10 +1006,13 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
 
   /* ---- 底方录入：两块引导在手机上占掉半屏，一打开弹窗只见字不见药 ----
      压字号、压留白（约省 2 行），其余不动：该说的还得说清，只是别用桌面那套行高。 */
-  .rx-howto,.rx-tpl{padding:9px 11px;font-size:11.8px;line-height:1.72;margin-bottom:10px}
-  .rx-tpl p{font-size:11.4px;line-height:1.68}
-  .rx-tpl-t{font-size:12px}
-  .rx-tpl .btn.sm{font-size:11.5px;padding:5px 9px}
+  .rx-step{padding:9px 11px;margin-bottom:9px}
+  .rx-step-t{font-size:12.5px}
+  .rx-step-d{font-size:11.4px;line-height:1.7;padding-left:28px}
+  .rx-no{width:19px;height:19px;font-size:11.5px}
+  .rx-tpl-pre{font-size:10.8px;line-height:1.66;max-height:132px}
+  .rx-step .btn.sm{font-size:11.5px;padding:5px 9px}
+  #rxPaste{min-height:112px;font-size:12px;padding:11px 12px}
   /* 底方录入的行：390 宽下「勾选框 + 药名 + 规格 + ×」差一点点挤不进一行，× 会被挤到
      第二行孤零零一个，看着像另一个按钮。把药名和规格各收窄一点，四个留在同一行。 */
   .rx-row .rx-name{min-width:104px}
@@ -1330,7 +1344,7 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
      浏览器里那套识别**跑不通**（认不准还得人一格一格就地改，比直接填还慢），留着只会误导人。
      现在只剩两条都很快的路：
        ① 照片发给任意一个 AI（DeepSeek / Kimi / 豆包…），让它把「药名 + 用量」打成文字，
-          用户把那段文字粘进下面的框 → 点「解析成药品」；
+          用户把那段文字粘进第 3 步那个框 —— **粘进来就自动认**，不用再点按钮；
        ② 那条路里的 AI 若愿意直接给一条带 `#rx=` 的链接，点开药就填好了（可选，不是必须）。
      ★ 2026-10-23 用户点明口径：「用户看到的就是这个界面，不存在什么这个界面后面还安排着一个后台 AI」。
        所以界面上**不许**再写「发给帮你开这个页面的助手」这类话 —— 页面自己不会认字，
@@ -1347,35 +1361,44 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
       <div class="rx-who" id="rxWho" hidden></div>
       <div class="rx-audit" id="rxAudit" hidden></div>
 
-      <div class="rx-howto">
-        这个页面<b>不认照片</b>，也没有藏着一个「后台 AI」—— 认字这一步得你自己找个 AI 来干
-        （<b>DeepSeek、Kimi、豆包</b> 都行）。<br>
-        手里已经有<b>文字版</b>的话可以跳过这步，直接粘到框里。
-        <span class="tip">（有的 AI 会顺手回你一条 <b>#rx=</b> 链接 —— 点开也一样。）</span>
-      </div>
-
-      <div class="rx-tpl">
-        <div class="rx-tpl-h">
-          <span class="rx-tpl-t">复制这段提示词，发给 AI</span>
+      <!-- 三步，一副骨架：号码 + 大标题 + 一句解释。
+           2026-11-20 用户要求统一格式：「圈一复制提示词，圈二打开 AI（DeepSeek Kimi 豆包）、
+           拍照片、把提示词发过去，圈三把 AI 的回答粘到下边的框里」。 -->
+      <section class="rx-step" id="rxStep1">
+        <div class="rx-step-h">
+          <span class="rx-no">1</span>
+          <h4 class="rx-step-t">复制这段提示词</h4>
           <button type="button" class="btn ghost sm" id="btnRxTpl">复制提示词</button>
         </div>
-        <p>提示词把格式定死了 —— 第一行是<b>开方日期</b>，之后<b>一味药一行</b>，
-          7 个字段都写成「<b>字段名=值</b>」
-          （药品名称 / 单位剂量 / 每盒数量 / 盒数 / 每次用量 / 频次 / 用法），中间用 <b>|</b> 隔开。<br>
-           步骤：把它回的<b>整段复制</b> → 粘进下面那个框 → 点「解析成药品」，
-           然后逐味核对药名和「够吃多少天」。处方上的日期会填进「开方日期」，医保从那天的间隔起算。</p>
-      </div>
+        <p class="rx-step-d">后面几步要靠它。提示词把格式定死了 —— 第一行是<b>开方日期</b>，
+          之后<b>一味药一行</b>，7 个字段都写成「<b>字段名=值</b>」，中间用 <b>|</b> 隔开。
+          原文就在下面，也可以长按自己选。</p>
+        <pre class="rx-tpl-pre" id="rxTplText"></pre>
+      </section>
 
-      <div class="rx-paste">
-        <span class="lt" id="rxPasteLt">也可以把底方上的药名<b>一行行原样粘</b>进来 —— 规格、数量、频次都不用你拆：</span>
-        <textarea id="rxPaste" autocomplete="off" placeholder="例（一行一味，直接粘底方上的那行字）：&#10;阿莫西林胶囊(康贝)[0.25g*8] 2盒 6.26 0.5g 每日2次 口服&#10;维生素B6片(Ⅰ)[华康][10mg*30] 1瓶 19.88 10mg 每日一次 口服"></textarea>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button type="button" class="btn ghost sm" id="btnRxParse">解析成药品</button>
-          <button type="button" class="btn ghost sm" id="btnRxAddOne">＋ 手动加一味</button>
-          <button type="button" class="btn ghost sm" id="btnRxUse">批量填用法 / 天数</button>
+      <section class="rx-step" id="rxStep2">
+        <div class="rx-step-h">
+          <span class="rx-no">2</span>
+          <h4 class="rx-step-t">打开一个 AI（DeepSeek / Kimi / 豆包），拍下处方、把提示词发过去</h4>
+        </div>
+        <p class="rx-step-d">这个页面<b>不认照片</b>，也没有藏着一个「后台 AI」—— 认字这一步要你自己找个
+          AI 来干，上面那几个都行。照片和提示词一条发过去，让它照着格式回你。<br>
+          手里已经有<b>文字版</b>的可以跳过这两步，直接去第 3 步。
+          <span style="color:var(--faint)">（有的 AI 会顺手回一条 <b>#rx=</b> 链接 —— 点开也一样。）</span></p>
+      </section>
+
+      <section class="rx-step" id="rxStep3">
+        <div class="rx-step-h">
+          <span class="rx-no">3</span>
+          <h4 class="rx-step-t">把 AI 的回答整段粘到下面这个框里</h4>
+        </div>
+        <p class="rx-step-d">粘进来就<b>自动认成药品</b>，不用再点别的；认出来的在下面逐味核对。</p>
+        <div class="rx-drop">
+          <textarea id="rxPaste" autocomplete="off" spellcheck="false"
+                    aria-label="把 AI 的回答整段粘到这里"></textarea>
         </div>
         <div class="rx-note" id="rxNote"></div>
-      </div>
+      </section>
 
       <!-- 开方日期（2026-11-20 用户要求）：处方单上打印的日期要解析出来，当医保开药的
            时间节点。AI 按提示词把它写在药单第一行，解析时捡出来填在这儿；手打没写的
@@ -1558,39 +1581,6 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
       把 N 行的读数代进去算 Σ(数量×单价)，对不上 → 这 N 行里必有一行读错了。
       一次读 N 行会错，读 1 个数不太会错 —— 这就是「把 N 行压成 1 个数」的意思。
 </script>
-
-<!-- 批量填用法（2026-10-13 用户要求）：
-     弄进来的只是**药名**；吃法和天数得人填。用户原话是「再跳一个窗口 批量的人手工来输入信息」，
-     所以这里做成一个独立窗口：上面一条「统一设置」把一样的用法一次套到全部，下面逐味微调。
-     （原话里的"拍底方"那条路 2026-10-13 已删 —— 现在药名靠"助手给的链接 / 粘文字"进来。）
-     它动的就是 dlgRx 里那个 rxRows 数组本身，两边永远一致。 -->
-<dialog id="dlgUse">
-  <form id="formUse">
-    <div class="dlg-h">
-      <h3>批量填用法</h3>
-      <p>药名已经认出来了。吃法和天数在这里一次填完 —— 几味吃法一样就点「应用到全部」，不一样的下面单独改。</p>
-    </div>
-    <div class="dlg-b">
-      <div class="use-bar">
-        <span class="lt">统一设置：</span>
-        <span>每次</span>
-        <input type="number" id="usePd" step="0.25" min="0" value="1">
-        <select id="useFreq"></select>
-        <span>开</span>
-        <input type="number" id="useDays" step="1" min="1" value="14">
-        <span>天</span>
-        <button type="button" class="btn ghost sm" id="btnUseApplyAll">应用到全部</button>
-      </div>
-      <div class="use-list" id="useList"></div>
-      <div class="disp-sum" id="useSum"></div>
-      <div class="use-note" id="useNote" hidden></div>
-    </div>
-    <div class="dlg-f">
-      <button type="button" class="btn ghost" id="btnUseCancel">返回药名列表</button>
-      <button type="submit" class="btn primary">填好了，回列表</button>
-    </div>
-  </form>
-</dialog>
 
 <!-- 设置弹窗 -->
 <!-- ★ 2026-10-28 同一条要求：这里本来一口气摆 4 个数 + 一整个成员管理列表，
@@ -5124,6 +5114,7 @@ function applyAllTotal(key, total){
    ★ 中文药名认错一两个字是要吃错药的 —— 助手给的也一律当**草稿**，逐味核对过才算数。 */
 
 let rxRows = [];        // 弹窗里正在确认的行
+let rxAutoT = 0;        // 「粘进来就认」那个防抖定时器（手打时等停手才认）
 let rxSeq = 0;          // 行序号（key 用，和数据库里的 id 无关）
 // 这批药默认是医保还是自费（2026-10-28）。顶上一个总开关，每行还能单独翻过来 ——
 // 一张底方上混着「医保开的」和「自费药房买的」是有的，所以总开关只当默认值。
@@ -5289,6 +5280,13 @@ function rxIsDrugLine(line){
   if(s.length < 2) return false;
   if(!/[\u4e00-\u9fa5]/.test(s)) return false;          // 必须有中文
   if(RX_NOT_DRUG.test(s)) return false;
+  // ★ 2026-11-20 加：一行真正的药，至少得带个数（数量/剂量/频次）或者一个剂型词。
+  //   起因是「粘进来就自动认」之后，把 AI 那句「抱歉，照片太糊，我看不清」也认成了一味药 ——
+  //   按钮时代用户点了才知道认错了，自动认是**没人点**的，垃圾行会自己长出来。
+  //   ★ 剂型词必须长在「药名该长的位置」上：后面紧跟括号/空格/数字或行尾。
+  //     只按「出现过这个字」判的话，「这张**照片**太糊了」里的「片」就把它放过去了（实测踩到）。
+  const FORM_AT_NAME_END = /(片|粒|支|贴|胶囊|膏|丸|散|颗粒|滴|喷|袋|包|瓶|栓|洗剂|乳膏|注射液|口服液)(?=[\s\d([（【]|$)/;
+  if(!/\d/.test(s) && !FORM_AT_NAME_END.test(s)) return false;
   return true;
 }
 
@@ -5766,9 +5764,8 @@ function renderRx(){
   const list = $('#rxList');
   const keep = list.scrollTop;
   if(!rxRows.length){
-    list.innerHTML = '<div class="rx-empty">还没有药。把底方照片发给 AI（DeepSeek、Kimi 等），'
-      + '让它把药名和用量打成文字，粘到上面的框里点「解析成药品」，药就摆在这儿了；'
-      + '也可以直接「＋ 手动加一味」。</div>';
+    list.innerHTML = '<div class="rx-empty">还没有药。按上面三步走一遍 —— 把 AI 的回答'
+      + '整段粘进第 3 步那个框，药就摆在这儿了（粘进来就自动认，不用点按钮）。</div>';
     list.scrollTop = 0;
     syncRxInsBar();
     rxSyncFoot();
@@ -5849,7 +5846,7 @@ function rxSay(msg, cls){
 }
 
 /* ---- 把解析出来的行并进列表（同名同规格不重复加）----
-   「解析成药品」按钮和自动识别都走这里，免得两处规则走偏。
+   粘进黑框那条路（rxTakeIn）和 `#rx=` 链接那条路都走这里，免得两处规则走偏。
    ★ 2026-10-13：加进来时顺手跟药箱比一遍 —— 已有的那几味标成"药箱里已有"、默认不勾，
      跟 `#rx=` 链接那条路同一套规则（同一份底方粘两遍也不会重复入库）。 */
 function rxAddRows(got){
@@ -5869,120 +5866,6 @@ function rxAddRows(got){
   return added;
 }
 
-/* ================= 批量填用法（药名进来之后跳出来的那个窗口） =================
-   ★ 用户 2026-10-13 的要求：「至于每种药的具体吃法 能吃多久，既可以通过你作为接口通过对话的
-     方式来录入，也可以……再跳一个窗口 批量的人手工来输入信息」。
-   ★ 先弄进来的只是**药名**；吃法和天数得人填。这个窗口就是干这个的：
-     上面一条「统一设置」把一样的用法一次套到全部，下面逐味微调。
-     （当时说的"拍底方"那条路 2026-10-13 已删，药名现在靠"助手给的链接 / 粘文字"进来。）
-   ★ 它动的就是 dlgRx 里那个 rxRows 数组本身（不开第二份数据），所以两边永远一致。
-   ★ 这里的主输入是**天数**（人想的就是「这药能吃多久」），「本次开到」= 天数 × 每天用量 ——
-     和卡片同一套口径。★ 但只有你真的动了那一格才会重算：打开看一眼再关，不会悄悄改数。 */
-
-function rxUseFreqOptions(sel){
-  let o = '';
-  RX_FREQ.forEach(function(x){
-    o += '<option value="' + x[0] + '"' + (x[0] === sel ? ' selected' : '') + '>' + x[1] + '</option>';
-  });
-  return o;
-}
-function rxUseRowHTML(r){
-  const u = esc(r.unit || '片');
-  const dl = rxDaysOf(r);
-  const key = rxFreqKey(r);
-  const custom = key === 'custom';
-  return '<div class="use-row" data-lv="' + rxLevel(r) + '" data-key="' + r.key + '">'
-    +   '<span class="un">' + (r.name ? esc(r.name) : '（还没填药名）') + '</span>'
-    +   '<span class="lb">每次</span>'
-    +   '<input type="number" class="mini use-pd" step="0.25" min="0" value="' + fmtNum(r.perDose) + '">'
-    +   '<span class="lb">' + u + '</span>'
-    +   '<select class="use-freq">' + rxUseFreqOptions(key) + '</select>'
-    +   (custom
-          ? '<input type="number" class="mini use-cd" min="1" step="1" value="' + r.cycleDays + '"><span class="lb">天</span>'
-            + '<input type="number" class="mini use-tc" min="0" step="1" value="' + r.timesPerCycle + '"><span class="lb">次</span>'
-          : '')
-    +   '<span class="lb">开</span>'
-    +   '<input type="number" class="mini use-days" step="1" min="1" value="' + (dl == null ? 14 : dl) + '">'
-    +   '<span class="lb">天</span>'
-    +   '<span class="tot">本次 <b class="use-tot">' + fmtNum(r.total) + '</b> ' + u + '</span>'
-    + '</div>';
-}
-function renderUse(){
-  const list = $('#useList');
-  if(!list) return;
-  const keep = list.scrollTop;
-  if(!rxRows.length){
-    list.innerHTML = '<div class="use-empty">还没有药。回上一页把底方上的药录进来 —— '
-      + '把 AI 写成文字的药名粘进去解析。</div>';
-  } else {
-    list.innerHTML = rxRows.map(rxUseRowHTML).join('');
-  }
-  list.scrollTop = keep;
-  useSyncFoot();
-}
-function useSyncFoot(){
-  const named = rxRows.filter(function(r){ return (r.name || '').trim(); });
-  const noUse = named.filter(function(r){ return rxDailyUse(r) <= 0; }).length;
-  let sum = 0;
-  named.forEach(function(r){ sum += num(r.total); });
-  const el = $('#useSum');
-  if(el) el.innerHTML = '共 <b>' + named.length + '</b> 味，本次合计 <b>' + fmtNum(sum) + '</b> 份。'
-    + (noUse ? '有 <b>' + noUse + '</b> 味没填每次用量，算不出天数 —— 补上那一格。' : '')
-    + '<br>「本次开到」= 天数 × 每天用量。你不动那一格，它就保持你原来填的（或识别出来的）数。';
-}
-function rxUseSay(msg){
-  const el = $('#useNote');
-  if(!el) return;
-  el.hidden = !msg;
-  el.textContent = msg || '';
-}
-// 关掉「批量填用法」并把上一页重画一遍。
-// ★ `<dialog>` 的 close 事件是**异步派发**的（规范里要排一个 task），所以按钮那条路不能只靠
-//   监听 close —— 否则点完「返回」的一瞬间，上一页还挂着旧数字。这里直接同步重画一次；
-//   close 监听仍留着，管 ESC 关窗那条路（重画两次无害，renderRx 会保住滚动位置）。
-function rxCloseUse(){
-  const d = $('#dlgUse');
-  if(d && d.open) d.close();
-  const r = $('#dlgRx');
-  if(r && r.open) renderRx();
-}
-// 把「统一设置」套到**全部**药上：每次用量 + 频次 + 天数 → 反算本次开到。
-// 单位不套 —— 片和支、贴不一样，套错了更糟。
-function rxUseApplyAll(){
-  const pd = Math.max(0, num($('#usePd').value, 1));
-  const days = Math.max(1, Math.round(num($('#useDays').value, 14)) || 14);
-  const fv = $('#useFreq').value;
-  let cd = 1, tc = 1;
-  if(fv !== 'custom'){ const p = fv.split('_'); cd = Math.max(1, Number(p[0]) || 1); tc = Math.max(0, Number(p[1])); }
-  let n = 0;
-  rxRows.forEach(function(r){
-    r.perDose = pd;
-    r.cycleDays = cd;
-    r.timesPerCycle = tc;
-    r.total = round2(days * rxDailyUse(r));   // 先在上一行把用法落定，这里才算得对
-    r.warn = '';
-    n++;
-  });
-  renderUse();
-  return n;
-}
-function openUse(){
-  if(!rxRows.length){
-    rxSay('还没有药名可填 —— 先把底方上的药录进来（把 AI 写出的药名粘进来，或手动加一味）。', 'warn');
-    return;
-  }
-  const f = $('#useFreq');
-  if(f && !f.options.length){
-    let o = '';
-    RX_FREQ.forEach(function(x){ o += '<option value="' + x[0] + '">' + x[1] + '</option>'; });
-    f.innerHTML = o;
-  }
-  renderUse();
-  rxUseSay('');
-  const d = $('#dlgUse');
-  if(d && !d.open) d.showModal();
-}
-
 function rxReset(){
   rxRows = [];
   rxInsMode = 'mi';          // 下次打开回到「医保开的」这个默认（医院开的药大概率走医保）
@@ -5990,11 +5873,10 @@ function rxReset(){
   rxSay('');
   const wh = $('#rxWho');
   if(wh){ wh.innerHTML = ''; wh.hidden = true; }
-  const lt = $('#rxPasteLt');
-  if(lt) lt.innerHTML = '也可以把底方上的药名<b>一行行原样粘</b>进来 —— 规格、数量、频次都不用你拆：';
   $('#rxPaste').value = '';
-  $('#rxSub').textContent = '底方照片先发给 AI（DeepSeek、Kimi 等），让它把药名和用量写成文字，再粘进下面的框；'
-    + '吃法和天数在下一个窗口一次填完，程序按「天数 × 每天用量」算出每味开多少。';
+  clearTimeout(rxAutoT);
+  rxSay('');
+  $('#rxSub').textContent = '三步：复制提示词 → 发给 AI 认照片 → 把它的回答粘进黑框，粘完自动认成药品。';
 }
 
 /* 这份底方是谁的 —— 定位到一个人。三种情况：
@@ -6722,6 +6604,11 @@ $('#famList').addEventListener('click', function(e){
 
 /* ---- 底方录入（只剩「手打/粘贴」和「助手给的链接」两条入口） ---- */
 $('#btnRx').addEventListener('click', function(){ openRx(); });
+
+/* 第 1 步下面那份提示词原文：页面一打开就摆在那儿（不是点了按钮才给），
+   想直接长按选、或者对着看一眼格式，都不用先复制。 */
+$('#rxTplText').textContent = RX_PROMPT;
+
 /* ---- 复制提示词 ----
    跟「复制药名」同一套兜底：优先 navigator.clipboard，被 file:// 拦了就退回 execCommand。
    恢复文案写死成「复制提示词」而不是"点击前那一下"—— 连点两次时后者会记成「已复制 ✓」，再也回不去。 */
@@ -6737,39 +6624,49 @@ $('#btnRxTpl').addEventListener('click', function(){
     fallbackCopy(RX_PROMPT, done);
   }
 });
-$('#btnRxParse').addEventListener('click', async function(){
-  const got = rxParseText($('#rxPaste').value);
+/* ---- 粘进黑框就自动认（2026-11-20 用户要求）----
+   「粘贴到框里之后就直接解析成药品了，不用下边还要手点一下解析成药品」。
+   ★ 两个时机不一样，别省成一个：
+     · paste —— 粘贴是一次性动作，下一拍（值已经填进框里）立刻认；
+     · input —— 手打的字是**边打边变**的，立刻认会把「阿莫西林胶囊(0.2」认成一行、
+       接着每多打一个字再认出一行，最后列表里三四个半截药名。所以停手 0.7 秒才认。
+   ★ 认不出来就**留着原文**（只给一句提示）—— 那通常是药单还没粘全，
+     清空会让人以为自己粘丢了。认出来才清空，免得手一抖粘两遍。 */
+function rxTakeIn(){
+  const box = $('#rxPaste');
+  if(!box) return 0;
+  const txt = box.value;
+  if(!txt.trim()) return 0;
+  const got = rxParseText(txt);
   if(!got.length){
-    await askAlert({
-      title: '没认出药品行',
-      sub: '一行一味，把底方上那行字原样粘进来就行（要含中文药名）。'
-    });
-    return;
+    rxSay('这批字里没认出一味药来 —— 一行一味，得含中文药名。粘全了会自动认。', 'warn');
+    return 0;
   }
-  // 药单里那行「开方日期=」→ 上面那个日期格子；医保锁从这天起算（不是今天）
+  // 药单第一行「开方日期=」→ 上面的日期格子；医保锁从这天起算（不是今天）
+  let once = '';
   if(got.rxDate){
     rxSetDate(got.rxDate);
     syncRxInsBar();
-    rxSay('按处方上的开方日期 <b>' + fmtMD(got.rxDate) + '</b> 记 —— 医保从这天的间隔起算。', 'ok');
+    once = '开方日期按处方上的 <b>' + fmtMD(got.rxDate) + '</b> 记（医保从这天的间隔起算）。';
   }
   const added = rxAddRows(got);
-  $('#rxPaste').value = '';
+  box.value = '';
   if(!added){
-    await askAlert({
-      title: '这些药已经在清单里了',
-      sub: '粘进来的药名下面都有了，没有新增。要改用法的话直接在列表里改。'
-    });
+    rxSay((once ? once + '<br>' : '') + '这些药下面已经都有了，没有新增。要改用法直接在列表里改。', 'warn');
+    return 0;
   }
+  rxSay('认出 <b>' + added + '</b> 味，往下核对药名和「够吃几天」。' + (once ? '<br>' + once : ''), 'ok');
+  return added;
+}
+
+$('#rxPaste').addEventListener('paste', function(){
+  // paste 事件早于「值真的填进框里」，所以推到下一拍再读
+  setTimeout(rxTakeIn, 0);
 });
-$('#btnRxAddOne').addEventListener('click', function(){
-  rxRows.push(rxNewRow({ name: '', unit: '片', perDose: 1, cycleDays: 1, timesPerCycle: 1, total: 0 }));
-  renderRx();
-  const list = $('#rxList');
-  list.scrollTop = list.scrollHeight;
-  const last = list.querySelector('.rx-row:last-child input.rx-name');
-  if(last) last.focus();
+$('#rxPaste').addEventListener('input', function(){
+  clearTimeout(rxAutoT);
+  rxAutoT = setTimeout(rxTakeIn, 700);
 });
-$('#btnRxUse').addEventListener('click', function(){ openUse(); });
 // 行内编辑：文字格只回写数据（不动 DOM，免得打字时失焦）；数字格顺手把「够吃几天 / 本次开到」双向对齐。
 // 用户之前定的口径就是这个：**余量 = 够吃天数 × 每天用量**，所以改天数就反算总量，改总量就把天数重算。
 $('#rxList').addEventListener('input', function(e){
@@ -6849,64 +6746,6 @@ $('#formRx').addEventListener('submit', submitRx);
 // 关掉弹窗时**不做任何清理**：现在没有照片要释放（照片那条路已删），
 // 已经填好的行也一律留着 —— 手滑关掉再打开还能接着改。
 // （原来这里挂的是 rxDropPhoto —— 管照片和 OCR 的，随那套一起删了。）
-
-/* ---- 批量填用法窗口 ---- */
-$('#btnUseApplyAll').addEventListener('click', function(){
-  const n = rxUseApplyAll();
-  const fu = $('#useFreq');
-  const txt = fu && fu.selectedOptions[0] ? fu.selectedOptions[0].textContent : '';
-  rxUseSay('已把「每次 ' + fmtNum($('#usePd').value) + ' · ' + txt
-    + ' · 开 ' + Math.max(1, Math.round(num($('#useDays').value, 14))) + ' 天」套到全部 ' + n + ' 味。');
-});
-// 统一设置改了值，提醒一下要点「应用到全部」
-['#usePd','#useFreq','#useDays'].forEach(function(sel){
-  const el = $(sel);
-  if(el) el.addEventListener('input', function(){ rxUseSay('改完记得点右边的「应用到全部」。'); });
-});
-// 逐味编辑：药名不动（那个在上一页改），改的是用法和天数。
-// ★ 只有真被改过的那一格才反算 —— 打开看一眼再关，不会把识别出来的「本次开到」改掉。
-// ★ 规则和上一页的行内编辑保持一致：改「开 N 天」→ 反算本次开到；改用（每次/频次）→ 天数重算。
-$('#useList').addEventListener('input', function(e){
-  const row = e.target.closest('.use-row'); if(!row) return;
-  const r = rxByKey(row.getAttribute('data-key')); if(!r) return;
-  const t = e.target, cl = t.classList;
-  if(cl.contains('use-pd'))       r.perDose = Math.max(0, num(t.value));
-  else if(cl.contains('use-cd'))  r.cycleDays = Math.max(1, Math.round(num(t.value, 1)) || 1);
-  else if(cl.contains('use-tc'))  r.timesPerCycle = Math.max(0, num(t.value));
-  else if(cl.contains('use-days')) r.total = round2(Math.max(0, num(t.value)) * rxDailyUse(r));
-  else return;
-  r.warn = '';
-  const tot = row.querySelector('.use-tot');
-  if(tot) tot.textContent = fmtNum(r.total);
-  const days = row.querySelector('.use-days');
-  if(days && !cl.contains('use-days') && document.activeElement !== days){
-    const dl = rxDaysOf(r);
-    days.value = (dl == null ? '' : dl);
-  }
-  row.setAttribute('data-lv', rxLevel(r));
-  useSyncFoot();
-});
-$('#useList').addEventListener('change', function(e){
-  const t = e.target;
-  const row = t.closest ? t.closest('.use-row') : null;
-  if(!row) return;
-  const r = rxByKey(row.getAttribute('data-key')); if(!r) return;
-  if(!t.classList.contains('use-freq')) return;
-  if(t.value === 'custom'){ renderUse(); return; }   // 换「自定义…」要多露出两个输入框，只能重画
-  const p = t.value.split('_');
-  r.cycleDays = Number(p[0]);
-  r.timesPerCycle = Number(p[1]);
-  r.warn = '';
-  const days = row.querySelector('.use-days');
-  const dl = rxDaysOf(r);
-  if(days) days.value = (dl == null ? '' : dl);
-  row.setAttribute('data-lv', rxLevel(r));
-  useSyncFoot();
-});
-$('#btnUseCancel').addEventListener('click', rxCloseUse);
-$('#formUse').addEventListener('submit', function(e){ e.preventDefault(); rxCloseUse(); });
-// 关掉这个窗口就把上一页重画一遍 —— 天数/用量/档位色都要跟着变（ESC 关窗走这条）
-$('#dlgUse').addEventListener('close', function(){ if($('#dlgRx').open) renderRx(); });
 
 // 单个数字弹窗（又买了药 / 校准余量）—— 输入时不再有实时对照行要同步（2026-10-12 已删）
 $('#btnNumCancel').addEventListener('click', function(){ $('#dlgNum').close(); });

@@ -826,8 +826,8 @@ PROBE = r"""
      q('#rxList').textContent.slice(0, 30));
   q('#rxPaste').value = '维生素B6片(Ⅰ)[华康][10mg*30] 1瓶 19.88 10mg 每日一次 口服\n'
                       + '阿莫西林胶囊(康贝)[0.25g*8] 2盒 6.26 0.5g 每日2次 口服';
-  q('#btnRxParse').click();
-  ck('解析后列出 2 行', document.querySelectorAll('#rxList .rx-row').length === 2,
+  rxTakeIn();                 // 粘进黑框就自动认（2026-11-20 起没有「解析成药品」按钮）
+  ck('粘进黑框后列出 2 行', document.querySelectorAll('#rxList .rx-row').length === 2,
      document.querySelectorAll('#rxList .rx-row').length);
   ck('每行当场给出「够吃几天」（30 / 4）',
      q('#rxList .rx-row:nth-child(1) .rx-days-in').value === '30'
@@ -1271,7 +1271,7 @@ def cross_check_link():
         return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", dom_ns[i:j])).strip()
 
     who_txt = seg("rxWho", 'id="rxAudit"')
-    aud_txt = seg("rxAudit", 'class="rx-howto"')
+    aud_txt = seg("rxAudit", 'class="rx-step"')
     shutil.rmtree(tmpdir, ignore_errors=True)
     return [
         {"name": "Python 生成的 #rx= 链接，真页面解得开（两边编码口径一致）[%s]" % how,

@@ -551,8 +551,8 @@ PROBE = r"""
     q('#rxPaste').value = '[药单开始]\n开方日期=2026-01-05\n'
       + '药品名称=样例子片 | 单位剂量=10mg | 每盒数量=30片 | 盒数=1 | '
       + '每次用量=10mg | 频次=每日一次 | 用法=口服\n[药单结束]';
-    q('#btnRxParse').click();
-    ck('点「解析成药品」→ 日期格自动填成处方上的 2026-01-05',
+    rxTakeIn();          // 2026-11-20 起没有按钮了：粘进来就自动认
+    ck('粘进黑框 → 日期格自动填成处方上的 2026-01-05',
        q('#rxDate').value === '2026-01-05', q('#rxDate').value);
     ck('★ 医保条上的解锁日按开方日算（不是按今天）',
        q('#rxInsTip').textContent.indexOf(fmtMD(miUnlockFrom('2026-01-05'))) >= 0,
@@ -573,7 +573,7 @@ PROBE = r"""
     q('#rxPaste').value = '开方日期=2026-01-05\n'
       + '药品名称=样例丑片 | 单位剂量=10mg | 每盒数量=30片 | 盒数=1 | '
       + '每次用量=10mg | 频次=每日一次 | 用法=口服';
-    q('#btnRxParse').click();
+    rxTakeIn();
     rxRows.forEach(function(r){ r.ins = ''; });
     await settle(submitRx({ preventDefault: function(){} }), ['知道了']);
     var sub2 = meds.filter(function(m){ return m.name === '样例丑片'; })[0];
@@ -583,6 +583,102 @@ PROBE = r"""
     rxSetDate('2026-13-40');
     ck('日期格填了不存在的日子 → 退回今天（不会带着 13 月去算锁）',
        rxDateStart() === todayStr(), rxDateStart());
+
+    /* ============ ⑨ 弹窗排成「1 2 3」三步，粘进来就认（2026-11-20 用户要求） ============
+       原话：「信息太杂……第一步复制提示词、下边摆着提示词；第二步打开 AI（DeepSeek Kimi 豆包）、
+       拍照片复制提示词；第三步把 AI 的回答粘到下边的框里……步骤的格式要统一，
+       现在每一块还有不同的颜色，看起来很混乱。」
+       另外两条：「框里不用填字」「粘到框里就直接解析成药品，不用再手点一下……旁边那两个按钮都去掉」。 */
+    fixtureBox(); openRx(); await null;
+
+    var steps = document.querySelectorAll('#dlgRx .rx-step');
+    ck('弹窗里正好三步，用的是同一个 .rx-step 骨架（不再一块蓝一块绿）',
+       steps.length === 3, steps.length + ' 步');
+    var nos = [];
+    for(var si = 0; si < steps.length; si++){
+      var n = steps[si].querySelector('.rx-no');
+      nos.push(n ? n.textContent.trim() : '?');
+    }
+    ck('三步的号码是 1 / 2 / 3，顺序没乱', nos.join('') === '123', nos.join('/'));
+    ck('每步都是「号码 + 大标题 + 一句解释」，一个都不缺',
+       (function(){
+         for(var k = 0; k < steps.length; k++){
+           if(!steps[k].querySelector('.rx-step-t')) return false;
+           if(!steps[k].querySelector('.rx-step-d')) return false;
+         }
+         return true;
+       })());
+    ck('步骤标题依次是：复制提示词 / 打开一个 AI / 把回答粘到框里',
+       /复制这段提示词/.test(steps[0].textContent)
+       && /打开一个 AI/.test(steps[1].textContent)
+       && /粘到下面这个框里/.test(steps[2].textContent),
+       [steps[0].querySelector('.rx-step-t').textContent.slice(0, 12),
+        steps[1].querySelector('.rx-step-t').textContent.slice(0, 14),
+        steps[2].querySelector('.rx-step-t').textContent.slice(0, 14)].join(' / '));
+    ck('第 2 步点名了 DeepSeek / Kimi / 豆包（用户原话里的三个例子）',
+       /DeepSeek/.test(steps[1].textContent) && /Kimi/.test(steps[1].textContent)
+       && /豆包/.test(steps[1].textContent));
+
+    // ① 提示词原文就摆在第一步下面（不是只有个按钮）
+    var tplTxt = q('#rxTplText') ? q('#rxTplText').textContent : '';
+    ck('★ 第一步下面摆着提示词原文（和复制走的是同一份）',
+       tplTxt.length > 300 && tplTxt === RX_PROMPT, tplTxt.length + ' 字');
+    ck('提示词原文可选中（不是 aria-hidden 的装饰）',
+       !q('#rxTplText').hidden && q('#rxTplText').offsetHeight > 0,
+       q('#rxTplText').offsetHeight + 'px 高');
+
+    // ② 粘贴框：白底（黑的是边框，不是整块），且有跑马灯边框
+    var drop = q('#rxPaste').closest('.rx-drop');
+    ck('粘贴框外面套着跑马灯那一层（.rx-drop）', !!drop);
+    var cs = window.getComputedStyle(q('#rxPaste'));
+    ck('★ 框里是白底黑字 —— 用户说的「黑框」只是边上那道框，里面要白的',
+       /rgb\(255, 255, 255\)|rgba\(0, 0, 0, 0\)/.test(cs.backgroundColor), cs.backgroundColor);
+    ck('框里没有预填的示例文字（不用填字，粘就行）',
+       q('#rxPaste').value === '' && !q('#rxPaste').getAttribute('placeholder'),
+       '「' + q('#rxPaste').value + '」/ placeholder=' + q('#rxPaste').getAttribute('placeholder'));
+    var dropCs = drop ? window.getComputedStyle(drop, '::before') : null;
+    ck('★ 边框那层真的在跑（::before 挂了旋转动画）',
+       !!dropCs && /rxRun/.test(dropCs.animationName), dropCs && dropCs.animationName);
+    ck('跑马灯是彩色渐变（conic-gradient），不是纯黑边',
+       !!dropCs && /gradient/.test(dropCs.backgroundImage), dropCs && dropCs.backgroundImage.slice(0, 34));
+
+    // ③ 三个旧按钮全没了：解析成药品 / 手动加一味 / 批量填用法
+    ck('「解析成药品」按钮没了（粘进来就自动认）', !q('#btnRxParse'));
+    ck('「手动加一味」按钮没了（要手加去主页加）', !q('#btnRxAddOne'));
+    ck('「批量填用法 / 天数」按钮没了', !q('#btnRxUse'));
+    ck('连那个弹窗本身也拆干净了（#dlgUse 不该还在 DOM 里）', !q('#dlgUse'));
+
+    // ④ 手打/粘贴 → 自动认（不用点按钮）
+    var box2 = q('#rxPaste');
+    box2.value = '开方日期=2026-11-19\n'
+      + '药品名称=样例卯片 | 单位剂量=10mg | 每盒数量=30片 | 盒数=1 | '
+      + '每次用量=10mg | 频次=每日一次 | 用法=口服';
+    box2.dispatchEvent(new Event('input', { bubbles: true }));
+    ck('刚敲完还没到 0.7 秒时**不动**（免得把半截药名认成一行）',
+       rxRows.length === 0, rxRows.length + ' 行');
+    await new Promise(function(r){ setTimeout(r, 900); });
+    ck('★ 停手 0.7 秒后自动认出 1 味（全程没点任何按钮）',
+       rxRows.length === 1 && rxRows[0].name === '样例卯片',
+       rxRows.map(function(x){ return x.name; }).join('/'));
+    ck('认出来就清空框（免得手一抖粘两遍）', box2.value === '', '「' + box2.value + '」');
+    ck('日期也跟着填上了', q('#rxDate').value === '2026-11-19', q('#rxDate').value);
+    ck('下面给了句「认出几味」的回执', /认出/.test(q('#rxNote').textContent), q('#rxNote').textContent.slice(0, 22));
+
+    // ⑤ 一个字的药都没认出来（比如 AI 回了个空药单）：原文留着 + 只提示，不清空、不弹框
+    box2.value = '[药单开始]\n[药单结束]';
+    box2.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(function(r){ setTimeout(r, 900); });
+    ck('★ 一味都没认出来时原文留着（清空会让人以为粘丢了）', box2.value === '[药单开始]\n[药单结束]', box2.value);
+    ck('认不出来会明说一句，不是默默无事发生', /没认出一味药/.test(q('#rxNote').textContent),
+       q('#rxNote').textContent.slice(0, 24));
+
+    // ⑥ 聊天里那句话不能被当成药名（按钮时代用户会看一眼，自动认没人看）
+    box2.value = '抱歉，这张照片太糊了，我看不清。';
+    box2.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(function(r){ setTimeout(r, 900); });
+    ck('★ 「抱歉，这张照片太糊了」不会被认成一味药', rxRows.length === 1, rxRows.length + ' 行');
+    ck('这种话也留原文（改一个字就能重认）', box2.value.indexOf('抱歉') === 0, box2.value.slice(0, 10));
+    q('#rxPaste').value = '';
 
   } catch(err){
     R.cases.push({ name: '★ 测试脚本抛异常中断（后面的断言都没跑）', pass: false,
