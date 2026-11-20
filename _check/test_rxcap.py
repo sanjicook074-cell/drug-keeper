@@ -749,6 +749,16 @@ PROBE = r"""
   setMeds([]); save(); render();
   ck('空药箱里也加了「底方录入」（和「添加第一种药」并排）',
      !!(q('#btnRx2') && q('#btnAdd2')), '');
+  // ★ 2026-11-20 用户指定配色：「底方录入」才是蓝色主按钮，「添加第一种药」白底。
+  //   早先做反了，这里把主次钉死，免得下次调样式又换回去。
+  ck('★ 空状态里「底方录入」蓝、「添加第一种药」白底',
+     !!(q('#btnRx2') && q('#btnAdd2')
+        && q('#btnRx2').classList.contains('primary')
+        && q('#btnAdd2').classList.contains('ghost')
+        && !q('#btnRx2').classList.contains('ghost')
+        && !q('#btnAdd2').classList.contains('primary')),
+     (q('#btnRx2') ? q('#btnRx2').className : '?') + ' / ' +
+     (q('#btnAdd2') ? q('#btnAdd2').className : '?'));
   setMeds([{ id: uid(), name:'占位药', spec:'5mg', perDose:1, unit:'片', cycleDays:1, timesPerCycle:1,
              stockBase:30, stockDate:todayStr() }]);
   save(); render();

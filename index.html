@@ -2521,8 +2521,10 @@ function renderList(){
       + '<div class="big">💊</div>'
       + '<p>还没有记录任何药品。<br>把家里在吃的药都记进来，之后就知道什么时候该开了。</p>'
       + '<div class="row">'
-      + '<button class="btn primary" id="btnAdd2">添加第一种药</button>'
-      + '<button class="btn ghost" id="btnRx2">底方录入</button>'
+      /* ★ 2026-11-20 用户指定：空状态下「底方录入」才是蓝色主按钮，「添加第一种药」白底。
+         原来反过来了 —— 底方录入是更常用、也更省事的入口，应该是主色。 */
+      + '<button class="btn ghost" id="btnAdd2">添加第一种药</button>'
+      + '<button class="btn primary" id="btnRx2">底方录入</button>'
       + '</div></div>';
     const a = $('#btnAdd2'); if(a) a.addEventListener('click', function(){ openEditor(null); });
     const b2 = $('#btnRx2'); if(b2) b2.addEventListener('click', function(){ openRx(); });
