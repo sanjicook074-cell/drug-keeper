@@ -156,16 +156,21 @@ PROBE = r"""
     });
     (target || document).dispatchEvent(ev);
   }
-  // 从「药品列表里的某张卡片」拖到第 i 格；松手点可覆盖（用来测"拖到格子外"）
+  // 从「药品列表里的某张卡片」拖到第 i 格；松手点可覆盖（用来测"拖到格子外"）。
+  // ★ 4.4：只禁掉了**触屏**上 .med 卡片的拖拽（手指按卡片要能滚屏）；
+  //   桌面鼠标仍可拖，所以这套鼠标事件自检照旧从卡片起拖。
+  function dragSrc(nm){ return card(nm); }
+  function dragHandle(el){ return el.querySelector('.nm') || el.querySelector('.med-name'); }
   function dragToListCard(nm, i, dropAt){
-    var c = card(nm);
+    var c = dragSrc(nm);
     if(!c) return 'no-card';
     var s = slots()[i];
     if(!s) return 'no-slot';
     s.scrollIntoView({ block: 'center' });
-    var a = center(c.querySelector('.med-name'));
+    var h = dragHandle(c);
+    var a = center(h);
     var b = dropAt || center(s);
-    pe('pointerdown', a.x, a.y, c.querySelector('.med-name'));
+    pe('pointerdown', a.x, a.y, h);
     pe('pointermove', Math.round((a.x + b.x) / 2), Math.round((a.y + b.y) / 2));
     pe('pointermove', b.x, b.y);
     pe('pointerup', b.x, b.y);
@@ -265,6 +270,27 @@ PROBE = r"""
   })();
   ck('在卡片上原地按一下松手，不会往盒子里加东西',
      JSON.stringify(curBox().slots) === beforeClick, '');
+
+  /* ---------------- 5b. 4.4：手指（touch）按卡片能滚屏，不起拖 ---------------- */
+  var beforeTouch = JSON.stringify(curBox().slots);
+  (function(){
+    var c = card('晚饭后胶囊');
+    var h = c.querySelector('.med-name');
+    var a = center(h);
+    var t = function(type, x, y, target){
+      (target || document).dispatchEvent(new PointerEvent(type, {
+        bubbles:true, cancelable:true, clientX:x, clientY:y,
+        pointerType:'touch', pointerId:7, button:0, buttons:1, isPrimary:true
+      }));
+    };
+    t('pointerdown', a.x, a.y, h);
+    t('pointermove', a.x + 4, a.y + 40, document);
+    ck('★ 手指在「每天吃的药」卡片上滑动不会起拖（页面能滚）',
+       typeof drag === 'undefined' || drag === null, String(drag && drag.id));
+    t('pointerup', a.x + 4, a.y + 40, document);
+  })();
+  ck('手指滑动卡片后盒子没被改', JSON.stringify(curBox().slots) === beforeTouch, '');
+  ck('手指滑动卡片不留拖拽浮层', qa('.drag-ghost').length === 0, qa('.drag-ghost').length);
 
   /* ---------------- 6. 备用药拖不进去 ---------------- */
   var beforePrn = JSON.stringify(curBox().slots);
@@ -790,16 +816,17 @@ PROBE = r"""
     return null;
   }
   function stageIds(){ return curStage().slice(); }
-  // 从药品列表的卡片拖到台面
+  // 拖到台面（4.4 起同样优先用「未入清单」的项做拖拽源）
   function dragCardToStage(nm){
-    var c = card(nm);
+    var c = dragSrc(nm);
     if(!c) return 'no-card';
     var st = stgEl();
     if(!st) return 'no-stage';
     st.scrollIntoView({ block: 'center' });
-    var a = center(c.querySelector('.med-name'));
+    var h = dragHandle(c);
+    var a = center(h);
     var b = center(st);
-    pe('pointerdown', a.x, a.y, c.querySelector('.med-name'));
+    pe('pointerdown', a.x, a.y, h);
     pe('pointermove', Math.round((a.x + b.x) / 2), Math.round((a.y + b.y) / 2));
     pe('pointermove', b.x, b.y);
     pe('pointerup', b.x, b.y);
@@ -1412,6 +1439,63 @@ PROBE = r"""
   ck('★ 药品列表的卡片点一下不进入待放（那是打开编辑，不是移动）',
      slotIds(0).length === 0 && qa('#box .slot.pick-target').length === 0, slotIds(0).length);
 
+  /* ---- ★ 4.4（2026-11-24）：摆药台一起亮 / 台面上不画箭头 / 点台面能上台面 ---- */
+  clearPending();
+  fixture();
+  // ① 从清单选药：药盒各格 + 摆药台一起亮；↑ 箭头保留（引导"往哪儿点"）
+  (function(){
+    var it = upItem('早饭前片');
+    var a = center(it.querySelector('.nm'));
+    pe('pointerdown', a.x, a.y, it.querySelector('.nm'));
+    pe('pointerup',   a.x, a.y, it.querySelector('.nm'));
+  })();
+  ck('★ 选中清单的药：药盒每格都亮',
+     qa('#box .slot.pick-target').length === qa('#box .slot').length && qa('#box .slot').length > 0,
+     qa('#box .slot.pick-target').length + '/' + qa('#box .slot').length);
+  ck('★ 选中清单的药：摆药台跟着一起亮（pick-target）', !!q('#box .stage.pick-target'), '');
+  ck('★ 从清单选药时 ↑ 箭头仍在（没被一起取消）', !!q('.fly-arrow'), '');
+  ck('★ 提示语同时点出药盒格子和摆药台',
+     /摆药台/.test(q('#toast').textContent) && /再点/.test(q('#toast').textContent),
+     q('#toast').textContent);
+  // ② 直接点台面空白处 = 把选好的药放上台面
+  (function(){
+    q('#box .stage .stg-h').dispatchEvent(new MouseEvent('click', { bubbles:true, cancelable:true }));
+  })();
+  ck('★ 选中后点摆药台，药真的放上台面', stgNames().indexOf('早饭前片') >= 0, stgNames().join('、'));
+  ck('★ 点台面只上台面，没往药盒里塞', slotIds(0).length === 0, slotIds(0).length);
+  ck('★ 上台面后高亮与箭头全清（格子 + 台面）',
+     qa('#box .slot.pick-target').length === 0 && !q('#box .stage.pick-target') && !q('.fly-arrow'), '');
+
+  // ③ 从摆药台选药：台面和格子都亮，但台面上不再画箭头
+  fixture();
+  (function(){
+    dragCardToStage('晚饭后胶囊');
+    var it = stgItemOf('晚饭后胶囊');
+    var a = center(it.querySelector('.nm'));
+    pe('pointerdown', a.x, a.y, it.querySelector('.nm'));
+    pe('pointerup',   a.x, a.y, it.querySelector('.nm'));
+  })();
+  ck('★ 从摆药台选药：摆药台 + 药盒格子一起亮',
+     !!q('#box .stage.pick-target') && qa('#box .slot.pick-target').length === qa('#box .slot').length, '');
+  ck('★ 摆药台上不再画箭头（用户要求取消）',
+     typeof pickArrow === 'undefined' || pickArrow === null, '');
+  ck('★ 从台面选药时没有 .fly-arrow 节点', !q('.fly-arrow'), '');
+  ck('★ 台面上被选中的那味药自身高亮', !!q('#box .stg-item.picked'), '');
+  // ④ 点格子仍能把台面选中的药放进去，且台面那份留着
+  (function(){
+    q('#box .slot[data-slot="1"]').dispatchEvent(new MouseEvent('click', { bubbles:true, cancelable:true }));
+  })();
+  ck('★ 从台面选中后点格子，药进的是点的那一格', nameIn(1, '晚饭后胶囊'), slotIds(1).length);
+  ck('★ 从台面放进格子后，台面那份还在', stgNames().indexOf('晚饭后胶囊') >= 0, stgNames().join('、'));
+
+  // ⑤ 桌面鼠标从卡片拖药仍然有效（4.4 只挡触屏，不削弱桌面）
+  fixture();
+  ck('★ 鼠标从「每天吃的药」卡片拖药仍然有效（桌面端能力不丢）', (function(){
+    var before = JSON.stringify(curBox().slots);
+    dragToListCard('晚饭后胶囊', 0);
+    return JSON.stringify(curBox().slots) !== before;
+  })(), '');
+  clearPending();
   fixture();
   } catch(err){
     // 断言里抛异常（比如去点一个已经不存在的元素）时，别让整个脚本静默死掉 ——

@@ -456,6 +456,12 @@ body.dragging .med:hover,body.dragging .chip:hover{box-shadow:none}
 /* 待放中：药盒每一格都亮起来，告诉用户「点这里放进去」 */
 .slot.pick-target{border-style:solid;border-color:var(--brand);background:#eff6ff;
   box-shadow:0 0 0 3px rgba(37,99,235,.12);cursor:pointer}
+/* ★ 4.4（2026-11-24 用户要求）：选中待放时摆药台和药盒各格**一起亮** ——
+   它也是这一步能点的落点（点台面空白处 = 把药放上台面，可从这儿反复往几格摆）。
+   台面原有 .over 是"正拖着东西往这儿放"的落点提示，两者互不冲突。 */
+.stage.pick-target{background:#eff6ff;border-color:var(--brand);
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);cursor:pointer}
+.stage.pick-target .stg-t,.stage.pick-target .stg-n{color:var(--brand)}
 /* 被选中待放的那味药自己也高亮，免得选了半天不知道选的是谁 */
 .up-item.picked,.stg-item.picked{border-color:var(--brand);background:#eff6ff;
   box-shadow:0 0 0 2px rgba(37,99,235,.14)}
@@ -3087,6 +3093,16 @@ function renderBox(){
         return;
       }
     }
+    // ★ 4.4：摆药台和药盒一起亮着，就是在告诉用户"这里也能点"。
+    //   点台面空白处 = 把选好的药放上台面（可从这儿反复往几格摆）；
+    //   台面上已有药本身/× 分别交给 pointerup 的"改选那味"和上面的 data-stgdel。
+    if(pendingPick && e.target.closest('[data-dropzone="stage"]')
+       && !e.target.closest('.stg-item, button')){
+      const p = pendingPick;
+      clearPending();
+      addToStage(p.id);
+      return;
+    }
     const ctl = e.target.closest('button[data-box]');
     if(ctl){
       const d = ctl.getAttribute('data-box') === 'inc' ? 1 : -1;
@@ -3316,6 +3332,11 @@ function dragDown(e){
   if(t.closest('button, a, input, textarea, select, label, dialog')) return;
   const src = t.closest('[data-med]');
   if(!src) return;
+  // ★ 4.4（2026-11-24 用户要求）：手机上「每天吃的药」卡片不再是拖拽源 ——
+  //   手指按在卡片上想滚页面，之前会被这里接住当成拖药，touchmove 又
+  //   preventDefault 挡住滚动，整页就滑不动了。只挡触屏：桌面鼠标仍可从
+  //   卡片拖药（清单 / 摆药台 / 格子里的药在两端都照旧能拖）。
+  if(e.pointerType !== 'mouse' && src.closest('.med')) return;
   const id = src.getAttribute('data-med');
   const m = findMed(id);
   if(!m) return;
@@ -3358,8 +3379,8 @@ function dragMove(e){
 /* 点一下清单/台面上的药 → 只是「选中待放」，不入库。
    ★ 2026-11-24 用户改的主意：「点药品之后出现一个箭头指向上面的药盒，
      然后再点药盒里对应的格子，药才会进去」—— 所以这里只做三件事：
-     记下 pendingPick、画箭头（↑ 指药盒）、把药盒各格点亮提示可点。
-     真正入库在 #box 的 onclick 里：点某个 .slot 才 addToSlot。 */
+     记下 pendingPick、把药盒各格 + 摆药台一起点亮提示可点（清单来源另画 ↑ 箭头）。
+     真正入库在 #box 的 onclick 里：点某个 .slot 才 addToSlot；点台面则 addToStage。 */
 function pickMed(d){
   const m = findMed(d.id);
   if(!m || isPrn(m)) return;
@@ -3369,22 +3390,30 @@ function pickMed(d){
   if(pendingPick && pendingPick.id === d.id){ clearPending(); toast('取消放「' + m.name + '」'); return; }
   pendingPick = { id: d.id, from: d.from, name: m.name };
   paintPick();
-  toast('选好了「' + m.name + '」—— 再点上面药盒里要放的那一格');
+  toast('选好了「' + m.name + '」—— 再点上面药盒的格子，或点摆药台放上台面');
 }
 
-// 把待放状态画出来：药本身高亮 + 所有格子高亮 + 箭头指药盒。
+// 把待放状态画出来：药本身高亮 + 所有格子与摆药台一起高亮 +（清单来源）箭头指药盒。
 // 单独提出来是因为 renderBox() 会重画 #box，高亮会掉 —— 每次重画后要重挂一遍。
 function paintPick(){
   $$('#box .picked').forEach(function(el){ el.classList.remove('picked'); });
-  $$('#box .slot.pick-target').forEach(function(el){ el.classList.remove('pick-target'); });
+  $$('#box .pick-target').forEach(function(el){ el.classList.remove('pick-target'); });
   if(pickArrow && pickArrow.parentNode) pickArrow.remove();
   pickArrow = null;
   if(!pendingPick) return;
 
+  // ★ 4.4：药盒各格 + 摆药台一起亮 —— 两个都是这一步能点的落点
   $$('#box .slot').forEach(function(el){ el.classList.add('pick-target'); });
+  const stage = $('#box .stage');
+  if(stage) stage.classList.add('pick-target');
+
   const src = $('#box .up-item[data-med="' + pendingPick.id + '"], #box .stg-item[data-med="' + pendingPick.id + '"]');
   if(!src) return;                       // 药已经不在清单/台面（比如别处把它入库了）
   src.classList.add('picked');
+  // ★ 4.4（用户原话「百药台里边的箭头取消掉」）：从摆药台选中的药不再画箭头。
+  //   台面自己已经亮了，箭头再压在上面既挡视线又误导（文案只说"点药盒格子"）；
+  //   未入清单那边保留 ↑ 指药盒，那才是需要引导"往哪儿点"的地方。
+  if(pendingPick.from === -2) return;
   const a = src.getBoundingClientRect ? src.getBoundingClientRect() : null;
   if(!a || !a.width) return;             // 无头自检里布局全 0，跳过箭头视觉
 
@@ -3405,7 +3434,7 @@ function clearPending(){
   if(pickArrow && pickArrow.parentNode) pickArrow.remove();
   pickArrow = null;
   $$('#box .picked').forEach(function(el){ el.classList.remove('picked'); });
-  $$('#box .slot.pick-target').forEach(function(el){ el.classList.remove('pick-target'); });
+  $$('#box .pick-target').forEach(function(el){ el.classList.remove('pick-target'); });
 }
 
 function dragUp(e){
