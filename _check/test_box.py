@@ -1322,23 +1322,67 @@ PROBE = r"""
   ck('★ 整个测试过程一次都没走浏览器原生 alert / confirm / prompt',
      R.natives.length === 0, R.natives.slice(0, 3).join(' | ') || '(一次都没有)');
 
-  /* ---- ★ 2026-11-24：点一下 / 长按清单里的药 → 自动飞进药盒（放最后，不干扰前面用例） ----
-     用户原话：「让这个药物不管是长按还是短按都是移动，点击之后出现一个箭头指向上面的药盒」。
+  /* ---- ★ 2026-11-24（用户改主意）：点药只「选中待放」，再点格子才入库 ----
+     用户原话：「点击药品之后，出现一个箭头指向上面的药盒，然后再点药盒里边对应的格子，
+     那个药才会进入到药盒当中」，不再是点一下就自动跳到第一个格子。
      用真 pointerdown+pointerup（不移动）走 dragDown/dragUp 的"没拖动"分支。 */
   fixture();
+  // ① 点清单里的药：只选中，不入库
   (function(){
     var it = upItem('早饭前片');
     var a = center(it.querySelector('.nm'));
     pe('pointerdown', a.x, a.y, it.querySelector('.nm'));
     pe('pointerup',   a.x, a.y, it.querySelector('.nm'));
   })();
-  ck('★ 清单里的药「点一下」就进了药盒（不拖也移动）',
-     nameIn(0, '早饭前片'), slotIds(0).length);
-  ck('★ 进了盒就从清单里消失', upNames().indexOf('早饭前片') < 0, upNames().join('、'));
-  ck('★ 点一下还弹了个「放进药盒了」的提示',
-     (q('#toast').textContent || '').indexOf('放进药盒') >= 0,
-     q('#toast').textContent);
-  // 长按 = contextmenu：系统复制菜单被拦掉
+  ck('★ 点一下清单里的药只选中待放 —— 药没进盒',
+     slotIds(0).length === 0 && upNames().indexOf('早饭前片') >= 0,
+     '格0=' + slotIds(0).length + ' 清单=' + upNames().join('、'));
+  ck('★ 选中后药盒每格都高亮（pick-target）提示可点',
+     qa('#box .slot.pick-target').length === qa('#box .slot').length && qa('#box .slot').length > 0,
+     qa('#box .slot.pick-target').length + '/' + qa('#box .slot').length);
+  ck('★ 被选中的药自己也高亮（picked）',
+     !!q('#box .up-item.picked'), '');
+  ck('★ 提示语让用户「再点上面药盒」的格子',
+     (q('#toast').textContent || '').indexOf('再点') >= 0, q('#toast').textContent);
+  // ② 再点某个格子 → 药才真正进去
+  (function(){
+    var sl = q('#box .slot[data-slot="0"]');
+    sl.dispatchEvent(new MouseEvent('click', { bubbles:true, cancelable:true }));
+  })();
+  ck('★ 再点某个格子，药才真的进盒', nameIn(0, '早饭前片'), slotIds(0).length);
+  ck('★ 进盒后清单里少了这味药', upNames().indexOf('早饭前片') < 0, upNames().join('、'));
+  ck('★ 入库后高亮与待放状态都清掉',
+     qa('#box .slot.pick-target').length === 0 && !q('#box .up-item.picked'), '');
+
+  // ③ 点第 1 格：药进的是「点的那一格」，不是固定第一个空格
+  fixture();
+  (function(){
+    var it = upItem('早饭前片');
+    var a = center(it.querySelector('.nm'));
+    pe('pointerdown', a.x, a.y, it.querySelector('.nm'));
+    pe('pointerup',   a.x, a.y, it.querySelector('.nm'));
+    q('#box .slot[data-slot="1"]').dispatchEvent(new MouseEvent('click', { bubbles:true, cancelable:true }));
+  })();
+  ck('★ 药进的是用户点的那一格（第 1 格），不是自动第一个空格',
+     nameIn(1, '早饭前片') && slotIds(0).length === 0,
+     '格0=' + slotIds(0).length + ' 格1=' + slotIds(1).length);
+
+  // ④ 再点同一味 = 取消待放
+  fixture();
+  (function(){
+    var it = upItem('早饭前片');
+    var a = center(it.querySelector('.nm'));
+    pe('pointerdown', a.x, a.y, it.querySelector('.nm'));
+    pe('pointerup',   a.x, a.y, it.querySelector('.nm'));
+    pe('pointerdown', a.x, a.y, it.querySelector('.nm'));
+    pe('pointerup',   a.x, a.y, it.querySelector('.nm'));
+    q('#box .slot[data-slot="0"]').dispatchEvent(new MouseEvent('click', { bubbles:true, cancelable:true }));
+  })();
+  ck('★ 再点同一味取消待放，之后点格子不会把药放进去',
+     slotIds(0).length === 0 && qa('#box .slot.pick-target').length === 0, slotIds(0).length);
+
+  // ⑤ 长按 = contextmenu 被拦，且同样只进入「选中待放」（不直接入库）
+  fixture();
   (function(){
     var it = upItem('晚饭后胶囊');
     var a = center(it.querySelector('.nm'));
@@ -1346,8 +1390,6 @@ PROBE = r"""
     it.querySelector('.nm').dispatchEvent(ev);
     ck('★ 长按菜单（contextmenu）被拦下来，不弹系统复制菜单', ev.defaultPrevented, ev.defaultPrevented);
   })();
-  // 长按同样能飞进盒（pointerdown + contextmenu + pointerup，位移为 0）
-  fixture();   // 重置：让长按用例独立，免得前一条已占掉第 0 格
   (function(){
     var it = upItem('晚饭后胶囊');
     var a = center(it.querySelector('.nm'));
@@ -1355,8 +1397,11 @@ PROBE = r"""
     it.querySelector('.nm').dispatchEvent(new MouseEvent('contextmenu', { bubbles:true, cancelable:true }));
     pe('pointerup',   a.x, a.y, it.querySelector('.nm'));
   })();
-  ck('★ 长按（含系统菜单被拦）后药同样飞进盒', nameIn(0, '晚饭后胶囊'), slotIds(0).length);
-  // 药品列表的卡片点一下不该飞进盒（它是"打开编辑"，不是移动）
+  ck('★ 长按（含系统菜单被拦）后药只是选中，没有直接进盒',
+     slotIds(0).length === 0 && qa('#box .slot.pick-target').length > 0, slotIds(0).length);
+
+  // ⑥ 药品列表的卡片点一下不该被选中（它是"打开编辑"，不是移动）
+  clearPending();   // 清掉 ⑤ 留下的待放态（全局变量不随 fixture 重置）
   fixture();
   (function(){
     var c = card('早饭前片');
@@ -1364,8 +1409,8 @@ PROBE = r"""
     pe('pointerdown', a.x, a.y, c.querySelector('.med-name'));
     pe('pointerup',   a.x, a.y, c.querySelector('.med-name'));
   })();
-  ck('★ 药品列表的卡片点一下不飞进盒（那是打开编辑，不是移动）',
-     slotIds(0).length === 0, slotIds(0).length);
+  ck('★ 药品列表的卡片点一下不进入待放（那是打开编辑，不是移动）',
+     slotIds(0).length === 0 && qa('#box .slot.pick-target').length === 0, slotIds(0).length);
 
   fixture();
   } catch(err){

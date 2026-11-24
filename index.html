@@ -437,23 +437,25 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 body.dragging{-webkit-user-select:none;user-select:none;cursor:grabbing}
 body.dragging .med:hover,body.dragging .chip:hover{box-shadow:none}
 
-/* ---------- 点一下药 → 飞进药盒的动画 + 指向药盒的箭头（2026-11-24） ----------
-   ★ 用户要求：清单/台面上的药「不管长按还是短按都是移动」，点了就自动飞进药盒，
-     并出现一个箭头指向上面的药盒。动画纯装饰（pointer-events:none），飞完就 remove，
-     真正入库走的是 addToSlot —— 动画不参与数据，动画被打断也不影响药已经放好。 */
+/* ---------- 点药 → 选中待放：↑ 箭头指药盒 + 格子高亮，再点格子才入库（2026-11-24） ----------
+   ★ 用户要求：点（长按短按都算）清单/台面上的药，只是「选好要放这味」—— 出现一个
+     ↑ 箭头指向上面的药盒，药盒各格亮起来提示可点；用户再点某一格，药才真正放进去。
+     ★ 不再是「点一下就自动飞进第一个格子」。箭头纯装饰（pointer-events:none），
+     选中态由 pendingPick 管理：点格子 / 再点同一味取消 / 开始拖动，都会清掉。 */
 .fly-arrow{position:fixed;z-index:9998;pointer-events:none;display:flex;flex-direction:column;
-  align-items:center;gap:1px;color:var(--brand);font-size:22px;line-height:1;
+  align-items:center;gap:1px;color:var(--brand);font-size:24px;line-height:1;
   text-shadow:0 1px 3px rgba(255,255,255,.9);animation:fly-pulse .85s ease-in-out infinite}
 .fly-arrow .fa-name{font-size:11px;font-weight:650;color:#1d4ed8;background:#eff6ff;
-  border-radius:9px;padding:2px 8px;white-space:nowrap;box-shadow:0 2px 8px rgba(37,99,235,.16)}
+  border-radius:9px;padding:3px 9px;white-space:nowrap;box-shadow:0 2px 8px rgba(37,99,235,.16)}
 @keyframes fly-pulse{0%,100%{transform:translateY(0);opacity:.85}50%{transform:translateY(-5px);opacity:1}}
-.fly-med{position:fixed;z-index:9999;pointer-events:none;font-size:12px;font-weight:600;color:#1b1f27;
-  background:#fff;border:1px solid var(--brand);border-radius:8px;padding:5px 10px;
-  box-shadow:0 6px 18px rgba(37,99,235,.28);white-space:nowrap;
-  transition:left .42s cubic-bezier(.34,.9,.4,1),top .42s cubic-bezier(.34,.9,.4,1),
-             transform .42s ease,opacity .42s ease}
+/* 待放中：药盒每一格都亮起来，告诉用户「点这里放进去」 */
+.slot.pick-target{border-style:solid;border-color:var(--brand);background:#eff6ff;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);cursor:pointer}
+/* 被选中待放的那味药自己也高亮，免得选了半天不知道选的是谁 */
+.up-item.picked,.stg-item.picked{border-color:var(--brand);background:#eff6ff;
+  box-shadow:0 0 0 2px rgba(37,99,235,.14)}
 @media (prefers-reduced-motion:reduce){
-  .fly-arrow{animation:none}.fly-med{transition:none}
+  .fly-arrow{animation:none}
 }
 
 /* 轻提示：拖备用药、重复放同一格这类「不该打断操作」的话走这里，不弹 alert */
@@ -3068,6 +3070,18 @@ function renderBox(){
     if(sx){ delSlot(Number(sx.getAttribute('data-slotdel'))); return; }
     const x = e.target.closest('button[data-del]');
     if(x){ removeFromSlot(Number(x.getAttribute('data-del')), x.getAttribute('data-id')); return; }
+    // ★ 2026-11-24：先点药「选中待放」，再点这里某个格子 → 药才真正放进去。
+    //   上面的删格/拿药叉已经先 return 了，不会和「点格子放药」串。
+    if(pendingPick){
+      const sl = e.target.closest('[data-slot]');
+      if(sl){
+        const to = Number(sl.getAttribute('data-slot'));
+        const p = pendingPick;
+        clearPending();                    // 先收起箭头/高亮，addToSlot 会 renderBox 重画
+        addToSlot(to, p.id, p.from);
+        return;
+      }
+    }
     const ctl = e.target.closest('button[data-box]');
     if(ctl){
       const d = ctl.getAttribute('data-box') === 'inc' ? 1 : -1;
@@ -3081,6 +3095,8 @@ function renderBox(){
     const nm = e.target.closest('[data-slotname]');
     if(nm) renameSlot(Number(nm.getAttribute('data-slotname')));
   };
+  // 重画后把「选中待放」的高亮 + 箭头重挂上（DOM 换了，class 会掉）
+  if(pendingPick) paintPick();
 }
 
 async function renameSlot(i){
@@ -3233,6 +3249,12 @@ function removeFromSlot(i, id){
 
 let drag = null;
 
+/* 待放状态（2026-11-24）：点清单/台面的药只是「选好这味」，还没入库。
+   pendingPick = {id, from, name}；点某个格子才真正 addToSlot。
+   pickArrow 是指向药盒的箭头 DOM（append 到 body，重画 #box 不影响它）。 */
+let pendingPick = null;
+let pickArrow = null;
+
 function slotUnder(x, y){
   // 先看指针下有没有格子。清单区和格子不重叠，直接 closest 就够。
   const el = document.elementFromPoint(x, y);
@@ -3311,6 +3333,7 @@ function dragMove(e){
   if(!drag.started){
     if(Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy) < 6) return;
     drag.started = true;
+    if(pendingPick) clearPending();   // 改成拖动了：撤销刚才的「选中待放」
     const m = findMed(drag.id);
     const g = document.createElement('div');
     g.className = 'drag-ghost';
@@ -3327,66 +3350,57 @@ function dragMove(e){
   markStage(drag.from !== -2 && stageUnder(e.clientX, e.clientY));
 }
 
-/* 点一下清单/台面上的药 → 自动加进药盒 + 播放「↑ 箭头指药盒 + 药飞上去」动画。
-   ★ 动画纯装饰：真正入库走 addToSlot（和拖过去完全一样的落点规则、一样的存档）。
-     从台面(from=-2)点一下 = 复制一份进格（台面留着，和拖台面到格子一致）。
-     目标格：优先第一个空格；都占满了就放第一格（和"每个格子都摆一份"的期待一致，再 toast 说明）。 */
-function flyToBox(d){
+/* 点一下清单/台面上的药 → 只是「选中待放」，不入库。
+   ★ 2026-11-24 用户改的主意：「点药品之后出现一个箭头指向上面的药盒，
+     然后再点药盒里对应的格子，药才会进去」—— 所以这里只做三件事：
+     记下 pendingPick、画箭头（↑ 指药盒）、把药盒各格点亮提示可点。
+     真正入库在 #box 的 onclick 里：点某个 .slot 才 addToSlot。 */
+function pickMed(d){
   const m = findMed(d.id);
   if(!m || isPrn(m)) return;
   const box = curBox();
-  const slots = box.slots || [];
-  if(!slots.length) return;
-  let to = -1;
-  for(let i = 0; i < slots.length; i++){
-    if(!(slots[i].ids || []).length){ to = i; break; }
-  }
-  if(to < 0) to = 0;
+  if(!box || !(box.slots || []).length) return;
+  // 再点同一味 = 取消选择（armed 状态可反复切换，不会误入库）
+  if(pendingPick && pendingPick.id === d.id){ clearPending(); toast('取消放「' + m.name + '」'); return; }
+  pendingPick = { id: d.id, from: d.from, name: m.name };
+  paintPick();
+  toast('选好了「' + m.name + '」—— 再点上面药盒里要放的那一格');
+}
 
-  const src = d.src;
-  // ★ 必须先量坐标再入库：addToSlot 会 renderBox() 重画整个 #box，
-  //   重画后 src 成了脱离 DOM 的旧节点，getBoundingClientRect 全是 0。
-  const a = src && src.getBoundingClientRect ? src.getBoundingClientRect() : null;
-  const tgtBefore = $('#box .slot[data-slot="' + to + '"]');
-  const b0 = tgtBefore ? tgtBefore.getBoundingClientRect() : null;
-  const hasAnim = !!(a && a.width && b0 && b0.width);   // 无头自检里布局全 0 → 跳过动画
+// 把待放状态画出来：药本身高亮 + 所有格子高亮 + 箭头指药盒。
+// 单独提出来是因为 renderBox() 会重画 #box，高亮会掉 —— 每次重画后要重挂一遍。
+function paintPick(){
+  $$('#box .picked').forEach(function(el){ el.classList.remove('picked'); });
+  $$('#box .slot.pick-target').forEach(function(el){ el.classList.remove('pick-target'); });
+  if(pickArrow && pickArrow.parentNode) pickArrow.remove();
+  pickArrow = null;
+  if(!pendingPick) return;
 
-  // 真正入库（数据一次到位），动画只是让它看得见去了哪
-  addToSlot(to, d.id, d.from);
-  if(!hasAnim) return;                     // 数据已入库，只是没动画
-  // 入库后格子节点换了，目标坐标用重画前量到的 b0（位置不会变）
-  const b = b0;
+  $$('#box .slot').forEach(function(el){ el.classList.add('pick-target'); });
+  const src = $('#box .up-item[data-med="' + pendingPick.id + '"], #box .stg-item[data-med="' + pendingPick.id + '"]');
+  if(!src) return;                       // 药已经不在清单/台面（比如别处把它入库了）
+  src.classList.add('picked');
+  const a = src.getBoundingClientRect ? src.getBoundingClientRect() : null;
+  if(!a || !a.width) return;             // 无头自检里布局全 0，跳过箭头视觉
 
-  const ax = a.left + a.width / 2, ay = a.top + a.height / 2;
-  const bx = b.left + b.width / 2, by = b.top + b.height / 2;
-
-  // 箭头：立在起点上方，指向上面的药盒，带药名小标
+  // 箭头立在药的上方，↑ 指向上面的药盒；药名标清楚选的是谁
   const arrow = document.createElement('div');
   arrow.className = 'fly-arrow';
-  arrow.innerHTML = '↑<span class="fa-name">' + esc(m.name) + '</span>';
-  arrow.style.left = (ax - 30) + 'px';
-  arrow.style.top = (ay - 54) + 'px';
-  // 飞行的小药片：从起点滑到目标格
-  const fly = document.createElement('div');
-  fly.className = 'fly-med';
-  fly.textContent = m.name + (chipDose(m) ? ' · ' + chipDose(m) : '');
-  fly.style.left = (ax - fly.offsetWidth / 2 || ax - 40) + 'px';
-  fly.style.top = (ay - 14) + 'px';
+  arrow.innerHTML = '↑<span class="fa-name">点药盒格子放下「' + esc(pendingPick.name) + '」</span>';
+  arrow.style.left = (a.left + a.width / 2 - 62) + 'px';
+  arrow.style.top = (a.top - 62) + 'px';
   document.body.appendChild(arrow);
-  document.body.appendChild(fly);
-  // 下一帧再设终点，触发 transition
-  requestAnimationFrame(function(){
-    requestAnimationFrame(function(){
-      fly.style.left = (bx - (fly.offsetWidth || 80) / 2) + 'px';
-      fly.style.top = (by - 14) + 'px';
-      fly.style.transform = 'scale(.82)';
-      fly.style.opacity = '0';
-    });
-  });
-  const clean = function(){ if(arrow.parentNode) arrow.remove(); if(fly.parentNode) fly.remove(); };
-  fly.addEventListener('transitionend', clean);
-  setTimeout(clean, 900);                    // 动画被打断也要收尾，别留残影
-  toast('「' + m.name + '」放进药盒了');
+  pickArrow = arrow;
+}
+
+// 清掉待放状态（点格子入库、再点同一味取消、开始拖动时都调）
+// ★ 别叫 clearPick —— 那是分药模式「清空勾」用的老函数，重名会把它覆盖掉。
+function clearPending(){
+  pendingPick = null;
+  if(pickArrow && pickArrow.parentNode) pickArrow.remove();
+  pickArrow = null;
+  $$('#box .picked').forEach(function(el){ el.classList.remove('picked'); });
+  $$('#box .slot.pick-target').forEach(function(el){ el.classList.remove('pick-target'); });
 }
 
 function dragUp(e){
@@ -3398,13 +3412,13 @@ function dragUp(e){
   markOver(-1);
   markUnplaced(false);
   markStage(false);
-  // ★ 2026-11-24：只点了一下（没拖动）—— 仅「未入清单 / 摆药台」上的药飞进药盒，
-  //   不管长按短按都走这里（长按的系统复制菜单已在 CSS 里禁掉）。
+  // ★ 2026-11-24：只点了一下（没拖动）—— 仅「未入清单 / 摆药台」上的药进入「选中待放」，
+  //   不是直接入库！箭头 + 高亮提示用户再点某个格子（长按短按都走这里，系统复制菜单已禁）。
   //   ★ 必须看起点元素是不是 .up-item/.stg-item：药品卡片 .med 也是 data-from=-1，
-  //     但它点一下是「打开编辑」，绝不能跟着飞进药盒（2026-11-24 自检抓到过）。
+  //     但它点一下是「打开编辑」，绝不能跟着被选中（2026-11-24 自检抓到过）。
   if(!d.started){
     const srcEl = d.src;
-    if(srcEl && srcEl.closest && srcEl.closest('#box .up-item, #box .stg-item')) flyToBox(d);
+    if(srcEl && srcEl.closest && srcEl.closest('#box .up-item, #box .stg-item')) pickMed(d);
     return;
   }
   const to = slotUnder(e.clientX, e.clientY);
