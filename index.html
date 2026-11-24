@@ -442,17 +442,11 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 body.dragging{-webkit-user-select:none;user-select:none;cursor:grabbing}
 body.dragging .med:hover,body.dragging .chip:hover{box-shadow:none}
 
-/* ---------- 点药 → 选中待放：↑ 箭头指药盒 + 格子高亮，再点格子才入库（2026-11-24） ----------
-   ★ 用户要求：点（长按短按都算）清单/台面上的药，只是「选好要放这味」—— 出现一个
-     ↑ 箭头指向上面的药盒，药盒各格亮起来提示可点；用户再点某一格，药才真正放进去。
-     ★ 不再是「点一下就自动飞进第一个格子」。箭头纯装饰（pointer-events:none），
-     选中态由 pendingPick 管理：点格子 / 再点同一味取消 / 开始拖动，都会清掉。 */
-.fly-arrow{position:fixed;z-index:9998;pointer-events:none;display:flex;flex-direction:column;
-  align-items:center;gap:1px;color:var(--brand);font-size:24px;line-height:1;
-  text-shadow:0 1px 3px rgba(255,255,255,.9);animation:fly-pulse .85s ease-in-out infinite}
-.fly-arrow .fa-name{font-size:11px;font-weight:650;color:#1d4ed8;background:#eff6ff;
-  border-radius:9px;padding:3px 9px;white-space:nowrap;box-shadow:0 2px 8px rgba(37,99,235,.16)}
-@keyframes fly-pulse{0%,100%{transform:translateY(0);opacity:.85}50%{transform:translateY(-5px);opacity:1}}
+/* ---------- 点药 → 选中待放：药盒 + 摆药台一起亮，再点格子才入库（2026-11-24） ----------
+   ★ 用户要求：点（长按短按都算）清单/台面上的药，只是「选好要放这味」—— 药盒各格
+     和摆药台一起亮起来提示可点；用户再点某一格，药才真正放进去。
+     ★ 4.5：用户要求把 ↑ 箭头也取消掉 —— 现在**任何来源都不画箭头**，纯靠高亮 +
+     toast 引导。选中态由 pendingPick 管理：点格子 / 再点同一味取消 / 开始拖动，都会清掉。 */
 /* 待放中：药盒每一格都亮起来，告诉用户「点这里放进去」 */
 .slot.pick-target{border-style:solid;border-color:var(--brand);background:#eff6ff;
   box-shadow:0 0 0 3px rgba(37,99,235,.12);cursor:pointer}
@@ -465,9 +459,6 @@ body.dragging .med:hover,body.dragging .chip:hover{box-shadow:none}
 /* 被选中待放的那味药自己也高亮，免得选了半天不知道选的是谁 */
 .up-item.picked,.stg-item.picked{border-color:var(--brand);background:#eff6ff;
   box-shadow:0 0 0 2px rgba(37,99,235,.14)}
-@media (prefers-reduced-motion:reduce){
-  .fly-arrow{animation:none}
-}
 
 /* 轻提示：拖备用药、重复放同一格这类「不该打断操作」的话走这里，不弹 alert */
 #toast{position:fixed;left:50%;bottom:36px;z-index:99999;max-width:min(560px,84vw);
@@ -981,9 +972,18 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
    一个配对码输入框 + 连接按钮，连接结果用 toast 弹；地址/上传/拉取/说明全藏起来。
    自检在无头 Chrome 里跑、没有手机壳，不会命中这一类，原来的 DOM 断言照旧。 */
 #dlgConnect.slim-connect .dlg-h p{display:none}
-#dlgConnect.slim-connect #connectBody > *:not(#hubPairRow){display:none!important}
+/* ★ 4.5：多留一个 #hubVerRow 给「验证版本是否同步」按钮（其余照旧藏掉） */
+#dlgConnect.slim-connect #connectBody > *:not(#hubPairRow):not(#hubVerRow){display:none!important}
 #dlgConnect.slim-connect #hubPairRow{margin:2px 0 4px}
 #dlgConnect.slim-connect #hubPairRow input{width:100%}
+/* 验证按钮：默认藏（网页/桌面不出现），真机壳的精简弹窗里露面 */
+#hubVerRow{display:none}
+#dlgConnect.slim-connect #hubVerRow{display:block;margin-top:12px;padding-top:11px;
+  border-top:1px dashed #dfe5ee}
+#btnVerCheck{width:100%}
+.ver-note{font-size:11.5px;color:var(--muted);line-height:1.7;margin-top:8px;white-space:pre-line}
+.ver-note b{color:#1d4ed8}
+.ver-note.bad b{color:var(--out)}
 
 @media(max-width:640px){
   body{font-size:14.5px;-webkit-tap-highlight-color:transparent}
@@ -1312,6 +1312,12 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
       <input id="hubCode" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="6"
              placeholder="电脑上的 6 位配对码" aria-label="电脑上数据台的配对码">
       <button type="button" class="btn primary sm" id="btnHubPair">连上电脑</button>
+    </div>
+    <!-- ★ 4.5：手机壳专属「验证版本是否同步」。平时藏起来，只有 #dlgConnect
+         挂了 slim-connect（真机 App）才露面；桌面/网页版不打扰。 -->
+    <div class="hub-ver" id="hubVerRow">
+      <button type="button" class="btn ghost" id="btnVerCheck">验证版本是否同步</button>
+      <div class="ver-note" id="verCheckNote"></div>
     </div>
     <div class="hub-addr">
       <input id="hubAddr" inputmode="url" autocomplete="off" spellcheck="false"
@@ -3088,7 +3094,7 @@ function renderBox(){
       if(sl){
         const to = Number(sl.getAttribute('data-slot'));
         const p = pendingPick;
-        clearPending();                    // 先收起箭头/高亮，addToSlot 会 renderBox 重画
+        clearPending();                    // 先收起高亮，addToSlot 会 renderBox 重画
         addToSlot(to, p.id, p.from);
         return;
       }
@@ -3116,7 +3122,7 @@ function renderBox(){
     const nm = e.target.closest('[data-slotname]');
     if(nm) renameSlot(Number(nm.getAttribute('data-slotname')));
   };
-  // 重画后把「选中待放」的高亮 + 箭头重挂上（DOM 换了，class 会掉）
+  // 重画后把「选中待放」的高亮重挂上（DOM 换了，class 会掉）
   if(pendingPick) paintPick();
 }
 
@@ -3272,9 +3278,8 @@ let drag = null;
 
 /* 待放状态（2026-11-24）：点清单/台面的药只是「选好这味」，还没入库。
    pendingPick = {id, from, name}；点某个格子才真正 addToSlot。
-   pickArrow 是指向药盒的箭头 DOM（append 到 body，重画 #box 不影响它）。 */
+   ★ 4.5：箭头整个取消（用户要求），提示只靠高亮 + toast —— 不再有 pickArrow DOM。 */
 let pendingPick = null;
-let pickArrow = null;
 
 function slotUnder(x, y){
   // 先看指针下有没有格子。清单区和格子不重叠，直接 closest 就够。
@@ -3377,9 +3382,9 @@ function dragMove(e){
 }
 
 /* 点一下清单/台面上的药 → 只是「选中待放」，不入库。
-   ★ 2026-11-24 用户改的主意：「点药品之后出现一个箭头指向上面的药盒，
-     然后再点药盒里对应的格子，药才会进去」—— 所以这里只做三件事：
-     记下 pendingPick、把药盒各格 + 摆药台一起点亮提示可点（清单来源另画 ↑ 箭头）。
+   ★ 2026-11-24 用户改的主意：「点药品之后再点药盒里对应的格子，药才会进去」——
+     所以这里只做两件事：记下 pendingPick、把药盒各格 + 摆药台一起点亮提示可点。
+     ★ 4.5 用户要求连 ↑ 箭头也取消，提示全靠高亮 + toast。
      真正入库在 #box 的 onclick 里：点某个 .slot 才 addToSlot；点台面则 addToStage。 */
 function pickMed(d){
   const m = findMed(d.id);
@@ -3393,13 +3398,12 @@ function pickMed(d){
   toast('选好了「' + m.name + '」—— 再点上面药盒的格子，或点摆药台放上台面');
 }
 
-// 把待放状态画出来：药本身高亮 + 所有格子与摆药台一起高亮 +（清单来源）箭头指药盒。
+// 把待放状态画出来：药本身高亮 + 所有格子与摆药台一起高亮。
 // 单独提出来是因为 renderBox() 会重画 #box，高亮会掉 —— 每次重画后要重挂一遍。
+// ★ 4.5：箭头整个取消，清单/台面来源都一样 —— 只有高亮和 toast，不再往 body 挂箭头 DOM。
 function paintPick(){
   $$('#box .picked').forEach(function(el){ el.classList.remove('picked'); });
   $$('#box .pick-target').forEach(function(el){ el.classList.remove('pick-target'); });
-  if(pickArrow && pickArrow.parentNode) pickArrow.remove();
-  pickArrow = null;
   if(!pendingPick) return;
 
   // ★ 4.4：药盒各格 + 摆药台一起亮 —— 两个都是这一步能点的落点
@@ -3410,29 +3414,12 @@ function paintPick(){
   const src = $('#box .up-item[data-med="' + pendingPick.id + '"], #box .stg-item[data-med="' + pendingPick.id + '"]');
   if(!src) return;                       // 药已经不在清单/台面（比如别处把它入库了）
   src.classList.add('picked');
-  // ★ 4.4（用户原话「百药台里边的箭头取消掉」）：从摆药台选中的药不再画箭头。
-  //   台面自己已经亮了，箭头再压在上面既挡视线又误导（文案只说"点药盒格子"）；
-  //   未入清单那边保留 ↑ 指药盒，那才是需要引导"往哪儿点"的地方。
-  if(pendingPick.from === -2) return;
-  const a = src.getBoundingClientRect ? src.getBoundingClientRect() : null;
-  if(!a || !a.width) return;             // 无头自检里布局全 0，跳过箭头视觉
-
-  // 箭头立在药的上方，↑ 指向上面的药盒；药名标清楚选的是谁
-  const arrow = document.createElement('div');
-  arrow.className = 'fly-arrow';
-  arrow.innerHTML = '↑<span class="fa-name">点药盒格子放下「' + esc(pendingPick.name) + '」</span>';
-  arrow.style.left = (a.left + a.width / 2 - 62) + 'px';
-  arrow.style.top = (a.top - 62) + 'px';
-  document.body.appendChild(arrow);
-  pickArrow = arrow;
 }
 
 // 清掉待放状态（点格子入库、再点同一味取消、开始拖动时都调）
 // ★ 别叫 clearPick —— 那是分药模式「清空勾」用的老函数，重名会把它覆盖掉。
 function clearPending(){
   pendingPick = null;
-  if(pickArrow && pickArrow.parentNode) pickArrow.remove();
-  pickArrow = null;
   $$('#box .picked').forEach(function(el){ el.classList.remove('picked'); });
   $$('#box .pick-target').forEach(function(el){ el.classList.remove('pick-target'); });
 }
@@ -3447,7 +3434,7 @@ function dragUp(e){
   markUnplaced(false);
   markStage(false);
   // ★ 2026-11-24：只点了一下（没拖动）—— 仅「未入清单 / 摆药台」上的药进入「选中待放」，
-  //   不是直接入库！箭头 + 高亮提示用户再点某个格子（长按短按都走这里，系统复制菜单已禁）。
+  //   不是直接入库！高亮 + toast 提示用户再点某个格子（长按短按都走这里，系统复制菜单已禁）。
   //   ★ 必须看起点元素是不是 .up-item/.stg-item：药品卡片 .med 也是 data-from=-1，
   //     但它点一下是「打开编辑」，绝不能跟着被选中（2026-11-24 自检抓到过）。
   if(!d.started){
@@ -6931,7 +6918,7 @@ if(IS_DESK && $('#btnDeskHub')){
   const io = $('#dlgIO');
   if(!body || !io) return;
   // 要搬走的：分隔标题 + 配对码行 + 地址行 + 数据台入口 + 上传/拉取 + 状态说明
-  const ids = ['hubSep','hubPairRow','hubAddr','btnDeskHub','btnHubUp','hubNote'];
+  const ids = ['hubSep','hubPairRow','hubVerRow','hubAddr','btnDeskHub','btnHubUp','hubNote'];
   const nodes = [];
   ids.forEach(function(id){
     const el = document.getElementById(id);
@@ -6970,6 +6957,8 @@ function bindConnect(){
     openConnect();
   });
   if($('#btnConnectClose')) $('#btnConnectClose').addEventListener('click', function(){ $('#dlgConnect').close(); });
+  // ★ 4.5：手机壳里的「验证版本是否同步」按钮（结果写进 #verCheckNote + toast）
+  if($('#btnVerCheck')) $('#btnVerCheck').addEventListener('click', function(){ hubVerifyVersion(); });
   // 真机手机壳里：连接弹窗只留配对码输入框，结果用 toast 蹦出来
   if(window.AndroidApp && window.AndroidApp.findHub && $('#dlgConnect')){
     $('#dlgConnect').classList.add('slim-connect');
@@ -7093,6 +7082,66 @@ async function hubApkCheck(base){
   };
   box.appendChild(b);
   el.appendChild(box);
+}
+
+/* ★ 4.5「验证版本是否同步」：手机 App 里手动核对本机页面 / APK 和电脑上的版本。
+   - 页面凭据只认原生报的 md5（A.pageMd5()）—— localStorage 那份只是记录，不作数。
+   - md5 不一致就顺手把电脑上的新页面拉下来装上（force 跳过"有弹窗就不换"的保护）；
+     APK 在 Android 上没法静默装，只把版本号报告给用户。
+   - 没连上 / 连不上都说人话，结果同时进 toast 和弹窗里的小字，不弹系统对话框。 */
+async function hubVerifyVersion(){
+  const note = $('#verCheckNote'), btn = $('#btnVerCheck'), AA = window.AndroidApp;
+  const say = function(html, bad){
+    if(note){ note.innerHTML = html; note.className = 'ver-note' + (bad ? ' bad' : ''); }
+  };
+  const resetBtn = function(){
+    if(btn){ btn.disabled = false; btn.textContent = '验证版本是否同步'; }
+  };
+  const base = hubBase();
+  if(!(AA && AA.findHub) || !base){
+    const s = '还没连上电脑 —— 先在上面输配对码连接';
+    toast(s); say(s, true); return { ok:false, why:'offline' };
+  }
+  if(btn){ btn.disabled = true; btn.textContent = '正在核对…'; }
+  say('正在核对电脑上的版本…', false);
+  let meta = null, st = null;
+  try {
+    const rs = await Promise.all([
+      fetch(base + '/api/page/meta', { cache:'no-store' }),
+      fetch(base + '/api/state', { cache:'no-store' })
+    ]);
+    if(!rs[0].ok || !rs[1].ok) throw new Error('http');
+    meta = await rs[0].json();
+    st = await rs[1].json();
+  } catch(e){
+    resetBtn();
+    const s = '连不上电脑 —— 检查 Wi-Fi 和配对码';
+    toast(s); say(s, true); return { ok:false, why:'unreachable' };
+  }
+  resetBtn();
+  let localMd5 = '', localApk = '';
+  try { localMd5 = String((AA.pageMd5 && AA.pageMd5()) || ''); } catch(e){}
+  try { localApk = String((AA.appVersion && AA.appVersion()) || ''); } catch(e){}
+  const remoteMd5 = String((meta && meta.md5) || '');
+  const remoteApk = String((st && st.apk && st.apk.ver) || '');
+  const pageOk = !!(localMd5 && remoteMd5 && localMd5 === remoteMd5);
+  const apkOk = !(remoteApk && localApk) || remoteApk === localApk;
+  const tag = function(s){ return s ? String(s).slice(0, 8) : '未知'; };
+  const linePage = pageOk
+    ? '页面：<b>已同步</b>（' + tag(localMd5) + '）'
+    : '页面：<b>不一致</b>（本机 ' + tag(localMd5) + ' → 电脑 ' + tag(remoteMd5) + '）';
+  const lineApk = apkOk
+    ? '安装包：已同步（' + (localApk || remoteApk || '未知') + '）'
+    : '安装包：本机 ' + (localApk || '未知') + '，电脑 <b>' + remoteApk + '</b>（需手动安装）';
+  say(linePage + '\n' + lineApk, !pageOk || !apkOk);
+  if(pageOk) toast('版本已同步');
+  else {
+    toast('页面还不是最新版，正在更新…');
+    try { if(window.__dkPullPage) window.__dkPullPage(true); } catch(e){}
+  }
+  return { ok: pageOk && apkOk, pageOk: pageOk, apkOk: apkOk,
+           localMd5: localMd5, remoteMd5: remoteMd5,
+           localApk: localApk, remoteApk: remoteApk };
 }
 
 function hubRefresh(){
@@ -7784,7 +7833,9 @@ render();          // 原本这里还有一条「URL 带参数就载入示例」
     } catch(e){}
     return true;
   }
-  async function pullPageUpdate(){
+  // ★ 4.5：force = 用户主动点了「验证版本是否同步」—— 那时弹窗正开着，
+  //   平时的"有弹窗就不换页"保护得跳过，否则永远换不成。
+  async function pullPageUpdate(force){
     const base = hubBase();
     if(!base || !pageMd5) return;          // 没配地址就当没这回事，不打扰
     let meta = null;
@@ -7794,7 +7845,7 @@ render();          // 原本这里还有一条「URL 带参数就载入示例」
       meta = await r.json();
     } catch(e){ return; }
     if(!meta || !meta.md5 || meta.md5 === pageMd5) return;
-    if(!canSwapPage()) return;              // 有人在填东西，等下次
+    if(!force && !canSwapPage()) return;    // 有人在填东西，等下次（主动验证时跳过）
     try { A.toast('电脑上有新版本，正在更新…'); } catch(e){}
     let html = '';
     try {
@@ -7804,6 +7855,8 @@ render();          // 原本这里还有一条「URL 带参数就载入示例」
     if(!html || html.length < 4096) return;
     try { A.installPage(html, store.get(LS_DATA) || '', store.get(LS_SET) || ''); } catch(e){}
   }
+  // 暴露给上面的「验证版本是否同步」按钮主动触发（只在手机壳里挂上）
+  window.__dkPullPage = pullPageUpdate;
   setTimeout(pullPageUpdate, 1500);
 
   // ① 导出：改走原生写文件

@@ -1442,7 +1442,7 @@ PROBE = r"""
   /* ---- ★ 4.4（2026-11-24）：摆药台一起亮 / 台面上不画箭头 / 点台面能上台面 ---- */
   clearPending();
   fixture();
-  // ① 从清单选药：药盒各格 + 摆药台一起亮；↑ 箭头保留（引导"往哪儿点"）
+  // ① 从清单选药：药盒各格 + 摆药台一起亮；4.5 起箭头整个取消
   (function(){
     var it = upItem('早饭前片');
     var a = center(it.querySelector('.nm'));
@@ -1453,7 +1453,9 @@ PROBE = r"""
      qa('#box .slot.pick-target').length === qa('#box .slot').length && qa('#box .slot').length > 0,
      qa('#box .slot.pick-target').length + '/' + qa('#box .slot').length);
   ck('★ 选中清单的药：摆药台跟着一起亮（pick-target）', !!q('#box .stage.pick-target'), '');
-  ck('★ 从清单选药时 ↑ 箭头仍在（没被一起取消）', !!q('.fly-arrow'), '');
+  ck('★ 4.5：从清单选药也不画箭头（箭头整个取消）', !q('.fly-arrow'), '');
+  ck('★ 页面里连箭头样式都清干净了（不会回潮）',
+     !new RegExp('fly-' + 'arrow\\s*\\{').test(document.documentElement.innerHTML), '');
   ck('★ 提示语同时点出药盒格子和摆药台',
      /摆药台/.test(q('#toast').textContent) && /再点/.test(q('#toast').textContent),
      q('#toast').textContent);
@@ -1463,10 +1465,10 @@ PROBE = r"""
   })();
   ck('★ 选中后点摆药台，药真的放上台面', stgNames().indexOf('早饭前片') >= 0, stgNames().join('、'));
   ck('★ 点台面只上台面，没往药盒里塞', slotIds(0).length === 0, slotIds(0).length);
-  ck('★ 上台面后高亮与箭头全清（格子 + 台面）',
+  ck('★ 上台面后高亮全清（格子 + 台面）',
      qa('#box .slot.pick-target').length === 0 && !q('#box .stage.pick-target') && !q('.fly-arrow'), '');
 
-  // ③ 从摆药台选药：台面和格子都亮，但台面上不再画箭头
+  // ③ 从摆药台选药：台面和格子都亮，4.5 起台面上也不画箭头
   fixture();
   (function(){
     dragCardToStage('晚饭后胶囊');
@@ -1477,9 +1479,7 @@ PROBE = r"""
   })();
   ck('★ 从摆药台选药：摆药台 + 药盒格子一起亮',
      !!q('#box .stage.pick-target') && qa('#box .slot.pick-target').length === qa('#box .slot').length, '');
-  ck('★ 摆药台上不再画箭头（用户要求取消）',
-     typeof pickArrow === 'undefined' || pickArrow === null, '');
-  ck('★ 从台面选药时没有 .fly-arrow 节点', !q('.fly-arrow'), '');
+  ck('★ 从台面选药时没有箭头节点（清单/台面一律不画）', !q('.fly-arrow'), '');
   ck('★ 台面上被选中的那味药自身高亮', !!q('#box .stg-item.picked'), '');
   // ④ 点格子仍能把台面选中的药放进去，且台面那份留着
   (function(){

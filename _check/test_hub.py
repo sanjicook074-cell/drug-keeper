@@ -167,6 +167,69 @@ PROBE = r"""
       }
     })();
 
+    /* ①e 2026-11-24（4.5）：手机 App 的「验证版本是否同步」按钮。
+       用真服务端 + 假 AndroidApp（给 pageMd5 / appVersion）走完整链路。 */
+    ck('★ 源码有 hubVerifyVersion + 主动换页入口（手机验证按钮的后端）',
+       /function hubVerifyVersion/.test(document.documentElement.innerHTML) &&
+       /window\.__dkPullPage\s*=\s*pullPageUpdate/.test(document.documentElement.innerHTML) &&
+       /pullPageUpdate\(force\)/.test(document.documentElement.innerHTML), '');
+    ck('★ 连接弹窗里有「验证版本是否同步」按钮（平时藏、手机壳里露）',
+       !!q('#btnVerCheck') && /验证版本是否同步/.test((q('#btnVerCheck') || {}).textContent || '') &&
+       !!q('#verCheckNote') && !!q('#hubVerRow'), '');
+    (function(){
+      var d = q('#dlgConnect'), row = q('#hubVerRow');
+      if(!d || !row) return;
+      var before = getComputedStyle(row).display;
+      d.classList.add('slim-connect');
+      var after = getComputedStyle(row).display;
+      d.classList.remove('slim-connect');
+      ck('★ 验证按钮只在真机壳精简弹窗里出现（桌面/网页不打扰）',
+         before === 'none' && after !== 'none', before + ' → ' + after);
+    })();
+    await (async function(){
+      var savedHub = store.get('dk.hub'), hadAA = window.AndroidApp;
+      try {
+        // 没连电脑 → 说人话，不 fetch
+        store.set('dk.hub', '');
+        var off = await hubVerifyVersion();
+        ck('★ 没连电脑时验证按钮给出「先输配对码」提示',
+           off.ok === false && off.why === 'offline' &&
+           /配对码/.test((q('#verCheckNote') || {}).textContent || ''),
+           JSON.stringify(off));
+        // 连上且一致 → 页面 md5 / APK 版本都对上
+        store.set('dk.hub', BASE);
+        var md5 = '', apkVer = '';
+        try {
+          var rm = await fetch(BASE + '/api/page/meta', { cache:'no-store' });
+          md5 = String((await rm.json()).md5 || '');
+          var rs = await fetch(BASE + '/api/state', { cache:'no-store' });
+          apkVer = String(((await rs.json()).apk || {}).ver || '');
+        } catch(e){}
+        window.AndroidApp = {
+          findHub: function(){ return BASE; },
+          pageMd5: function(){ return md5; },
+          appVersion: function(){ return apkVer; }
+        };
+        var same = await hubVerifyVersion();
+        ck('★ 真服务端 + 假壳：页面 md5 与 APK 版本都一致时报「已同步」',
+           same.ok === true && same.pageOk === true && same.apkOk === true &&
+           /已同步/.test((q('#verCheckNote') || {}).textContent || '') &&
+           /版本已同步/.test((q('#toast') || {}).textContent || ''),
+           JSON.stringify(same));
+        // md5 不一致 → 明确报不一致，不弹系统框（__dkPullPage 在无壳自检里不存在）
+        window.AndroidApp.pageMd5 = function(){ return '00000000000000000000000000000000'; };
+        var diff = await hubVerifyVersion();
+        ck('★ 页面版本不一致时明确报出来（提示正在更新，不静悄悄）',
+           diff.pageOk === false && /不一致/.test((q('#verCheckNote') || {}).textContent || '') &&
+           /正在更新/.test((q('#toast') || {}).textContent || ''),
+           JSON.stringify(diff));
+      } finally {
+        window.AndroidApp = hadAA;
+        if(savedHub == null) store.remove ? store.remove('dk.hub') : store.set('dk.hub', '');
+        else store.set('dk.hub', savedHub);
+      }
+    })();
+
     /* ② 地址规范化：用户多半只会抄 IP:端口，不带 http:// */
     store.set('dk.hub', '127.0.0.1:__PORT__');
     ck('★ 地址只写「IP:端口」也能用（自动补 http://）',
