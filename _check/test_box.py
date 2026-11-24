@@ -578,11 +578,11 @@ PROBE = r"""
   fixture();
   var slotsEl = q('#box .slots');
   ck('药盒下面确实有一块「未入清单」', !!upZone() && /未入清单/.test(upZone().textContent), '');
+  // 2026-11-24：清单/台面装进了 .dock-row 并排容器 —— 不再是 #box 的直接子元素。
+  //   用 compareDocumentPosition 判断先后（清单仍在格子后面，只是多包了一层）。
   ck('它在 DOM 里排在格子后面',
-     Array.prototype.indexOf.call(q('#box').children, upZone()) >
-     Array.prototype.indexOf.call(q('#box').children, slotsEl),
-     Array.prototype.indexOf.call(q('#box').children, upZone()) + ' > ' +
-     Array.prototype.indexOf.call(q('#box').children, slotsEl));
+     !!(upZone().compareDocumentPosition(slotsEl) & Node.DOCUMENT_POSITION_PRECEDING),
+     upZone().compareDocumentPosition(slotsEl) + '');
   ck('视觉上也在格子下面（不是靠 CSS 挪上去的）',
      upZone().getBoundingClientRect().top >= slotsEl.getBoundingClientRect().bottom - 2,
      Math.round(upZone().getBoundingClientRect().top) + ' vs ' +
@@ -823,14 +823,17 @@ PROBE = r"""
 
   fixture();
   ck('药盒下面有摆药台', !!stgEl(), '');
-  ck('摆药台在未入清单下面（DOM 顺序：清单 → 台面）', (function(){
-    var all = qa('#box > *');
-    var iUp = -1, iStg = -1;
-    all.forEach(function(e, k){
-      if(e.classList.contains('unplaced')) iUp = k;
-      if(e.classList.contains('stage')) iStg = k;
-    });
-    return iUp >= 0 && iStg > iUp;
+  // ★ 2026-11-24 用户要求「把摆药台放到未入清单的右边」——从上下改成左右并排。
+  ck('摆药台在未入清单右边（同一 .dock-row 容器里，清单左 / 台面右）', (function(){
+    var row = q('#box .dock-row');
+    if(!row) return false;
+    var up = row.querySelector('.unplaced'), stg = row.querySelector('.stage');
+    if(!up || !stg) return false;
+    // DOM 顺序：清单在前、台面在后；flex 默认 row → 视觉上台面在右
+    var domOk = !!(stg.compareDocumentPosition(up) & Node.DOCUMENT_POSITION_PRECEDING);
+    var flexOk = getComputedStyle(row).flexDirection === 'row'
+                 || getComputedStyle(row).flexDirection === '';
+    return domOk && flexOk;
   })(), '');
   ck('台面空着时显示占位提示', /台面空着/.test(stgEl().textContent), stgEl().textContent.trim());
 
@@ -1018,7 +1021,7 @@ PROBE = r"""
      pkBtn ? pkBtn.textContent.trim() : '没找到');
   ck('它贴在格子右下（.box-tools 紧跟 .slots，右对齐）',
      !!q('#box .slots') && q('#box .slots').nextElementSibling === q('#box .box-tools')
-       && getComputedStyle(q('#box .box-tools')).justifyContent === 'flex-end',
+       && /^(flex-end|flow-end|end)$/.test(getComputedStyle(q('#box .box-tools')).justifyContent),
      q('#box .slots') && q('#box .slots').nextElementSibling
        ? q('#box .slots').nextElementSibling.className : '没有');
 
@@ -1318,6 +1321,51 @@ PROBE = r"""
   // 20.6 全程零原生弹窗
   ck('★ 整个测试过程一次都没走浏览器原生 alert / confirm / prompt',
      R.natives.length === 0, R.natives.slice(0, 3).join(' | ') || '(一次都没有)');
+
+  /* ---- ★ 2026-11-24：点一下 / 长按清单里的药 → 自动飞进药盒（放最后，不干扰前面用例） ----
+     用户原话：「让这个药物不管是长按还是短按都是移动，点击之后出现一个箭头指向上面的药盒」。
+     用真 pointerdown+pointerup（不移动）走 dragDown/dragUp 的"没拖动"分支。 */
+  fixture();
+  (function(){
+    var it = upItem('早饭前片');
+    var a = center(it.querySelector('.nm'));
+    pe('pointerdown', a.x, a.y, it.querySelector('.nm'));
+    pe('pointerup',   a.x, a.y, it.querySelector('.nm'));
+  })();
+  ck('★ 清单里的药「点一下」就进了药盒（不拖也移动）',
+     nameIn(0, '早饭前片'), slotIds(0).length);
+  ck('★ 进了盒就从清单里消失', upNames().indexOf('早饭前片') < 0, upNames().join('、'));
+  ck('★ 点一下还弹了个「放进药盒了」的提示',
+     (q('#toast').textContent || '').indexOf('放进药盒') >= 0,
+     q('#toast').textContent);
+  // 长按 = contextmenu：系统复制菜单被拦掉
+  (function(){
+    var it = upItem('晚饭后胶囊');
+    var a = center(it.querySelector('.nm'));
+    var ev = new MouseEvent('contextmenu', { bubbles:true, cancelable:true, clientX:a.x, clientY:a.y });
+    it.querySelector('.nm').dispatchEvent(ev);
+    ck('★ 长按菜单（contextmenu）被拦下来，不弹系统复制菜单', ev.defaultPrevented, ev.defaultPrevented);
+  })();
+  // 长按同样能飞进盒（pointerdown + contextmenu + pointerup，位移为 0）
+  fixture();   // 重置：让长按用例独立，免得前一条已占掉第 0 格
+  (function(){
+    var it = upItem('晚饭后胶囊');
+    var a = center(it.querySelector('.nm'));
+    pe('pointerdown', a.x, a.y, it.querySelector('.nm'));
+    it.querySelector('.nm').dispatchEvent(new MouseEvent('contextmenu', { bubbles:true, cancelable:true }));
+    pe('pointerup',   a.x, a.y, it.querySelector('.nm'));
+  })();
+  ck('★ 长按（含系统菜单被拦）后药同样飞进盒', nameIn(0, '晚饭后胶囊'), slotIds(0).length);
+  // 药品列表的卡片点一下不该飞进盒（它是"打开编辑"，不是移动）
+  fixture();
+  (function(){
+    var c = card('早饭前片');
+    var a = center(c.querySelector('.med-name'));
+    pe('pointerdown', a.x, a.y, c.querySelector('.med-name'));
+    pe('pointerup',   a.x, a.y, c.querySelector('.med-name'));
+  })();
+  ck('★ 药品列表的卡片点一下不飞进盒（那是打开编辑，不是移动）',
+     slotIds(0).length === 0, slotIds(0).length);
 
   fixture();
   } catch(err){

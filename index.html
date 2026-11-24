@@ -339,6 +339,9 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
   box-shadow:0 1px 2px rgba(16,24,40,.04);transition:border-color .13s,background .13s}
 .up-item:hover{border-color:#c9d6e8;background:#f7faff}
 .up-item[data-lv=out]{opacity:.5}
+/* ★ 2026-11-24：清单/台面上的药点一下就飞进药盒，长按也不该弹出系统的
+   「复制 / 全选 / 翻译」菜单。禁掉文本选择 + iOS 长按调用菜单，触感上和点一下一致。 */
+.up-item,.stg-item{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 /* 清单里的药名同样允许折行（同一个理由，见上面 .chip .nm） */
 .up-item .nm{color:#242a35;min-width:0;word-break:break-word;line-height:1.3;
   display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
@@ -377,6 +380,19 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
   cursor:pointer;border-radius:4px;font-size:13px;line-height:1;padding:0;display:grid;place-items:center}
 .stg-item .x:hover{background:#e3ecf9;color:var(--out)}
 .stg-none{font-size:11.5px;color:#9aa3b2;padding:3px 0}
+
+/* ---------- 未入清单 + 摆药台 并排容器（2026-11-24 用户要求） ----------
+   用户原话：「百药台（摆药台）现在是放在这个未入清单的下边，请你把它放到未入清单的右边。」
+   所以两个区域装进 .dock-row，左右各占一半。窄屏也保持并排（各 half），
+   只是内部药名继续折行；真挤不下时（<=360px）才退回上下，免得两列都只剩一个字宽。 */
+.dock-row{display:flex;align-items:stretch;gap:10px;margin-top:11px}
+.dock-row>.unplaced,.dock-row>.stage{flex:1 1 0;min-width:0;margin-top:0}
+/* 并排后：清单的上下虚线保留，台面的托盘底色保留 —— 但两者高度拉齐，看着像一对 */
+.dock-row>.unplaced{padding:9px 10px 11px;border:1px dashed #dfe5ee;border-radius:10px}
+.dock-row>.stg-tip,.dock-row .up-tip{display:none}   /* 并排窄了，提示语挤掉，标题已够清楚 */
+@media(max-width:360px){
+  .dock-row{flex-direction:column;gap:8px}
+}
 
 /* ---------- 全家偏少：把每个人药箱里「已用完 / 偏少」的药摊在一页 ----------
    为什么要它：药不是一个人吃的。给自己看剩几天、给爸妈看剩几天，得来回切人；
@@ -420,6 +436,25 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
   transform:translate(-999px,-999px);white-space:nowrap}
 body.dragging{-webkit-user-select:none;user-select:none;cursor:grabbing}
 body.dragging .med:hover,body.dragging .chip:hover{box-shadow:none}
+
+/* ---------- 点一下药 → 飞进药盒的动画 + 指向药盒的箭头（2026-11-24） ----------
+   ★ 用户要求：清单/台面上的药「不管长按还是短按都是移动」，点了就自动飞进药盒，
+     并出现一个箭头指向上面的药盒。动画纯装饰（pointer-events:none），飞完就 remove，
+     真正入库走的是 addToSlot —— 动画不参与数据，动画被打断也不影响药已经放好。 */
+.fly-arrow{position:fixed;z-index:9998;pointer-events:none;display:flex;flex-direction:column;
+  align-items:center;gap:1px;color:var(--brand);font-size:22px;line-height:1;
+  text-shadow:0 1px 3px rgba(255,255,255,.9);animation:fly-pulse .85s ease-in-out infinite}
+.fly-arrow .fa-name{font-size:11px;font-weight:650;color:#1d4ed8;background:#eff6ff;
+  border-radius:9px;padding:2px 8px;white-space:nowrap;box-shadow:0 2px 8px rgba(37,99,235,.16)}
+@keyframes fly-pulse{0%,100%{transform:translateY(0);opacity:.85}50%{transform:translateY(-5px);opacity:1}}
+.fly-med{position:fixed;z-index:9999;pointer-events:none;font-size:12px;font-weight:600;color:#1b1f27;
+  background:#fff;border:1px solid var(--brand);border-radius:8px;padding:5px 10px;
+  box-shadow:0 6px 18px rgba(37,99,235,.28);white-space:nowrap;
+  transition:left .42s cubic-bezier(.34,.9,.4,1),top .42s cubic-bezier(.34,.9,.4,1),
+             transform .42s ease,opacity .42s ease}
+@media (prefers-reduced-motion:reduce){
+  .fly-arrow{animation:none}.fly-med{transition:none}
+}
 
 /* 轻提示：拖备用药、重复放同一格这类「不该打断操作」的话走这里，不弹 alert */
 #toast{position:fixed;left:50%;bottom:36px;z-index:99999;max-width:min(560px,84vw);
@@ -3016,7 +3051,11 @@ function renderBox(){
           ? '还空着 —— 从下面的未入清单把药拖进来，一格一格摆好，装药时照着拿就行。'
           : '还空着 —— 先用上面的「添加药品」把药录进来，再拖进格子。')
       + '</div>')
-  + ((meds || []).length ? unplacedHTML() + stageHTML() : '');
+  // ★ 2026-11-24：未入清单与摆药台并排（清单左、台面右），装进 .dock-row。
+  //   两块各自仍带 data-dropzone，拖拽落点判断完全不变，只是视觉从上下改成左右。
+  + ((meds || []).length
+      ? '<div class="dock-row">' + unplacedHTML() + stageHTML() + '</div>'
+      : '');
 
   el.onclick = function(e){
     const pk = e.target.closest('button[data-pickmode]');
@@ -3262,6 +3301,7 @@ function dragDown(e){
     id: id,
     from: fromAttr == null ? -1 : Number(fromAttr),
     sx: e.clientX, sy: e.clientY,
+    src: src,                                   // 点击飞入的起点元素（清单/台面那味药）
     started: false, ghost: null
   };
 }
@@ -3287,6 +3327,68 @@ function dragMove(e){
   markStage(drag.from !== -2 && stageUnder(e.clientX, e.clientY));
 }
 
+/* 点一下清单/台面上的药 → 自动加进药盒 + 播放「↑ 箭头指药盒 + 药飞上去」动画。
+   ★ 动画纯装饰：真正入库走 addToSlot（和拖过去完全一样的落点规则、一样的存档）。
+     从台面(from=-2)点一下 = 复制一份进格（台面留着，和拖台面到格子一致）。
+     目标格：优先第一个空格；都占满了就放第一格（和"每个格子都摆一份"的期待一致，再 toast 说明）。 */
+function flyToBox(d){
+  const m = findMed(d.id);
+  if(!m || isPrn(m)) return;
+  const box = curBox();
+  const slots = box.slots || [];
+  if(!slots.length) return;
+  let to = -1;
+  for(let i = 0; i < slots.length; i++){
+    if(!(slots[i].ids || []).length){ to = i; break; }
+  }
+  if(to < 0) to = 0;
+
+  const src = d.src;
+  // ★ 必须先量坐标再入库：addToSlot 会 renderBox() 重画整个 #box，
+  //   重画后 src 成了脱离 DOM 的旧节点，getBoundingClientRect 全是 0。
+  const a = src && src.getBoundingClientRect ? src.getBoundingClientRect() : null;
+  const tgtBefore = $('#box .slot[data-slot="' + to + '"]');
+  const b0 = tgtBefore ? tgtBefore.getBoundingClientRect() : null;
+  const hasAnim = !!(a && a.width && b0 && b0.width);   // 无头自检里布局全 0 → 跳过动画
+
+  // 真正入库（数据一次到位），动画只是让它看得见去了哪
+  addToSlot(to, d.id, d.from);
+  if(!hasAnim) return;                     // 数据已入库，只是没动画
+  // 入库后格子节点换了，目标坐标用重画前量到的 b0（位置不会变）
+  const b = b0;
+
+  const ax = a.left + a.width / 2, ay = a.top + a.height / 2;
+  const bx = b.left + b.width / 2, by = b.top + b.height / 2;
+
+  // 箭头：立在起点上方，指向上面的药盒，带药名小标
+  const arrow = document.createElement('div');
+  arrow.className = 'fly-arrow';
+  arrow.innerHTML = '↑<span class="fa-name">' + esc(m.name) + '</span>';
+  arrow.style.left = (ax - 30) + 'px';
+  arrow.style.top = (ay - 54) + 'px';
+  // 飞行的小药片：从起点滑到目标格
+  const fly = document.createElement('div');
+  fly.className = 'fly-med';
+  fly.textContent = m.name + (chipDose(m) ? ' · ' + chipDose(m) : '');
+  fly.style.left = (ax - fly.offsetWidth / 2 || ax - 40) + 'px';
+  fly.style.top = (ay - 14) + 'px';
+  document.body.appendChild(arrow);
+  document.body.appendChild(fly);
+  // 下一帧再设终点，触发 transition
+  requestAnimationFrame(function(){
+    requestAnimationFrame(function(){
+      fly.style.left = (bx - (fly.offsetWidth || 80) / 2) + 'px';
+      fly.style.top = (by - 14) + 'px';
+      fly.style.transform = 'scale(.82)';
+      fly.style.opacity = '0';
+    });
+  });
+  const clean = function(){ if(arrow.parentNode) arrow.remove(); if(fly.parentNode) fly.remove(); };
+  fly.addEventListener('transitionend', clean);
+  setTimeout(clean, 900);                    // 动画被打断也要收尾，别留残影
+  toast('「' + m.name + '」放进药盒了');
+}
+
 function dragUp(e){
   if(!drag) return;
   const d = drag;
@@ -3296,7 +3398,15 @@ function dragUp(e){
   markOver(-1);
   markUnplaced(false);
   markStage(false);
-  if(!d.started) return;                    // 只是点了一下，当点击处理
+  // ★ 2026-11-24：只点了一下（没拖动）—— 仅「未入清单 / 摆药台」上的药飞进药盒，
+  //   不管长按短按都走这里（长按的系统复制菜单已在 CSS 里禁掉）。
+  //   ★ 必须看起点元素是不是 .up-item/.stg-item：药品卡片 .med 也是 data-from=-1，
+  //     但它点一下是「打开编辑」，绝不能跟着飞进药盒（2026-11-24 自检抓到过）。
+  if(!d.started){
+    const srcEl = d.src;
+    if(srcEl && srcEl.closest && srcEl.closest('#box .up-item, #box .stg-item')) flyToBox(d);
+    return;
+  }
   const to = slotUnder(e.clientX, e.clientY);
   if(to >= 0){ addToSlot(to, d.id, d.from); return; }
   // 放到台面 = 加进摆药台。台面是"复制源"，所以从格子拖上来也不动那一格。
@@ -3321,6 +3431,13 @@ function dragUp(e){
 document.addEventListener('pointerdown', dragDown);
 document.addEventListener('pointermove', dragMove);
 document.addEventListener('pointerup', dragUp);
+// 长按清单/台面上的药：拦掉系统右键/长按菜单（复制、全选、翻译……），
+// 让长按和短按一样只触发"飞进药盒"。passive:false 才能 preventDefault。
+document.addEventListener('contextmenu', function(e){
+  if(e.target && e.target.closest && e.target.closest('#box .up-item, #box .stg-item')){
+    e.preventDefault();
+  }
+}, {passive: false});
 
 /* ---- 手机：手指拖药时得先挡住页面的滚动 ----
    Pointer Events 在触屏上有个死结：手指一移动，浏览器先判断「这是滑动页面」，
