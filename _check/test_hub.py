@@ -43,6 +43,11 @@ PROBE = r"""
     ck('「导入导出」里有局域网同步那一节（地址 + 两个动作）',
        !!q('#hubAddr') && !!q('#btnHubUp') && !!q('#btnHubDown') &&
        !!q('#hubNote'), '');
+    // 2026-11-24：左上角版本号徽标 + 双端取值（手机 appVersion / 桌面 apk.ver）
+    ck('★ 左上角「药」标旁有版本号徽标（手机读 APK、桌面读服务端）',
+       !!q('#appVer') && q('#appVer').parentElement.tagName === 'H1' &&
+       /AA\.appVersion/.test(document.documentElement.innerHTML) &&
+       /st\.apk && st\.apk\.ver/.test(document.documentElement.innerHTML), '');
     ck('两个动作是「上传到电脑」「从电脑拉取」',
        /上传到电脑/.test((q('#btnHubUp') || {}).textContent || '') &&
        /从电脑拉取/.test((q('#btnHubDown') || {}).textContent || ''), '');
@@ -104,6 +109,63 @@ PROBE = r"""
        /window\.AndroidApp && window\.AndroidApp\.findHub && \$\('#dlgConnect'\)/.test(document.documentElement.innerHTML) &&
        /classList\.add\('slim-connect'\)/.test(document.documentElement.innerHTML) &&
        /function hubPairToast/.test(document.documentElement.innerHTML), '');
+
+    /* ①d 2026-11-24：配对状态持久化 + 自动重发现（修「更新后断联」）。
+       自检环境无手机壳，这里塞一个假的 AndroidApp 来验证 save/restore 逻辑本身。 */
+    ck('★ 源码含配对码常量 + 快照函数（连一次就一直连着）',
+       /const LS_HUBCODE = 'dk\.hub\.code'/.test(document.documentElement.innerHTML) &&
+       /function hubSyncSnapshot/.test(document.documentElement.innerHTML) &&
+       /function hubRestoreSync/.test(document.documentElement.innerHTML) &&
+       /function hubRediscover/.test(document.documentElement.innerHTML), '');
+    (function(){
+      // 备份一份，测完还原，别污染后面的用例
+      var savedLS = {};
+      ['dk.hub','dk.hub.code','dk.hub.dev','dk.hub.local','dk.hub.seen','dk.hub.clockoff'].forEach(function(k){
+        savedLS[k] = store.get(k);
+      });
+      var fakeStore = {};
+      var fakeAA = {
+        findHub: function(){ return ''; },
+        saveSync: function(json){ fakeStore.state = json; },
+        readSync: function(){ return fakeStore.state || ''; }
+      };
+      var hadAA = window.AndroidApp;
+      window.AndroidApp = fakeAA;
+      try {
+        // 配对成功 → 地址 + 配对码 + 时间戳都进快照
+        store.set('dk.hub', 'http://192.168.1.9:8730');
+        store.set('dk.hub.code', '123456');
+        store.set('dk.hub.seen', '1700000000000');
+        hubSaveSync();
+        var snap = JSON.parse(fakeStore.state || '{}');
+        ck('★ saveSync 把地址/配对码/时间戳都存进原生',
+           snap.hub === 'http://192.168.1.9:8730' && snap.code === '123456' &&
+           snap.seen === '1700000000000', JSON.stringify(snap));
+        // 模拟换页后 localStorage 丢了地址 → readSync 回填
+        store.set('dk.hub', '');
+        store.set('dk.hub.code', '');
+        hubRestoreSync();
+        ck('★ 换页后地址/配对码从原生自动回填（不用重新输验证码）',
+           (store.get('dk.hub') || '') === 'http://192.168.1.9:8730' &&
+           (store.get('dk.hub.code') || '') === '123456',
+           (store.get('dk.hub') || '') + ' / ' + (store.get('dk.hub.code') || ''));
+        // 地址失效 → findHub 用记住的配对码重新发现
+        HUB_LAST_DISCOVER = 0;
+        store.set('dk.hub', 'http://10.0.0.1:8730');   // 旧地址
+        fakeAA.findHub = function(code){
+          return code === '123456' ? 'http://192.168.1.77:8730' : '';
+        };
+        var fresh = hubRediscover();
+        ck('★ 旧地址失效时用配对码自动发现新地址', fresh === 'http://192.168.1.77:8730' &&
+           (store.get('dk.hub') || '') === 'http://192.168.1.77:8730', fresh);
+      } finally {
+        window.AndroidApp = hadAA;
+        Object.keys(savedLS).forEach(function(k){
+          if(savedLS[k] == null) store.remove ? store.remove(k) : store.set(k, '');
+          else store.set(k, savedLS[k]);
+        });
+      }
+    })();
 
     /* ② 地址规范化：用户多半只会抄 IP:端口，不带 http:// */
     store.set('dk.hub', '127.0.0.1:__PORT__');
@@ -328,6 +390,16 @@ def main():
             print(dom_ns[:1200])
             return 3
         data = json.loads(html.unescape(mm.group(1)))
+
+        # Android 原生侧：配对状态持久化的两个方法确实存在（改了 Java 就得同步改这里）
+        java_dir = os.path.join(ROOT, "android", "src", "com", "xiaotuji", "drugkeeper")
+        bridge_src = open(os.path.join(java_dir, "Bridge.java"), encoding="utf-8").read()
+        main_src = open(os.path.join(java_dir, "MainActivity.java"), encoding="utf-8").read()
+        native_ok = ("saveSync" in bridge_src and "readSync" in bridge_src and
+                     "void saveSync" in main_src and "String readSync" in main_src and
+                     "SharedPreferences" in main_src and "MODE_PRIVATE" in main_src)
+        data["cases"].append({"name": "★ 原生 Bridge/MainActivity 有 saveSync/readSync（SharedPreferences 持久化配对）",
+                              "pass": native_ok, "got": "" if native_ok else "缺方法或没用 SharedPreferences"})
 
         fails = [c for c in data["cases"] if not c["pass"]]
         for c in data["cases"]:

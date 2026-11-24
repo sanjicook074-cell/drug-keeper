@@ -4,7 +4,9 @@ import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ContentValues;
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -304,6 +306,29 @@ public class MainActivity extends Activity {
     String appVersion(){
         try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; }
         catch(Exception e){ return ""; }
+    }
+
+    /* ---------------- 配对状态持久化（2026-11-24）----------------
+       用户反馈：「手机端更新了之后就和电脑端断联了，得重新输验证码」。
+       根因：配对地址/时间戳只存在网页的 localStorage 里，换页热更新或 APK 更新后
+       那一份可能丢，恢复逻辑只回填数据、不回填配对信息 → 地址没了，只能重新配对。
+       办法：把整套同步状态（地址、配对码、设备 id、时间戳、时钟偏移）交给原生，
+       存进 SharedPreferences —— 它跟 App 走，换页/覆盖安装都不丢。页面每次配对成功
+       和每轮同步后写一次，启动时先读回来，实现「连一次就一直连着」。 */
+    private static final String SYNC_PREF = "dk_sync", SYNC_KEY = "state";
+
+    void saveSync(String json){
+        try {
+            SharedPreferences sp = getSharedPreferences(SYNC_PREF, Context.MODE_PRIVATE);
+            sp.edit().putString(SYNC_KEY, json == null ? "" : json).apply();
+        } catch(Exception e){}
+    }
+
+    String readSync(){
+        try {
+            SharedPreferences sp = getSharedPreferences(SYNC_PREF, Context.MODE_PRIVATE);
+            return sp.getString(SYNC_KEY, "");
+        } catch(Exception e){ return ""; }
     }
 
     /**

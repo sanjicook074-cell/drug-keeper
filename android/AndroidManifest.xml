@@ -10,8 +10,8 @@
        我们要显式关掉预测性返回，好让返回键先去关页面上开着的弹窗。 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.xiaotuji.drugkeeper"
-    android:versionCode="33"
-    android:versionName="4.2">
+    android:versionCode="34"
+    android:versionName="4.3">
 
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="33" />
 

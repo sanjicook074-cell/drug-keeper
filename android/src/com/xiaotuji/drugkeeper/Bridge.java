@@ -66,6 +66,17 @@ class Bridge {
         return act.appVersion();
     }
 
+    /** 配对状态持久化：换页/更新后据此恢复地址，不用重新输验证码 */
+    @JavascriptInterface
+    public void saveSync(String json) {
+        act.saveSync(json);
+    }
+
+    @JavascriptInterface
+    public String readSync() {
+        return act.readSync();
+    }
+
     @JavascriptInterface
     public void openUrl(String url) {
         act.openUrl(url);
