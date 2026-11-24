@@ -849,6 +849,9 @@ PROBE = r"""
   ck('解析完清空粘贴框（免得手一抖粘两遍）', q('#rxPaste').value === '', '「' + q('#rxPaste').value + '」');
   ck('汇总写清勾了几味、加入后各档位几味', /共 2 味，勾选 2 味/.test(q('#rxSum').textContent),
      q('#rxSum').textContent.slice(0, 44));
+  ck('★ 底方汇总写清药量固定、天数跟着吃法变',
+     /药量不变、天数跟着变/.test(q('#rxSum').textContent),
+     q('#rxSum').textContent.slice(-60));
   ck('按钮写清要加几味', /把勾选的 2 味加入药箱/.test(q('#btnRxOk').textContent),
      q('#btnRxOk').textContent);
 
@@ -898,6 +901,67 @@ PROBE = r"""
   ck('卡片上的天数 = 弹窗里确认过的天数（60 天）', mday('维生素B6片') === '60', mday('维生素B6片'));
   ck('没勾的那味确实没被加进来',
      !meds.some(function(x){ return x.name === '阿莫西林胶囊'; }), '');
+
+  /* 10d-2. ★ 2026-11-24 用户要求：底方上「一次开了多少药」就是这味药的开药上限。
+     药量锁在处方那个数上（rxCapQty），「一次最多能开几天」= 药量 ÷ 现在的吃法，
+     改吃法后上限天数和卡片上的剩余天数都要跟着变。 */
+  var nm1snap = JSON.parse(JSON.stringify(nm1));
+  ck('★ 底方入库：处方药量记进 rxCapQty（本次开到多少就是多少）',
+     !!nm1 && nm1.rxCapQty === 60, nm1 ? String(nm1.rxCapQty) : '(没进来)');
+  ck('★ 同时折成「一次最多能开几天」并存好转天标记',
+     !!nm1 && nm1.rxMax === 60 && nm1.rxMaxDay === 1,
+     nm1 ? nm1.rxMax + ' / ' + nm1.rxMaxDay : '(没进来)');
+  ck('★ 底方药有真上限，清单不再挂「判不了」的星',
+     !!nm1 && !noCap(nm1), nm1 ? String(noCap(nm1)) : '(没进来)');
+  ck('★ 这味开药数量就是处方药量（rxCap = 60，不是按目标天数倒推）',
+     !!nm1 && rxCap(nm1) === 60, nm1 ? String(rxCap(nm1)) : '(没进来)');
+  ck('★ 入库提示说清「改了吃法天数会自己跟着重算」',
+     /改了吃法/.test(R.alerts[R.alerts.length - 1]),
+     R.alerts[R.alerts.length - 1]);
+
+  // 处方写每日 1 次，实际改每日 2 次 → 药量 60 片不变，天数 60 → 30
+  var day0 = daysLeft(nm1);
+  nm1.timesPerCycle = 2;
+  ck('★ 吃法从每日 1 次改 2 次 → 上限天数 60 天变 30 天', rxCapDays(nm1) === 30,
+     String(rxCapDays(nm1)));
+  ck('★ 卡片上的剩余天数也跟着同步变（60 → 30）',
+     Math.abs(daysLeft(nm1) - day0 / 2) < 1e-9, daysLeft(nm1) + ' / ' + day0);
+  ck('★ 药量始终等于处方上的 60 片，没被换算改掉', rxCap(nm1) === 60, String(rxCap(nm1)));
+  nm1.timesPerCycle = nm1snap.timesPerCycle;
+
+  // 走一遍真实编辑页：只改吃法不动上限那格 → 处方药量留住
+  openEditor(nm1.id);
+  ck('★ 编辑页上限那格显示处方药量折算出的天数（60）',
+     fmed.rxMax.value === '60', fmed.rxMax.value);
+  ck('★ 换算文案写明「处方药量 ÷ 现在吃法 ＝ 天数，改吃法跟着变」',
+     /底方一次开了多少药/.test(q('#rxConvLead').textContent)
+       && /60 片 ÷ 现在每天 1 片/.test(q('#rxConv').textContent)
+       && /改吃法会自己跟着变/.test(q('#rxConv').textContent),
+     q('#rxConvLead').textContent + q('#rxConv').textContent);
+  fmed.timesPerCycle.value = '2';
+  fmed.timesPerCycle.dispatchEvent(new Event('input', {bubbles:true}));
+  submitMed({ preventDefault: function(){} });
+  var nm1b = byName('维生素B6片');
+  ck('★ 只改吃法保存 → 处方药量原样留住（60 片）',
+     !!nm1b && nm1b.rxCapQty === 60, nm1b ? String(nm1b.rxCapQty) : '(没了)');
+  ck('★ 上限天数按新吃法重算成 30',
+     !!nm1b && nm1b.rxMax === 30 && rxCapDays(nm1b) === 30,
+     nm1b ? nm1b.rxMax + ' / ' + rxCapDays(nm1b) : '(没了)');
+
+  // 真手改上限那格 → 退回普通「按天算」，不再锁处方药量
+  openEditor(nm1b.id);
+  fmed.rxMax.value = '15';
+  fmed.rxMax.dispatchEvent(new Event('input', {bubbles:true}));
+  submitMed({ preventDefault: function(){} });
+  var nm1c = byName('维生素B6片');
+  ck('★ 手改上限 → rxCapQty 清掉，按 15 天 × 每天 2 片 = 30 片算',
+     !!nm1c && !rxCapQtyOf(nm1c) && rxCap(nm1c) === 30,
+     nm1c ? String(nm1c.rxCapQty) + ' / ' + rxCap(nm1c) : '(没了)');
+
+  // 复原，别影响后面的用例
+  var restoreAt = meds.findIndex(function(x){ return x.name === '维生素B6片'; });
+  if(restoreAt >= 0) meds[restoreAt] = nm1snap;
+  render();
 
   // 10e. 「把照片发给助手」那条路：带 #rx= 的链接打开就把药摆好
   var enc = rxEncode([{ name:'维生素B12注射液', spec:'1ml:0.5mg*', unit:'支', perDose:1,
@@ -1370,6 +1434,13 @@ def main():
         "name": "源码里 #numVal 的 step = 1（不再 0.25）",
         "pass": bool(mstep) and mstep.group(1) == "1",
         "got": mstep.group(1) if mstep else "(没找到)",
+    })
+
+    # ---- 源码级：底方药量这个新字段必须跟着备份一起搬（2026-11-24）----
+    data["cases"].append({
+        "name": "★ 导入药品列表时保留底方的处方药量 rxCapQty",
+        "pass": "if(num(m.rxCapQty) > 0) out.rxCapQty" in src,
+        "got": "在" if "if(num(m.rxCapQty) > 0) out.rxCapQty" in src else "丢了",
     })
 
     # ---- 源码级：「添加药品」的必填口径（2026-10-13 用户要求）----

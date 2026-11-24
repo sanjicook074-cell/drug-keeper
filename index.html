@@ -1468,7 +1468,7 @@ input.wbad{border-color:#fca5a5;background:#fffafa}
             <input name="rxMax" type="number" step="1" min="1" autocomplete="off" placeholder="不填就判不了"
                    data-wlabel="一次最多能开几天" data-wmin="1" data-wmsg="一次能开几天，至少填 1">
             <span class="hintline">医生单次处方最多能给几天 —— 填<b>天数</b>，不填片数；
-              程序按你填的用法换算成数量：<b id="rxConv">—</b>。
+              <span id="rxConvLead">程序按你填的用法换算成数量：</span><b id="rxConv">—</b>。
               <b>自购药一般没有这一项，可以留空</b> —— 留空时程序算不出"一个周期"该开多少，
               就<b>判断不了这趟该不该开</b>，清单里给这味挂个星，剩多少你自己看一眼。</span>
           </label>
@@ -2516,8 +2516,18 @@ function needUnits(m, p){
 //   换算是不可逆的（数量 ÷ 每天用量，除不尽就会改掉用户当初填的数）。
 //   只有在编辑那一格里才按天显示出来给人看，保存时才落成天数。
 //   没填 / 填 0 = 老的「不限」。
+// ★ 2026-11-24 底方新口径：底方录入的药把「本次开到」原样记成 rxCapQty（处方药量）。
+//   它是上限的**数量**侧真相：药量始终等于处方上那一个数；「一次最多能开几天」不写死，
+//   而是 rxCapQty ÷ 现在的每天用量现算 —— 处方写每日 2 次、实际改每日 1 次，
+//   天数自己从 15 天变 30 天，卡片上的「剩 N 天」也跟着变。
 function rxMaxIsDay(m){ return !!(m && m.rxMaxDay); }
+function rxCapQtyOf(m){ return Math.max(0, num(m && m.rxCapQty)); }
 function rxCapDays(m){
+  const fixed = rxCapQtyOf(m);
+  if(fixed > 0){
+    const d = dailyUse(m);
+    return d > 0 ? round2(fixed / d) : Infinity;   // 没用法就算不出天数
+  }
   const v = num(m.rxMax);
   if(!(v > 0)) return Infinity;
   if(rxMaxIsDay(m)) return v;
@@ -2527,6 +2537,8 @@ function rxCapDays(m){
   return d > 0 ? round2(v / d) : Infinity;
 }
 function rxCap(m){
+  const fixed = rxCapQtyOf(m);
+  if(fixed > 0) return fixed;                   // 底方药量：开药数量就是处方上那个数
   const v = num(m.rxMax);
   if(!(v > 0)) return Infinity;                 // 没填 = 不限
   if(!rxMaxIsDay(m)) return v;                  // 老存档：这个数本来就是数量
@@ -3612,8 +3624,12 @@ function prnCardHTML(m){
         但那是算出来的、不是填进去的：每天用量一改（或当初就填错），这个"上限"跟着错。
         这种也不算"有尺子"。⚠️ 编辑页会把折算结果填进那格给人看 —— 看见 30 不代表填过 30 天。
    没填用法（dailyUse = 0）的老存档折不出来，同理判不了，一起上星。
-   ★ 备用药永远 rxMax = 0，但它压根不进清单；卡片上单独排除（见 cardHTML）。 */
-function noCap(m){ return !isFinite(rxCapDays(m)) || !rxMaxIsDay(m); }
+   ★ 底方录进来的药有 rxCapQty（处方药量），这是真上限，不挂星；只有连用法都没填、
+     折不出天数时才判不了。★ 备用药永远 rxMax = 0，但它压根不进清单；卡片上单独排除。 */
+function noCap(m){
+  if(rxCapQtyOf(m) > 0) return !(dailyUse(m) > 0);
+  return !isFinite(rxCapDays(m)) || !rxMaxIsDay(m);
+}
 
 // 可以开的药清单：只有药名。
 // ★ 这段会被直接粘进小程序的问诊框当话发出去，所以不放「就诊人：」「生成日期」「用法用量以医师处方为准」
@@ -4096,13 +4112,25 @@ function openEditor(id){
     //   ⚠️ 但换算出来的只是"给人看的参考值"：判不判得了看的是 rxMaxIsDay（见 noCap），
     //   这里显示 30 不代表"用户填过 30 天"。
     const rxv = num(m.rxMax);
-    if(rxv > 0){
-      const pd = dailyUse(m);
-      f.rxMax.value = (rxMaxIsDay(m) || !(pd > 0)) ? rxv : Math.max(1, Math.round(rxv / pd));
-      f.rxMax.placeholder = rxMaxIsDay(m) ? '如 30' : '旧数据：折成天数显示';
+    editAnchor.rxCapQty = rxCapQtyOf(m);
+    if(editAnchor.rxCapQty > 0){
+      // 底方药：上限天数由处方药量 ÷ 当前吃法现算。只改吃法就直接保存时，
+      // submitMed 靠 rxCapField 认出"这格没动过"，把处方药量原样留住（药量不变、天数重算）。
+      const days = rxCapDays(m);
+      f.rxMax.value = isFinite(days) ? Math.max(1, Math.round(days)) : '';
+      f.rxMax.placeholder = '处方药量折算，改了就按天算';
+      editAnchor.rxCapField = String(f.rxMax.value);
     } else {
-      f.rxMax.value = '';
-      f.rxMax.placeholder = isPrn(m) ? '备用药用不上这格' : '不填就判不了';
+      editAnchor.rxCapQty = 0;
+      editAnchor.rxCapField = null;
+      if(rxv > 0){
+        const pd = dailyUse(m);
+        f.rxMax.value = (rxMaxIsDay(m) || !(pd > 0)) ? rxv : Math.max(1, Math.round(rxv / pd));
+        f.rxMax.placeholder = rxMaxIsDay(m) ? '如 30' : '旧数据：折成天数显示';
+      } else {
+        f.rxMax.value = '';
+        f.rxMax.placeholder = isPrn(m) ? '备用药用不上这格' : '不填就判不了';
+      }
     }
     f.note.value = m.note || '';
     f.ins.value = miIsMI(m) ? 'mi' : 'self';
@@ -4221,6 +4249,21 @@ function syncRxConv(){
     unit: u, rxMax: days, rxMaxDay: 1
   };
   const d = dailyUse(tmp);
+  // 底方药没手改这格时：药量是处方上那个数（固定），可开天数随吃法现算 ——
+  // 这句话得在这儿实时说清，否则用户改了「每日 2 次 → 1 次」，只看见天数变了，
+  // 会以为程序把上限偷偷改了。
+  if(editAnchor && editAnchor.rxCapQty > 0
+     && String(f.rxMax.value).trim() === String(editAnchor.rxCapField).trim()){
+    const lead = $('#rxConvLead');
+    if(lead) lead.textContent = '底方一次开了多少药，就是这味药的上限：';
+    if(!(d > 0)){ el.textContent = '用法还没填完整，算不出天数'; return; }
+    el.textContent = fmtNum(editAnchor.rxCapQty) + ' ' + u
+      + ' ÷ 现在每天 ' + fmtNum(d) + ' ' + u + ' ＝ 最多 '
+      + fmtNum(round2(editAnchor.rxCapQty / d)) + ' 天（改吃法会自己跟着变）';
+    return;
+  }
+  const lead0 = $('#rxConvLead');
+  if(lead0) lead0.textContent = '程序按你填的用法换算成数量：';
   if(!(days > 0)){ el.textContent = '还没填天数'; return; }
   if(!(d > 0)){ el.textContent = '用法还没填完整，算不出数量'; return; }
   const qty = rxCap(tmp);
@@ -4345,6 +4388,21 @@ async function submitMed(e){
          && Math.abs(num(f.stockBase.value) - num(editAnchor.pre)) < 1e-9){
         next.stockBase = editAnchor.base;
         next.stockDate = editAnchor.date;
+      }
+      // ★ 底方药：改吃法 ≠ 改上限。那格没动过 → 处方药量原样留住，
+      //   只把 rxMax（给人看的天数）按新吃法刷新；真手改了那格 → 退回普通按天上限，
+      //   从此按用户填的天数换算（药量不再锁死在处方上）。
+      if(editAnchor && editAnchor.rxCapQty > 0){
+        const untouched = !prn
+          && String(f.rxMax.value).trim() === String(editAnchor.rxCapField).trim();
+        if(untouched){
+          next.rxCapQty = editAnchor.rxCapQty;
+          const use = dailyUse(next);
+          next.rxMax = use > 0 ? round2(editAnchor.rxCapQty / use) : 0;
+          next.rxMaxDay = 1;
+        } else {
+          next.rxCapQty = 0;
+        }
       }
       meds[i] = next;
     }
@@ -6150,8 +6208,9 @@ function rxSyncFoot(){
   $('#rxSum').innerHTML = '共 <b>' + rxRows.length + '</b> 味，勾选 <b>' + picked.length + '</b> 味'
     + (dup ? '（另有 <b>' + dup + '</b> 味药箱里已有，默认没勾 → 不会重复入库）' : '')
     + (named.length ? '（其中 ' + bits.join('、') + '）' : '')
-    + '。<br>加入后「余量」= 你确认的够吃天数 × 每天用量，基准日是就诊日期 '
-    + fmtMD(rxDateStart()) + ' —— 从开药那天算起，已经过去的几天会自动扣掉。';
+    + '。<br>加入后「余量」= 本次开到的药量，基准日是就诊日期 '
+    + fmtMD(rxDateStart()) + ' —— 从开药那天算起，已经过去的几天会自动扣掉。'
+    + '<br>「一次最多能开几天」按处方药量 ÷ 现在的吃法算；以后改吃法，药量不变、天数跟着变。';
   const ok = $('#btnRxOk');
   ok.disabled = named.length === 0;
   ok.textContent = named.length ? '把勾选的 ' + named.length + ' 味加入药箱' : '全部加入药箱';
@@ -6390,17 +6449,27 @@ async function submitRx(e){
   const startD = rxDateStart();        // 药方起始时间（解析出的就诊日期，没解析到就是今天）
                                        // → 医保锁和余量都从这天起算
   picked.forEach(function(r){
+    const pd = Math.max(0, num(r.perDose, 1));
+    const cd = Math.max(1, Math.round(num(r.cycleDays, 1)) || 1);
+    const tp = Math.max(0, num(r.timesPerCycle, 1));
+    const qty = round2(Math.max(0, num(r.total)));    // 处方上「本次开到」的药量
+    const use = dailyUse({ perDose: pd, cycleDays: cd, timesPerCycle: tp });
     meds.push({
       id: uid(),
       name: r.name.trim(),
       spec: (r.spec || '').trim(),
-      perDose: Math.max(0, num(r.perDose, 1)),
+      perDose: pd,
       unit: (r.unit || '').trim() || '片',
-      cycleDays: Math.max(1, Math.round(num(r.cycleDays, 1)) || 1),
-      timesPerCycle: Math.max(0, num(r.timesPerCycle, 1)),
-      stockBase: round2(Math.max(0, num(r.total))),   // 这次开回来的量 = 开药那天的余量
+      cycleDays: cd,
+      timesPerCycle: tp,
+      stockBase: qty,                                 // 这次开回来的量 = 开药那天的余量
       stockDate: startD,                              // ★ 起始时间=就诊日期：已过的天自动扣药
-      rxMax: 0,
+      // ★ 2026-11-24：处方一次开了多少药，就当这味药的「一次最多能开几天」。
+      //   药量写死成处方上的数（rxCapQty），天数按现在的吃法现算（rxCapDays）——
+      //   处方写每日 2 次、实际改每日 1 次，上限天数与剩余天数一起跟着变。
+      rxCapQty: qty,
+      rxMax: use > 0 ? round2(qty / use) : 0,
+      rxMaxDay: 1,
       // 医保 / 自费（2026-10-28）：医保开的从这里上锁。
       // ★ 2026-11-20 起不再是「今天」：处方单上打的那天才算 —— 一张三天前开的单子，
       //   按今天上锁就白锁三天。日期从弹窗那个格子来（解析出的「就诊日期 / 开方日期」）。
@@ -6420,6 +6489,8 @@ async function submitRx(e){
       + '\n\n起始时间是就诊日期 ' + fmtMD(startD) + '：余量从开药那天算起。'
       + (past > 0 ? '已经过去的 ' + past + ' 天自动扣掉了，' : '')
       + '卡片上的「剩 N 天」按这个余量往下走。'
+      + '\n\n「一次最多能开几天」按处方上的药量算好了；以后改了吃法，'
+      + '药量不变、天数会自己跟着重算。'
       + (miN ? '\n\n其中 ' + miN + ' 味按「医保开的」记：同样从 ' + fmtMD(startD) + ' 起算，'
           + fmtMD(miUnlockFrom(startD)) + ' 之后才解锁，那之前不能用医保再开这几味。' : '')
   });
@@ -6571,6 +6642,8 @@ function importJSON(file){
           rxMaxDay: m.rxMaxDay ? 1 : 0,
           note: m.note ? String(m.note) : ''
         };
+        // 底方药的处方药量：丢了它就退回按天上限，改吃法后药量会跟着变，账就错了。
+        if(num(m.rxCapQty) > 0) out.rxCapQty = round2(num(m.rxCapQty));
         // 医保 / 自费：**只有备份里真的带了才搬**。
         // 老备份（加这个字段之前导出的）里根本没有 ins —— 硬写一个空值进去，
         // 合并那一支就会拿它把现有的锁抹掉，等于悄悄给人解了锁。
